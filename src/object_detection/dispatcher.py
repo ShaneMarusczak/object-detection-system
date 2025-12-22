@@ -20,7 +20,9 @@ class EventDefinition:
     def __init__(self, name: str, match: Dict[str, Any], actions: Dict[str, Any]):
         self.name = name
         self.match = match
-        self.actions = actions
+
+        # Apply implied action rules (AWS-style primitive composition)
+        self.actions = self._apply_implied_actions(actions)
 
         # Parse match criteria
         self.event_type = match.get('event_type')
@@ -35,6 +37,23 @@ class EventDefinition:
             self.object_classes = {obj_class}
         else:
             self.object_classes = None  # Match any class
+
+    def _apply_implied_actions(self, actions: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Apply implied action dependencies (AWS-style primitive composition).
+
+        Rules:
+        - email_digest requires json_log (digest reads from JSON)
+        """
+        actions = actions.copy()
+
+        # If email_digest is specified, json_log is required
+        if actions.get('email_digest'):
+            if not actions.get('json_log'):
+                actions['json_log'] = True
+                logger.debug(f"Auto-enabled json_log (required by email_digest)")
+
+        return actions
 
     def matches(self, event: Dict[str, Any]) -> bool:
         """Check if raw event matches this definition."""
