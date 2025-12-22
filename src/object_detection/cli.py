@@ -176,11 +176,24 @@ def setup_logging(quiet: bool = False) -> None:
         quiet: If True, only show warnings and errors
     """
     level = logging.WARNING if quiet else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+
+    # Custom formatter with shorter module names
+    class ShortNameFormatter(logging.Formatter):
+        def format(self, record):
+            # Abbreviate object_detection.processor.x -> od.p.x
+            record.name = record.name.replace('object_detection.', 'od.') \
+                                     .replace('processor.', 'p.') \
+                                     .replace('config.', 'c.') \
+                                     .replace('core.', 'co.')
+            return super().format(record)
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(ShortNameFormatter(
+        fmt='%(asctime)s %(name)s %(levelname)s %(message)s',
+        datefmt='%H:%M:%S'
+    ))
+    logging.root.addHandler(handler)
+    logging.root.setLevel(level)
 
 
 def parse_args() -> argparse.Namespace:
