@@ -151,9 +151,15 @@ consumers:
     enabled: true                # Default: true (disable to skip JSON logging)
     prompt_save: true            # Prompt to save/delete file when done
 
-  # Email Notifier - sends emails for tagged zones/lines
+  # Email Notifier - sends immediate emails for tagged zones/lines
   email_notifier:
     enabled: false               # Set to true to enable (requires notifications config below)
+
+  # Email Digest - sends periodic summary emails
+  email_digest:
+    enabled: false               # Set to true to enable (requires notifications config below)
+    period_minutes: 60           # How often to send digest (60 = hourly)
+    period_label: "Last Hour"    # Label for email subject
 
 
 # ==============================================================================
@@ -250,7 +256,11 @@ runtime:
 #
 # consumers:
 #   email_notifier:
-#     enabled: true
+#     enabled: true              # Per-event notifications for tagged zones
+#   email_digest:
+#     enabled: true              # Hourly summary emails
+#     period_minutes: 60
+#     period_label: "Last Hour"
 #
 # zones:
 #   - x1_pct: 10

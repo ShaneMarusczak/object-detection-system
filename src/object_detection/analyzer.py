@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 from typing import Dict
 
-from .consumers import json_writer_consumer, email_notifier_consumer
+from .consumers import json_writer_consumer, email_notifier_consumer, email_digest_consumer
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str])
         consumers.append(json_process)
         logger.info("Started JSON Writer consumer")
 
-    # Email Notifier Consumer (default disabled)
+    # Email Notifier Consumer (per-event, default disabled)
     email_config = config.get('consumers', {}).get('email_notifier', {})
     if email_config.get('enabled', False):
         email_queue = Queue()
@@ -73,7 +73,27 @@ def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str])
         )
         email_process.start()
         consumers.append(email_process)
-        logger.info("Started Email Notifier consumer")
+        logger.info("Started Per-Event Email Notifier consumer")
+
+    # Email Digest Consumer (periodic summaries from JSON logs, default disabled)
+    digest_config = config.get('consumers', {}).get('email_digest', {})
+    if digest_config.get('enabled', False):
+        json_dir = config.get('output', {}).get('json_dir', 'data')
+
+        digest_consumer_config = {
+            'notification_config': config.get('notifications', {}),
+            'period_minutes': digest_config.get('period_minutes', 60),
+            'period_label': digest_config.get('period_label', f"Last {digest_config.get('period_minutes', 60)} Minutes")
+        }
+
+        digest_process = Process(
+            target=email_digest_consumer,
+            args=(json_dir, digest_consumer_config),
+            name='EmailDigest'
+        )
+        digest_process.start()
+        consumers.append(digest_process)
+        logger.info(f"Started Email Digest consumer (period: {digest_config.get('period_minutes', 60)} min)")
 
     if not consumers:
         logger.warning("No consumers enabled - events will be discarded!")
