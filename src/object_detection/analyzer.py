@@ -318,38 +318,56 @@ def _generate_output_filename(output_dir: str) -> str:
     return f"{output_dir}/events_{timestamp}.jsonl"
 
 
-def _handle_data_deletion(json_filename: str) -> None:
-    """Prompt user to delete data file."""
+def _handle_data_saving(json_filename: str) -> None:
+    """
+    Prompt user to save or delete data file.
+
+    This function will wait indefinitely for user input.
+    Default action is to save the data.
+    """
     import sys
 
     print("\n" + "="*70)
     print("Data Collection Complete")
     print("="*70)
+    print(f"\nFile location: {json_filename}")
 
     # Flush output to ensure user sees the prompt
     sys.stdout.flush()
 
-    try:
-        # Give a clear prompt
-        print(f"\nData saved to: {json_filename}")
-        response = input("\nDelete this data? (y/n): ").strip().lower()
+    # Keep trying until we get a valid response
+    while True:
+        try:
+            response = input("\nSave this data? (y/n) [default: y]: ").strip().lower()
 
-        if response in ['y', 'yes']:
-            try:
-                os.remove(json_filename)
-                print(f"✓ Data deleted: {json_filename}")
-                logger.info(f"Data deleted: {json_filename}")
-            except OSError as e:
-                print(f"✗ Failed to delete file: {e}")
-                logger.error(f"Failed to delete file: {e}")
-        else:
-            print(f"✓ Data saved: {json_filename}")
-            logger.info(f"Data saved: {json_filename}")
+            # Default to 'yes' if user just hits enter
+            if not response:
+                response = 'y'
 
-    except (KeyboardInterrupt, EOFError):
-        # User interrupted or EOF - keep the data
-        print(f"\n✓ Data saved: {json_filename}")
-        logger.info(f"Data saved: {json_filename}")
+            if response in ['y', 'yes']:
+                print(f"✓ Data saved: {json_filename}")
+                logger.info(f"Data saved: {json_filename}")
+                break
+            elif response in ['n', 'no']:
+                try:
+                    os.remove(json_filename)
+                    print(f"✓ Data deleted: {json_filename}")
+                    logger.info(f"Data deleted: {json_filename}")
+                    break
+                except OSError as e:
+                    print(f"✗ Failed to delete file: {e}")
+                    logger.error(f"Failed to delete file: {e}")
+                    print(f"✓ Data will remain at: {json_filename}")
+                    break
+            else:
+                print("Please enter 'y' or 'n' (or just press Enter to save)")
+                continue
+
+        except (KeyboardInterrupt, EOFError):
+            # User interrupted - default to keeping the data
+            print(f"\n✓ Data saved: {json_filename}")
+            logger.info(f"Data saved (interrupted): {json_filename}")
+            break
 
     print("="*70)
     sys.stdout.flush()
