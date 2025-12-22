@@ -14,7 +14,7 @@ import logging
 import sys
 import time
 import yaml
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Event
 from pathlib import Path
 from typing import Optional
 
@@ -151,10 +151,10 @@ def get_model_class_names(model_path: str) -> dict:
         sys.exit(1)
 
 
-def run_detector_process(queue: Queue, config: dict) -> None:
+def run_detector_process(queue: Queue, config: dict, shutdown_event) -> None:
     """Wrapper for detection process with error handling."""
     try:
-        run_detection(queue, config)
+        run_detection(queue, config, shutdown_event)
     except Exception as e:
         logger.error(f"Fatal error in detector: {e}", exc_info=True)
         queue.put(None)  # Signal analyzer to stop
@@ -348,14 +348,16 @@ def monitor_processes(
         return 'interrupted'
 
 
-def shutdown_processes(detector: Process, analyzer: Process, queue: Queue, config: dict) -> None:
+def shutdown_processes(detector: Process, analyzer: Process, shutdown_event, config: dict) -> None:
     """Gracefully shutdown detector and analyzer processes."""
     logger.info("Shutting down...")
 
-    # Stop detector first (stops producing events)
+    # Signal detector to stop gracefully
+    shutdown_event.set()
+
+    # Wait for detector to finish current frame and exit
     if detector.is_alive():
         logger.info("Stopping detector...")
-        detector.terminate()
         timeout = config['runtime'].get('detector_shutdown_timeout', 5)
         detector.join(timeout=timeout)
 
@@ -365,9 +367,6 @@ def shutdown_processes(detector: Process, analyzer: Process, queue: Queue, confi
             detector.join()
         else:
             logger.info("Detector stopped")
-
-    # Signal analyzer to stop (detector was terminated, so it didn't send None)
-    queue.put(None)
 
     # Wait for analyzer to finish processing remaining events
     if analyzer.is_alive():
@@ -519,9 +518,10 @@ def main() -> None:
     # Get model class names before spawning processes
     model_names = get_model_class_names(config['detection']['model_file'])
 
-    # Create shared queue
+    # Create shared queue and shutdown event
     queue_size = config['runtime'].get('queue_size', DEFAULT_QUEUE_SIZE)
     queue = Queue(maxsize=queue_size)
+    shutdown_event = Event()
 
     # Start dispatcher first (consumer must be ready)
     logger.info("Starting dispatcher process...")
@@ -540,7 +540,7 @@ def main() -> None:
     logger.info("Starting detector process...")
     detector = Process(
         target=run_detector_process,
-        args=(queue, config),
+        args=(queue, config, shutdown_event),
         name="Detector"
     )
     detector.start()
@@ -555,7 +555,7 @@ def main() -> None:
     elapsed = time.time() - start_time
 
     # Graceful shutdown
-    shutdown_processes(detector, analyzer, queue, config)
+    shutdown_processes(detector, analyzer, shutdown_event, config)
 
     # Print final status
     print_final_status(detector, analyzer, config, reason, elapsed)

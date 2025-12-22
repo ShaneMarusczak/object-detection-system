@@ -10,7 +10,7 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 import logging
 import time
 from datetime import datetime
-from multiprocessing import Queue
+from multiprocessing import Queue, Event
 from typing import Dict, List, Optional
 
 import cv2
@@ -29,13 +29,14 @@ from .models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
 logger = logging.getLogger(__name__)
 
 
-def run_detection(data_queue: Queue, config: dict) -> None:
+def run_detection(data_queue: Queue, config: dict, shutdown_event: Event = None) -> None:
     """
     Main detection loop. Tracks objects and emits boundary crossing events.
 
     Args:
         data_queue: Queue for sending events to analyzer
         config: Configuration dictionary from config.yaml
+        shutdown_event: Event to signal graceful shutdown
     """
     try:
         # Initialize components
@@ -54,12 +55,12 @@ def run_detection(data_queue: Queue, config: dict) -> None:
         # Run main detection loop
         _detection_loop(
             cap, model, data_queue, config, lines, zones,
-            roi_config, speed_enabled, frame_config
+            roi_config, speed_enabled, frame_config, shutdown_event
         )
 
     except Exception as e:
         logger.error(f"Fatal error in detection: {e}", exc_info=True)
-        data_queue.put(None)
+        data_queue.put(None)  # Signal analyzer if init failed before loop
         raise
     finally:
         if 'cap' in locals():
@@ -123,7 +124,8 @@ def _detection_loop(
     zones: List[ZoneConfig],
     roi_config: ROIConfig,
     speed_enabled: bool,
-    frame_config: dict
+    frame_config: dict,
+    shutdown_event: Event = None
 ) -> None:
     """Main detection loop processing frames."""
 
@@ -150,6 +152,11 @@ def _detection_loop(
 
     try:
         while True:
+            # Check for shutdown signal
+            if shutdown_event and shutdown_event.is_set():
+                logger.info("Shutdown signal received")
+                break
+
             ret, frame = cap.read()
             if not ret:
                 logger.warning("Failed to read frame")
