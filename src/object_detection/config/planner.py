@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Set, Any, Optional, Tuple
 
-from ..utils.coco_classes import COCO_NAME_TO_ID, COCO_CLASSES
+from ..processor.coco_classes import COCO_NAME_TO_ID, COCO_CLASSES
 from ..utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
 
 logger = logging.getLogger(__name__)

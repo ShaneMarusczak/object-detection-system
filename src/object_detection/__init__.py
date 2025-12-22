@@ -10,22 +10,29 @@ Supports Terraform-like workflow:
   --dry-run   Simulate with sample events
 
 Package structure:
-  core/       - Detection and event dispatching
+  edge/       - Minimal detector for Jetson (detection only)
+  processor/  - Event processing for k3s (dispatcher, consumers)
+  core/       - Legacy combined mode (runs both on same machine)
   config/     - Configuration loading and validation
-  consumers/  - Event consumers (JSON, email, frames)
-  utils/      - Constants and COCO class mappings
+  utils/      - Constants
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __author__ = "Shane"
 
-# Core components
+# Core detection
 from .core import (
     run_detection,
+    TrackedObject,
+)
+
+# Processor (dispatcher, consumers)
+from .processor import (
     dispatch_events,
     derive_track_classes,
     EventDefinition,
-    TrackedObject,
+    COCO_CLASSES,
+    get_class_name,
 )
 
 # Configuration
@@ -40,10 +47,13 @@ from .config import (
 __all__ = [
     # Core
     "run_detection",
+    "TrackedObject",
+    # Processor
     "dispatch_events",
     "derive_track_classes",
     "EventDefinition",
-    "TrackedObject",
+    "COCO_CLASSES",
+    "get_class_name",
     # Config
     "ConfigValidationError",
     "validate_config_full",

@@ -32,7 +32,8 @@ from .config import (
     load_sample_events,
 )
 from .utils import DEFAULT_QUEUE_SIZE
-from .core import run_detection, dispatch_events
+from .core import run_detection
+from .processor import dispatch_events
 
 logger = logging.getLogger(__name__)
 

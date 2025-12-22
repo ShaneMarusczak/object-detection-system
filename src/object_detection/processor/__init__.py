@@ -7,15 +7,44 @@ Handles everything after detection:
 - Consumers (JSON log, email, digest, frame capture)
 - State persistence
 
-Runs on k3s cluster, receives events from Jetson via Redis.
+In local mode: receives events via multiprocessing.Queue
+In distributed mode: receives events via Redis Streams
 """
 
-from .enricher import EventEnricher
 from .coco_classes import COCO_CLASSES, COCO_NAME_TO_ID, get_class_name
+from .enricher import EventEnricher
+from .digest_state import DigestStateManager, DigestPeriodState
+from .dispatcher import dispatch_events, EventDefinition, derive_track_classes
+
+# Consumers
+from .json_writer import json_writer_consumer
+from .email_notifier import email_notifier_consumer
+from .email_digest import email_digest_consumer
+from .frame_capture import frame_capture_consumer
+
+# Services
+from .email_service import EmailService
+from .frame_service import FrameService
 
 __all__ = [
-    'EventEnricher',
+    # Dispatcher
+    'dispatch_events',
+    'EventDefinition',
+    'derive_track_classes',
+    # Enrichment
     'COCO_CLASSES',
     'COCO_NAME_TO_ID',
     'get_class_name',
+    'EventEnricher',
+    # State
+    'DigestStateManager',
+    'DigestPeriodState',
+    # Consumers
+    'json_writer_consumer',
+    'email_notifier_consumer',
+    'email_digest_consumer',
+    'frame_capture_consumer',
+    # Services
+    'EmailService',
+    'FrameService',
 ]
