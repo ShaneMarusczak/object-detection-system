@@ -1,148 +1,119 @@
 """
-Event Analysis - Consumer
-Receives raw detection events, enriches with semantic meaning, and writes to JSONL.
+Event Analyzer - Coordinator
+Enriches raw detection events and broadcasts to configured consumers.
 """
 
-import json
 import logging
-import os
 from datetime import datetime, timezone
-from multiprocessing import Queue
-from pathlib import Path
-from typing import Dict, Optional
+from multiprocessing import Process, Queue
+from typing import Dict
 
-from .constants import SUMMARY_EVENT_INTERVAL
-from .notifier import NotificationManager
+from .consumers import json_writer_consumer, email_notifier_consumer
 
 logger = logging.getLogger(__name__)
 
 
 def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str]) -> None:
     """
-    Process detection events from queue and write enriched data to JSONL.
+    Process detection events, enrich them, and broadcast to consumers.
 
     Args:
-        data_queue: Queue receiving detection events
+        data_queue: Queue receiving raw detection events
         config: Configuration dictionary from config.yaml
         model_names: Dictionary mapping COCO class IDs to names
     """
-    # Build lookup tables
+    # Build lookup tables for enrichment
     line_descriptions, line_configs = _build_line_lookups(config)
     zone_descriptions, zone_configs = _build_zone_lookups(config)
 
-    # Setup output
-    os.makedirs(config['output']['json_dir'], exist_ok=True)
-    json_filename = _generate_output_filename(config['output']['json_dir'])
-
-    # Console settings
-    console_config = config.get('console_output', {})
-    console_enabled = console_config.get('enabled', True)
-    console_level = console_config.get('level', 'detailed')
-
     speed_enabled = config.get('speed_calculation', {}).get('enabled', False)
 
-    # Initialize notification manager
-    notification_config = config.get('notifications', {})
-    notification_manager = NotificationManager(notification_config)
+    # Initialize consumers based on configuration
+    consumers = []
+    consumer_queues = []
 
-    logger.info(f"Analyzer initialized")
-    logger.info(f"Output: {json_filename}")
-    logger.info(f"Console: {console_level if console_enabled else 'disabled'}")
-    if speed_enabled:
-        logger.info("Speed calculation: Enabled")
-    if notification_manager.enabled:
-        logger.info("Notifications: Enabled")
+    # JSON Writer Consumer (default enabled)
+    json_config = config.get('consumers', {}).get('json_writer', {})
+    if json_config.get('enabled', True):
+        json_queue = Queue()
+        consumer_queues.append(json_queue)
 
-    # Process events
-    _process_event_stream(
-        data_queue, json_filename, model_names,
-        line_descriptions, zone_descriptions,
-        console_enabled, console_level, speed_enabled,
-        notification_manager, line_configs, zone_configs
-    )
+        json_consumer_config = {
+            'output_dir': config.get('output', {}).get('json_dir', 'data'),
+            'console_enabled': config.get('console_output', {}).get('enabled', True),
+            'console_level': config.get('console_output', {}).get('level', 'detailed'),
+            'prompt_save': json_config.get('prompt_save', True)
+        }
 
+        json_process = Process(
+            target=json_writer_consumer,
+            args=(json_queue, json_consumer_config),
+            name='JSONWriter'
+        )
+        json_process.start()
+        consumers.append(json_process)
+        logger.info("Started JSON Writer consumer")
 
-def _process_event_stream(
-    data_queue: Queue,
-    json_filename: str,
-    model_names: Dict[int, str],
-    line_descriptions: Dict[str, str],
-    zone_descriptions: Dict[str, str],
-    console_enabled: bool,
-    console_level: str,
-    speed_enabled: bool,
-    notification_manager: NotificationManager,
-    line_configs: Dict[str, Dict],
-    zone_configs: Dict[str, Dict]
-) -> None:
-    """Process event stream from queue."""
+    # Email Notifier Consumer (default disabled)
+    email_config = config.get('consumers', {}).get('email_notifier', {})
+    if email_config.get('enabled', False):
+        email_queue = Queue()
+        consumer_queues.append(email_queue)
 
-    event_count = 0
-    event_counts_by_type = {
-        'LINE_CROSS': 0,
-        'ZONE_ENTER': 0,
-        'ZONE_EXIT': 0
-    }
+        email_consumer_config = {
+            'notification_config': config.get('notifications', {}),
+            'line_configs': line_configs,
+            'zone_configs': zone_configs
+        }
+
+        email_process = Process(
+            target=email_notifier_consumer,
+            args=(email_queue, email_consumer_config),
+            name='EmailNotifier'
+        )
+        email_process.start()
+        consumers.append(email_process)
+        logger.info("Started Email Notifier consumer")
+
+    if not consumers:
+        logger.warning("No consumers enabled - events will be discarded!")
+
+    logger.info(f"Analyzer initialized with {len(consumers)} consumer(s)")
+
+    # Process and broadcast events
     start_time = datetime.now(timezone.utc)
 
     try:
-        with open(json_filename, 'w') as json_file:
-            while True:
-                event = data_queue.get()
+        while True:
+            event = data_queue.get()
 
-                if event is None:  # End signal
-                    break
+            if event is None:  # Shutdown signal
+                break
 
-                event_count += 1
-                event_type = event['event_type']
-                event_counts_by_type[event_type] = event_counts_by_type.get(event_type, 0) + 1
+            # Enrich event
+            enriched_event = _enrich_event(
+                event, model_names, line_descriptions,
+                zone_descriptions, start_time, speed_enabled
+            )
 
-                # Enrich event
-                enriched_event = _enrich_event(
-                    event, model_names, line_descriptions,
-                    zone_descriptions, start_time, speed_enabled
-                )
-
-                # Write to JSONL
-                json_file.write(json.dumps(enriched_event) + '\n')
-                json_file.flush()
-
-                # Check for notifications on zones/lines
-                event_type = enriched_event['event_type']
-                if event_type == 'LINE_CROSS':
-                    line_id = enriched_event.get('line_id')
-                    if line_id in line_configs:
-                        notification_manager.check_and_notify(
-                            enriched_event,
-                            line_id=line_id,
-                            notify_config=line_configs[line_id]
-                        )
-                elif event_type in ['ZONE_ENTER', 'ZONE_EXIT']:
-                    zone_id = enriched_event.get('zone_id')
-                    if zone_id in zone_configs:
-                        notification_manager.check_and_notify(
-                            enriched_event,
-                            zone_id=zone_id,
-                            notify_config=zone_configs[zone_id]
-                        )
-
-                # Console output
-                if console_enabled:
-                    _print_event(enriched_event, console_level, event_count)
-
-                # Periodic summary
-                if (console_enabled and console_level == 'summary' and
-                        event_count % SUMMARY_EVENT_INTERVAL == 0):
-                    _print_summary(event_count, event_counts_by_type, start_time)
+            # Broadcast to all consumers
+            for queue in consumer_queues:
+                queue.put(enriched_event)
 
     except KeyboardInterrupt:
-        logger.info("Analysis stopped by user")
+        logger.info("Analyzer stopped by user")
     except Exception as e:
-        logger.error(f"Error in analysis: {e}", exc_info=True)
+        logger.error(f"Error in analyzer: {e}", exc_info=True)
     finally:
-        _log_final_summary(event_count, event_counts_by_type, json_filename)
-        # Always prompt user, even if no events (file still exists)
-        _handle_data_saving(json_filename)
+        # Shutdown all consumers
+        logger.info("Shutting down consumers...")
+        for queue in consumer_queues:
+            queue.put(None)  # Send shutdown signal
+
+        for consumer in consumers:
+            consumer.join()
+
+        logger.info("All consumers shutdown complete")
 
 
 def _enrich_event(
@@ -165,7 +136,7 @@ def _enrich_event(
         speed_enabled: Whether to calculate speed
 
     Returns:
-        Enriched event dictionary ready for JSONL output
+        Enriched event dictionary
     """
     # Calculate absolute timestamp
     relative_time = event['timestamp_relative']
@@ -218,71 +189,6 @@ def _enrich_event(
     return enriched
 
 
-def _print_event(event: dict, level: str, event_count: int) -> None:
-    """Print event to console based on verbosity level."""
-    if level == 'silent' or level == 'summary':
-        return
-
-    # Detailed mode
-    event_type = event['event_type']
-    track_id = event['track_id']
-    obj_name = event['object_class_name']
-
-    if event_type == 'LINE_CROSS':
-        line_id = event['line_id']
-        line_desc = event['line_description']
-        direction = event['direction']
-
-        if 'speed_px_per_sec' in event:
-            speed = event['speed_px_per_sec']
-            logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                       f"crossed {line_id} ({line_desc}) {direction} @ {speed:.1f} px/s")
-        else:
-            logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                       f"crossed {line_id} ({line_desc}) {direction}")
-
-    elif event_type == 'ZONE_ENTER':
-        zone_id = event['zone_id']
-        zone_desc = event['zone_description']
-        logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                   f"entered {zone_id} ({zone_desc})")
-
-    elif event_type == 'ZONE_EXIT':
-        zone_id = event['zone_id']
-        zone_desc = event['zone_description']
-        dwell = event['dwell_time']
-        logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                   f"exited {zone_id} ({zone_desc}) - {dwell:.1f}s dwell")
-
-
-def _print_summary(
-    event_count: int,
-    event_counts_by_type: Dict[str, int],
-    start_time: datetime
-) -> None:
-    """Print periodic summary for 'summary' console mode."""
-    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-
-    logger.info(f"\n[{elapsed/60:.1f}min] Events logged: {event_count}")
-    for event_type, count in event_counts_by_type.items():
-        if count > 0:
-            logger.info(f"  {event_type}: {count}")
-
-
-def _log_final_summary(
-    event_count: int,
-    event_counts_by_type: Dict[str, int],
-    json_filename: str
-) -> None:
-    """Log final summary statistics."""
-    logger.info("Analysis complete")
-    logger.info(f"Total events: {event_count}")
-    for event_type, count in event_counts_by_type.items():
-        if count > 0:
-            logger.info(f"  {event_type}: {count}")
-    logger.info(f"Output: {json_filename}")
-
-
 def _build_line_lookups(config: dict) -> tuple[Dict[str, str], Dict[str, Dict]]:
     """Build line_id -> description and config lookup tables."""
     descriptions, configs = {}, {}
@@ -320,64 +226,3 @@ def _build_zone_lookups(config: dict) -> tuple[Dict[str, str], Dict[str, Dict]]:
         }
 
     return descriptions, configs
-
-
-def _generate_output_filename(output_dir: str) -> str:
-    """Generate timestamped output filename."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{output_dir}/events_{timestamp}.jsonl"
-
-
-def _handle_data_saving(json_filename: str) -> None:
-    """
-    Prompt user to save or delete data file.
-
-    This function will wait indefinitely for user input.
-    Default action is to save the data.
-    """
-    import sys
-
-    print("\n" + "="*70)
-    print("Data Collection Complete")
-    print("="*70)
-    print(f"\nFile location: {json_filename}")
-
-    # Flush output to ensure user sees the prompt
-    sys.stdout.flush()
-
-    # Keep trying until we get a valid response
-    while True:
-        try:
-            response = input("\nSave this data? (y/n) [default: y]: ").strip().lower()
-
-            # Default to 'yes' if user just hits enter
-            if not response:
-                response = 'y'
-
-            if response in ['y', 'yes']:
-                print(f"✓ Data saved: {json_filename}")
-                logger.info(f"Data saved: {json_filename}")
-                break
-            elif response in ['n', 'no']:
-                try:
-                    os.remove(json_filename)
-                    print(f"✓ Data deleted: {json_filename}")
-                    logger.info(f"Data deleted: {json_filename}")
-                    break
-                except OSError as e:
-                    print(f"✗ Failed to delete file: {e}")
-                    logger.error(f"Failed to delete file: {e}")
-                    print(f"✓ Data will remain at: {json_filename}")
-                    break
-            else:
-                print("Please enter 'y' or 'n' (or just press Enter to save)")
-                continue
-
-        except (KeyboardInterrupt, EOFError):
-            # User interrupted - default to keeping the data
-            print(f"\n✓ Data saved: {json_filename}")
-            logger.info(f"Data saved (interrupted): {json_filename}")
-            break
-
-    print("="*70)
-    sys.stdout.flush()

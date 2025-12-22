@@ -141,6 +141,22 @@ console_output:
 
 
 # ==============================================================================
+# EVENT CONSUMERS
+# ==============================================================================
+# Configure which consumers process events
+# Consumers run as independent processes and receive all enriched events
+consumers:
+  # JSON Writer - writes events to JSONL file
+  json_writer:
+    enabled: true                # Default: true (disable to skip JSON logging)
+    prompt_save: true            # Prompt to save/delete file when done
+
+  # Email Notifier - sends emails for tagged zones/lines
+  email_notifier:
+    enabled: false               # Set to true to enable (requires notifications config below)
+
+
+# ==============================================================================
 # NOTIFICATIONS
 # ==============================================================================
 # Send email alerts when objects cross lines or enter/exit zones
@@ -231,6 +247,10 @@ runtime:
 # console_output:
 #   enabled: true
 #   level: "silent"  # Minimal output for long-term monitoring
+#
+# consumers:
+#   email_notifier:
+#     enabled: true
 #
 # zones:
 #   - x1_pct: 10
