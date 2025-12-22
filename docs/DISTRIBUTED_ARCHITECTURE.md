@@ -144,9 +144,10 @@ All messages use a standard envelope:
 }
 ```
 
-### Optional Frame Data
+### Frame Data (Inline)
 
-For digests with photos, frame data can be included:
+For digests with photos, frame data is included directly in the message.
+With gigabit wired ethernet, this is efficient and avoids external storage:
 
 ```json
 {
@@ -154,23 +155,13 @@ For digests with photos, frame data can be included:
   "frame_data": {
     "encoding": "jpeg",
     "quality": 85,
-    "base64": "..."
+    "base64": "/9j/4AAQSkZJRg..."
   }
 }
 ```
 
-Or frames can be uploaded separately with a reference:
-
-```json
-{
-  "...": "...",
-  "frame_ref": {
-    "type": "s3",
-    "bucket": "detection-frames",
-    "key": "jetson-01/2025-01-15/frame-12345.jpg"
-  }
-}
-```
+Frames are embedded directly in digest emails as attachments - no external
+links or storage services needed.
 
 ## Implementation
 

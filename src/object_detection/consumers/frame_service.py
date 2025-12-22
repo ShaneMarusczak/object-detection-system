@@ -1,11 +1,12 @@
 """
 Frame Service
-Handles frame storage, S3 uploads, and metadata management.
+Handles local frame storage and metadata management.
 """
 
 import json
 import logging
 import os
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class FrameService:
-    """Manages frame storage and retrieval with S3 support."""
+    """Manages local frame storage and retrieval."""
 
     def __init__(self, config: Dict):
         """Initialize frame service.
@@ -22,30 +23,8 @@ class FrameService:
         Args:
             config: Configuration with storage settings
         """
-        self.storage_type = config.get('storage', {}).get('type', 'local')
         self.local_dir = config.get('storage', {}).get('local_dir', 'frames')
         self.metadata_file = os.path.join(self.local_dir, 'metadata.json')
-
-        # S3 configuration
-        if self.storage_type == 's3':
-            s3_config = config.get('storage', {}).get('s3', {})
-            self.s3_bucket = s3_config.get('bucket')
-            self.s3_region = s3_config.get('region', 'us-east-1')
-            self.presigned_expires = s3_config.get('presigned_url_expires', 604800)  # 7 days
-
-            # Initialize S3 client (using IAM role or credentials)
-            try:
-                import boto3
-                self.s3_client = boto3.client('s3', region_name=self.s3_region)
-                logger.info(f"S3 client initialized for bucket: {self.s3_bucket}")
-            except ImportError:
-                logger.error("boto3 not installed. Install with: pip install boto3")
-                self.s3_client = None
-            except Exception as e:
-                logger.error(f"Failed to initialize S3 client: {e}")
-                self.s3_client = None
-        else:
-            self.s3_client = None
 
         # Ensure local directory exists
         os.makedirs(self.local_dir, exist_ok=True)
@@ -59,7 +38,7 @@ class FrameService:
             try:
                 with open(self.metadata_file, 'r') as f:
                     return json.load(f)
-            except:
+            except Exception:
                 logger.warning("Failed to load metadata, starting fresh")
         return {}
 
@@ -80,7 +59,7 @@ class FrameService:
             temp_frame_path: Path to temporary frame file
 
         Returns:
-            S3 key or local path if successful, None otherwise
+            Local path if successful, None otherwise
         """
         if not os.path.exists(temp_frame_path):
             logger.warning(f"Temp frame not found: {temp_frame_path}")
@@ -96,55 +75,42 @@ class FrameService:
         filename = f"{safe_timestamp}_{event_type}_{obj_class}_{event['track_id']}.jpg"
 
         try:
-            if self.storage_type == 's3' and self.s3_client:
-                # Upload to S3
-                s3_key = f"frames/{filename}"
-                self.s3_client.upload_file(temp_frame_path, self.s3_bucket, s3_key)
+            local_path = os.path.join(self.local_dir, filename)
 
-                # Store metadata
-                self.metadata[event_id] = {
-                    'event': event,
-                    's3_key': s3_key,
-                    'bucket': self.s3_bucket,
-                    'timestamp': event['timestamp']
-                }
-                self._save_metadata()
+            # Copy temp frame to permanent location
+            shutil.copy2(temp_frame_path, local_path)
 
-                logger.info(f"Uploaded frame to S3: {s3_key}")
-                return s3_key
+            # Store metadata
+            self.metadata[event_id] = {
+                'event': event,
+                'local_path': local_path,
+                'timestamp': event['timestamp']
+            }
+            self._save_metadata()
 
-            else:
-                # Local storage
-                local_path = os.path.join(self.local_dir, filename)
-
-                # Copy temp frame to permanent location
-                import shutil
-                shutil.copy2(temp_frame_path, local_path)
-
-                # Store metadata
-                self.metadata[event_id] = {
-                    'event': event,
-                    'local_path': local_path,
-                    'timestamp': event['timestamp']
-                }
-                self._save_metadata()
-
-                logger.info(f"Saved frame locally: {local_path}")
-                return local_path
+            logger.info(f"Saved frame: {local_path}")
+            return local_path
 
         except Exception as e:
             logger.error(f"Failed to save frame: {e}")
             return None
 
-    def get_frames_for_events(self, events: List[Dict]) -> Dict[str, str]:
+    def get_frame_path(self, event_id: str) -> Optional[str]:
+        """Get local path for a frame by event ID."""
+        frame_data = self.metadata.get(event_id)
+        if frame_data:
+            return frame_data.get('local_path')
+        return None
+
+    def get_frame_paths_for_events(self, events: List[Dict]) -> Dict[str, str]:
         """
-        Get frame URLs/paths for a list of events.
+        Get frame paths for a list of events.
 
         Args:
             events: List of enriched event dictionaries
 
         Returns:
-            Dictionary mapping event_id to URL/path
+            Dictionary mapping event_id to local file path
         """
         result = {}
 
@@ -155,36 +121,45 @@ class FrameService:
                 continue
 
             frame_data = self.metadata[event_id]
+            local_path = frame_data.get('local_path')
 
-            if self.storage_type == 's3' and self.s3_client:
-                # Generate presigned URL
-                s3_key = frame_data['s3_key']
-                try:
-                    url = self.s3_client.generate_presigned_url(
-                        'get_object',
-                        Params={
-                            'Bucket': self.s3_bucket,
-                            'Key': s3_key
-                        },
-                        ExpiresIn=self.presigned_expires
-                    )
-                    result[event_id] = url
-                except Exception as e:
-                    logger.error(f"Failed to generate presigned URL: {e}")
-            else:
-                # Local file path
-                result[event_id] = frame_data['local_path']
+            # Verify file exists
+            if local_path and os.path.exists(local_path):
+                result[event_id] = local_path
 
         return result
 
-    def cleanup_old_metadata(self, days: int = 7):
+    def read_frame_bytes(self, event_id: str) -> Optional[bytes]:
         """
-        Remove metadata for frames older than specified days.
+        Read frame file as bytes (for email embedding).
+
+        Args:
+            event_id: Event identifier
+
+        Returns:
+            Frame bytes if found, None otherwise
+        """
+        local_path = self.get_frame_path(event_id)
+        if local_path and os.path.exists(local_path):
+            try:
+                with open(local_path, 'rb') as f:
+                    return f.read()
+            except Exception as e:
+                logger.error(f"Failed to read frame {local_path}: {e}")
+        return None
+
+    def cleanup_old_frames(self, days: int = 7) -> int:
+        """
+        Remove frames and metadata older than specified days.
 
         Args:
             days: Number of days to retain
+
+        Returns:
+            Number of frames removed
         """
         cutoff = datetime.now() - timedelta(days=days)
+        removed = 0
 
         to_remove = []
         for event_id, data in self.metadata.items():
@@ -193,8 +168,14 @@ class FrameService:
                 timestamp = timestamp.replace(tzinfo=None)
 
                 if timestamp < cutoff:
+                    # Delete the file
+                    local_path = data.get('local_path')
+                    if local_path and os.path.exists(local_path):
+                        os.unlink(local_path)
+                        removed += 1
+
                     to_remove.append(event_id)
-            except:
+            except Exception:
                 continue
 
         for event_id in to_remove:
@@ -202,7 +183,9 @@ class FrameService:
 
         if to_remove:
             self._save_metadata()
-            logger.info(f"Cleaned up {len(to_remove)} old frame metadata entries")
+            logger.info(f"Cleaned up {removed} old frames")
+
+        return removed
 
     def get_frame_info(self, event_id: str) -> Optional[Dict]:
         """Get frame metadata for an event ID."""

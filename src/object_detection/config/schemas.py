@@ -175,7 +175,6 @@ class ConsoleOutputConfig(BaseModel):
 
 class FrameStorageConfig(BaseModel):
     """Frame storage configuration."""
-    type: Literal["local", "s3"] = "local"
     local_dir: str = "frames"
 
 

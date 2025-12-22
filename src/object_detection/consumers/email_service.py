@@ -1,19 +1,24 @@
 """
 Shared Email Service
 Handles email sending via SMTP for all email consumers.
+Supports embedding images directly in emails.
 """
 
 import logging
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Dict, List, Any
+from email.mime.image import MIMEImage
+from email.mime.base import MIMEBase
+from email import encoders
+from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class EmailService:
-    """Handles sending emails via SMTP."""
+    """Handles sending emails via SMTP with image attachment support."""
 
     def __init__(self, config: Dict[str, Any]):
         """Initialize email service with SMTP configuration.
@@ -30,12 +35,16 @@ class EmailService:
         self.to_addresses = config.get('to_addresses', [])
         self.use_tls = config.get('use_tls', True)
 
-    def send(self, subject: str, body: str) -> bool:
-        """Send an email.
+    def send(self, subject: str, body: str, attachments: List[Dict] = None) -> bool:
+        """Send an email with optional attachments.
 
         Args:
             subject: Email subject
-            body: Email body text (plain text or formatted)
+            body: Email body text (plain text or HTML)
+            attachments: Optional list of attachments, each dict with:
+                - 'data': bytes of the file
+                - 'filename': name for the attachment
+                - 'content_type': MIME type (e.g., 'image/jpeg')
 
         Returns:
             True if email sent successfully
@@ -57,6 +66,11 @@ class EmailService:
 
             msg.attach(MIMEText(body, 'plain'))
 
+            # Add attachments
+            if attachments:
+                for attachment in attachments:
+                    self._add_attachment(msg, attachment)
+
             # Connect and send
             with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                 if self.use_tls:
@@ -65,19 +79,43 @@ class EmailService:
                     server.login(self.username, self.password)
                 server.send_message(msg)
 
-            logger.info(f"Email sent: {subject}")
+            attachment_count = len(attachments) if attachments else 0
+            logger.info(f"Email sent: {subject} ({attachment_count} attachments)")
             return True
 
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
             return False
 
-    def send_event_notification(self, event: Dict[str, Any], custom_message: str = None) -> bool:
-        """Send notification for a single event.
+    def _add_attachment(self, msg: MIMEMultipart, attachment: Dict) -> None:
+        """Add an attachment to the email message."""
+        data = attachment.get('data')
+        filename = attachment.get('filename', 'attachment')
+        content_type = attachment.get('content_type', 'application/octet-stream')
+
+        if not data:
+            return
+
+        maintype, subtype = content_type.split('/', 1) if '/' in content_type else ('application', 'octet-stream')
+
+        if maintype == 'image':
+            part = MIMEImage(data, _subtype=subtype, name=filename)
+        else:
+            part = MIMEBase(maintype, subtype)
+            part.set_payload(data)
+            encoders.encode_base64(part)
+
+        part.add_header('Content-Disposition', 'attachment', filename=filename)
+        msg.attach(part)
+
+    def send_event_notification(self, event: Dict[str, Any], custom_message: str = None,
+                                 frame_data: bytes = None) -> bool:
+        """Send notification for a single event with optional frame attachment.
 
         Args:
             event: Enriched event dictionary
             custom_message: Optional custom message (otherwise auto-generate)
+            frame_data: Optional JPEG bytes to attach
 
         Returns:
             True if email sent successfully
@@ -120,19 +158,33 @@ class EmailService:
             if 'dwell_time' in event:
                 body += f"Dwell Time: {event['dwell_time']:.1f}s\n"
 
+        if frame_data:
+            body += "\nSee attached photo.\n"
+
         # Subject
         description = event.get('zone_description') or event.get('line_description', 'Detection')
         subject = f"Object Detection Alert: {description}"
 
-        return self.send(subject, body)
+        # Build attachments
+        attachments = []
+        if frame_data:
+            timestamp = event.get('timestamp', 'frame').replace(':', '-').replace('.', '-')
+            attachments.append({
+                'data': frame_data,
+                'filename': f"{timestamp}_{obj_name}.jpg",
+                'content_type': 'image/jpeg'
+            })
 
-    def send_digest(self, period: str, stats: Dict[str, Any], frame_urls: Dict[str, str] = None) -> bool:
-        """Send a digest email with aggregated statistics and photo links.
+        return self.send(subject, body, attachments)
+
+    def send_digest(self, period: str, stats: Dict[str, Any],
+                    frame_data_map: Dict[str, bytes] = None) -> bool:
+        """Send a digest email with aggregated statistics and embedded photos.
 
         Args:
             period: Time period description (e.g., "Last Hour", "Last 24 Hours")
             stats: Dictionary with statistics to include
-            frame_urls: Optional dictionary mapping event_id to frame URL/path
+            frame_data_map: Optional dict mapping event_id to JPEG bytes
 
         Returns:
             True if email sent successfully
@@ -187,39 +239,37 @@ class EmailService:
                 body += f"  Track {track_id} ({obj_class}): {count} events\n"
             body += "\n"
 
-        # Photo links (if available)
-        if frame_urls:
-            body += "Captured Frames:\n"
+        # Build attachments from frame data
+        attachments = []
+        if frame_data_map:
+            body += f"\nAttached Photos: {len(frame_data_map)}\n"
             body += "=" * 50 + "\n"
+
             events = stats.get('events', [])
 
-            # Group frames by zone/line for better organization
-            frames_by_location = {}
+            # Create attachment list with context
             for event in events:
                 event_id = f"{event['timestamp']}_{event['track_id']}"
-                if event_id in frame_urls:
-                    location = event.get('zone_description') or event.get('line_description', 'Unknown')
-                    if location not in frames_by_location:
-                        frames_by_location[location] = []
+                if event_id in frame_data_map:
+                    frame_bytes = frame_data_map[event_id]
+                    if frame_bytes:
+                        location = event.get('zone_description') or event.get('line_description', 'detection')
+                        obj_class = event.get('object_class_name', 'unknown')
+                        timestamp = event['timestamp'].replace(':', '-').replace('.', '-')
 
-                    frames_by_location[location].append({
-                        'timestamp': event['timestamp'],
-                        'object': event.get('object_class_name', 'unknown'),
-                        'event_type': event.get('event_type', 'N/A'),
-                        'url': frame_urls[event_id]
-                    })
+                        # Add to body
+                        body += f"\n{event['timestamp']} - {obj_class} at {location}\n"
 
-            # Format frame links by location
-            for location, frames in sorted(frames_by_location.items()):
-                body += f"\n{location}:\n"
-                for frame in frames:
-                    body += f"  {frame['timestamp']} - {frame['object']} ({frame['event_type']})\n"
-                    body += f"  Photo: {frame['url']}\n\n"
+                        attachments.append({
+                            'data': frame_bytes,
+                            'filename': f"{timestamp}_{obj_class}_{location}.jpg",
+                            'content_type': 'image/jpeg'
+                        })
 
         # Time range
         start_time = stats.get('start_time')
         end_time = stats.get('end_time')
         if start_time and end_time:
-            body += f"Period: {start_time} to {end_time}\n"
+            body += f"\nPeriod: {start_time} to {end_time}\n"
 
-        return self.send(subject, body)
+        return self.send(subject, body, attachments)
