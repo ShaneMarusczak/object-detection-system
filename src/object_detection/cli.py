@@ -348,7 +348,7 @@ def monitor_processes(
         return 'interrupted'
 
 
-def shutdown_processes(detector: Process, analyzer: Process, config: dict) -> None:
+def shutdown_processes(detector: Process, analyzer: Process, queue: Queue, config: dict) -> None:
     """Gracefully shutdown detector and analyzer processes."""
     logger.info("Shutting down...")
 
@@ -366,14 +366,20 @@ def shutdown_processes(detector: Process, analyzer: Process, config: dict) -> No
         else:
             logger.info("Detector stopped")
 
-    # Wait for analyzer to finish processing remaining events and prompt user
+    # Signal analyzer to stop (detector was terminated, so it didn't send None)
+    queue.put(None)
+
+    # Wait for analyzer to finish processing remaining events
     if analyzer.is_alive():
         logger.info("Waiting for analyzer to complete...")
+        analyzer.join(timeout=10)
 
-        # Wait indefinitely for analyzer to finish and user to respond to prompt
-        # No timeout - let the user take as long as they need
-        analyzer.join()
-        logger.info("Analyzer completed")
+        if analyzer.is_alive():
+            logger.warning("Analyzer not responding - forcing shutdown...")
+            analyzer.terminate()
+            analyzer.join()
+        else:
+            logger.info("Analyzer completed")
 
 
 def print_final_status(
@@ -549,7 +555,7 @@ def main() -> None:
     elapsed = time.time() - start_time
 
     # Graceful shutdown
-    shutdown_processes(detector, analyzer, config)
+    shutdown_processes(detector, analyzer, queue, config)
 
     # Print final status
     print_final_status(detector, analyzer, config, reason, elapsed)
