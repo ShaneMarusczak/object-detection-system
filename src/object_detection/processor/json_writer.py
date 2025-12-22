@@ -10,7 +10,7 @@ from datetime import datetime
 from multiprocessing import Queue
 from typing import Dict
 
-from ..constants import SUMMARY_EVENT_INTERVAL
+from ..utils import SUMMARY_EVENT_INTERVAL
 
 logger = logging.getLogger(__name__)
 
