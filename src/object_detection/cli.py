@@ -14,10 +14,10 @@ from typing import Optional
 
 from ultralytics import YOLO
 
-from .analyzer import analyze_events
 from .config import validate_config, load_config_with_env, print_validation_summary, ConfigValidationError
 from .constants import DEFAULT_QUEUE_SIZE
 from .detector import run_detection
+from .dispatcher import dispatch_events
 
 logger = logging.getLogger(__name__)
 
@@ -144,12 +144,12 @@ def run_detector_process(queue: Queue, config: dict) -> None:
         queue.put(None)  # Signal analyzer to stop
 
 
-def run_analyzer_process(queue: Queue, config: dict, model_names: dict) -> None:
-    """Wrapper for analysis process with error handling."""
+def run_dispatcher_process(queue: Queue, config: dict, model_names: dict) -> None:
+    """Wrapper for dispatcher process with error handling."""
     try:
-        analyze_events(queue, config, model_names)
+        dispatch_events(queue, config, model_names)
     except Exception as e:
-        logger.error(f"Fatal error in analyzer: {e}", exc_info=True)
+        logger.error(f"Fatal error in dispatcher: {e}", exc_info=True)
 
 
 def setup_logging(quiet: bool = False) -> None:
@@ -386,16 +386,16 @@ def main() -> None:
     queue_size = config['runtime'].get('queue_size', DEFAULT_QUEUE_SIZE)
     queue = Queue(maxsize=queue_size)
 
-    # Start analyzer first (consumer must be ready)
-    logger.info("Starting analyzer process...")
+    # Start dispatcher first (consumer must be ready)
+    logger.info("Starting dispatcher process...")
     analyzer = Process(
-        target=run_analyzer_process,
+        target=run_dispatcher_process,
         args=(queue, config, model_names),
-        name="Analyzer"
+        name="Dispatcher"
     )
     analyzer.start()
 
-    # Brief delay to ensure analyzer is ready
+    # Brief delay to ensure dispatcher is ready
     startup_delay = config['runtime'].get('analyzer_startup_delay', 1)
     time.sleep(startup_delay)
 

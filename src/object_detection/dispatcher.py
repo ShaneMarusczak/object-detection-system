@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Any, Set
 
+from .coco_classes import COCO_NAME_TO_ID
 from .consumers import json_writer_consumer, email_notifier_consumer, email_digest_consumer, frame_capture_consumer
 
 logger = logging.getLogger(__name__)
@@ -17,12 +18,12 @@ logger = logging.getLogger(__name__)
 class EventDefinition:
     """Declarative event definition - specifies what to match and what actions to take."""
 
-    def __init__(self, name: str, match: Dict[str, Any], actions: Dict[str, Any]):
+    def __init__(self, name: str, match: Dict[str, Any], actions: Dict[str, Any], digest_configs: Dict[str, Dict] = None):
         self.name = name
         self.match = match
 
         # Apply implied action rules (AWS-style primitive composition)
-        self.actions = self._apply_implied_actions(actions)
+        self.actions = self._apply_implied_actions(actions, digest_configs or {})
 
         # Parse match criteria
         self.event_type = match.get('event_type')
@@ -38,20 +39,35 @@ class EventDefinition:
         else:
             self.object_classes = None  # Match any class
 
-    def _apply_implied_actions(self, actions: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_implied_actions(self, actions: Dict[str, Any], digest_configs: Dict[str, Dict]) -> Dict[str, Any]:
         """
         Apply implied action dependencies (AWS-style primitive composition).
 
         Rules:
         - email_digest requires json_log (digest reads from JSON)
+        - email_digest with photos: true requires frame_capture (digest shows photos)
         """
         actions = actions.copy()
 
-        # If email_digest is specified, json_log is required
-        if actions.get('email_digest'):
+        # If email_digest is specified, check for dependencies
+        digest_id = actions.get('email_digest')
+        if digest_id:
+            # email_digest always requires json_log
             if not actions.get('json_log'):
                 actions['json_log'] = True
                 logger.debug(f"Auto-enabled json_log (required by email_digest)")
+
+            # Check if this digest wants photos
+            digest = digest_configs.get(digest_id, {})
+            if digest.get('photos'):
+                if not actions.get('frame_capture'):
+                    # Auto-enable frame capture with digest's frame_config
+                    frame_config = digest.get('frame_config', {})
+                    actions['frame_capture'] = {
+                        'enabled': True,
+                        **frame_config
+                    }
+                    logger.debug(f"Auto-enabled frame_capture (required by photo digest '{digest_id}')")
 
         return actions
 
@@ -80,7 +96,7 @@ class EventDefinition:
         return self.object_classes if self.object_classes else set()
 
 
-def derive_track_classes(event_defs: List[EventDefinition], class_name_to_id: Dict[str, int]) -> List[int]:
+def derive_track_classes(event_defs: List[EventDefinition]) -> List[int]:
     """
     Derive COCO class IDs from event definitions.
     Only track classes that appear in at least one event definition.
@@ -92,10 +108,12 @@ def derive_track_classes(event_defs: List[EventDefinition], class_name_to_id: Di
     # Convert class names to COCO IDs
     class_ids = []
     for name in class_names:
-        if name in class_name_to_id:
-            class_ids.append(class_name_to_id[name])
+        name_lower = name.lower()
+        if name_lower in COCO_NAME_TO_ID:
+            class_ids.append(COCO_NAME_TO_ID[name_lower])
         else:
-            logger.warning(f"Unknown object class '{name}' in event definitions")
+            logger.warning(f"Unknown object class '{name}' in event definitions (not in COCO dataset)")
+            logger.warning("Available classes: person, bicycle, car, motorcycle, bus, truck, cat, dog, etc.")
 
     if not class_ids:
         logger.warning("No valid object classes found in event definitions - will track nothing!")
@@ -274,12 +292,20 @@ def _parse_event_definitions(config: dict) -> List[EventDefinition]:
     """Parse event definitions from config."""
     event_defs = []
 
+    # Parse digest configs first (for implied action rules)
+    digest_configs = {}
+    for digest in config.get('digests', []):
+        digest_id = digest.get('id')
+        if digest_id:
+            digest_configs[digest_id] = digest
+
+    # Parse events with digest context
     for event_config in config.get('events', []):
         name = event_config.get('name', 'unnamed')
         match = event_config.get('match', {})
         actions = event_config.get('actions', {})
 
-        event_defs.append(EventDefinition(name, match, actions))
+        event_defs.append(EventDefinition(name, match, actions, digest_configs))
 
     return event_defs
 

@@ -9,13 +9,15 @@ __version__ = "2.0.0"
 __author__ = "Shane"
 
 from .detector import run_detection
-from .analyzer import analyze_events
+from .dispatcher import dispatch_events, derive_track_classes, EventDefinition
 from .config import validate_config, ConfigValidationError
 from .models import TrackedObject
 
 __all__ = [
     "run_detection",
-    "analyze_events",
+    "dispatch_events",
+    "derive_track_classes",
+    "EventDefinition",
     "validate_config",
     "ConfigValidationError",
     "TrackedObject",
