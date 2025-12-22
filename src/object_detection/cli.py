@@ -1,9 +1,15 @@
 """
 Object Detection System CLI
 Main entry point for running the detection system.
+
+Supports Terraform-like workflow:
+  --validate  Check configuration validity
+  --plan      Show event routing plan
+  --dry-run   Simulate with sample events
 """
 
 import argparse
+import json
 import logging
 import sys
 import time
@@ -14,10 +20,19 @@ from typing import Optional
 
 from ultralytics import YOLO
 
-from .config import validate_config, load_config_with_env, print_validation_summary, ConfigValidationError
+from .config import load_config_with_env, print_validation_summary
 from .constants import DEFAULT_QUEUE_SIZE
 from .detector import run_detection
 from .dispatcher import dispatch_events
+from .planner import (
+    validate_config_full,
+    build_plan,
+    print_validation_result,
+    print_plan,
+    simulate_dry_run,
+    generate_sample_events,
+    load_sample_events,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +86,16 @@ def find_config_file(config_path: str) -> Path:
     sys.exit(1)
 
 
-def load_config(config_path: str = 'config.yaml') -> dict:
+def load_config(config_path: str = 'config.yaml', skip_validation: bool = False) -> dict:
     """
-    Load and validate configuration file.
+    Load and optionally validate configuration file.
 
     Args:
         config_path: Path to config.yaml
+        skip_validation: If True, skip validation (for --validate/--plan modes)
 
     Returns:
-        Validated configuration dictionary
+        Configuration dictionary
 
     Raises:
         SystemExit: If config cannot be loaded or is invalid
@@ -98,14 +114,13 @@ def load_config(config_path: str = 'config.yaml') -> dict:
     # Apply environment variable overrides
     config = load_config_with_env(config)
 
-    # Validate configuration
-    try:
-        validate_config(config)
+    if not skip_validation:
+        # Use new comprehensive validation
+        result = validate_config_full(config)
+        if not result.valid:
+            print_validation_result(result)
+            sys.exit(1)
         logger.info("Configuration validated")
-    except ConfigValidationError as e:
-        logger.error(f"\n{e}")
-        logger.error("\nPlease fix config.yaml and try again")
-        sys.exit(1)
 
     return config
 
@@ -174,9 +189,15 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m object_detection 1           # Run for 1 hour
-  python -m object_detection 0.5         # Run for 30 minutes
-  python -m object_detection 1 --quiet   # Run for 1 hour with minimal logs
+  python -m object_detection 1             # Run for 1 hour
+  python -m object_detection 0.5           # Run for 30 minutes
+  python -m object_detection 1 --quiet     # Run for 1 hour with minimal logs
+
+Terraform-like Commands:
+  python -m object_detection --validate    # Check config validity
+  python -m object_detection --plan        # Show event routing plan
+  python -m object_detection --dry-run     # Simulate with auto-generated events
+  python -m object_detection --dry-run events.json  # Simulate with custom events
 
 Environment Variables:
   CAMERA_URL - Override camera URL from config
@@ -200,6 +221,27 @@ Environment Variables:
         '-c', '--config',
         default='config.yaml',
         help='Path to config file (default: config.yaml)'
+    )
+
+    # Terraform-like commands
+    parser.add_argument(
+        '--validate',
+        action='store_true',
+        help='Validate configuration and show derived settings'
+    )
+
+    parser.add_argument(
+        '--plan',
+        action='store_true',
+        help='Show event routing plan without running'
+    )
+
+    parser.add_argument(
+        '--dry-run',
+        nargs='?',
+        const='auto',
+        metavar='EVENTS_FILE',
+        help='Simulate event processing (optionally with JSON events file)'
     )
 
     return parser.parse_args()
@@ -356,19 +398,88 @@ def print_final_status(
     print(f"{'='*70}\n")
 
 
+def run_validate(config_path: str) -> None:
+    """Run validation mode."""
+    config = load_config(config_path, skip_validation=True)
+    result = validate_config_full(config)
+    print_validation_result(result)
+    sys.exit(0 if result.valid else 1)
+
+
+def run_plan(config_path: str) -> None:
+    """Run plan mode."""
+    config = load_config(config_path, skip_validation=True)
+
+    # First validate
+    result = validate_config_full(config)
+    if not result.valid:
+        print_validation_result(result)
+        sys.exit(1)
+
+    # Then show plan
+    plan = build_plan(config)
+    print_plan(plan)
+    sys.exit(0)
+
+
+def run_dry_run(config_path: str, events_file: Optional[str]) -> None:
+    """Run dry-run simulation mode."""
+    config = load_config(config_path, skip_validation=True)
+
+    # First validate
+    result = validate_config_full(config)
+    if not result.valid:
+        print_validation_result(result)
+        sys.exit(1)
+
+    # Load or generate sample events
+    if events_file and events_file != 'auto':
+        try:
+            sample_events = load_sample_events(events_file)
+            print(f"Loaded {len(sample_events)} events from {events_file}")
+        except FileNotFoundError:
+            print(f"Error: Events file not found: {events_file}")
+            sys.exit(1)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Error: Invalid events file: {e}")
+            sys.exit(1)
+    else:
+        sample_events = generate_sample_events(config)
+        print(f"Generated {len(sample_events)} sample events from config")
+
+    # Run simulation
+    simulate_dry_run(config, sample_events)
+    sys.exit(0)
+
+
 def main() -> None:
     """Main orchestrator function."""
     # Parse command line arguments
     args = parse_args()
 
-    # Setup logging
-    setup_logging(quiet=args.quiet)
+    # Setup logging (quiet for terraform-like commands)
+    is_terraform_mode = args.validate or args.plan or args.dry_run
+    setup_logging(quiet=args.quiet or is_terraform_mode)
 
     # Check Python version
     if sys.version_info < (3, 7):
         logger.error("Python 3.7 or higher required")
         sys.exit(1)
 
+    # Handle terraform-like commands
+    if args.validate:
+        run_validate(args.config)
+        return
+
+    if args.plan:
+        run_plan(args.config)
+        return
+
+    if args.dry_run:
+        run_dry_run(args.config, args.dry_run if args.dry_run != 'auto' else None)
+        return
+
+    # Normal execution mode
     # Load configuration
     config = load_config(args.config)
 
