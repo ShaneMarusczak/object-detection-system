@@ -320,21 +320,36 @@ def _generate_output_filename(output_dir: str) -> str:
 
 def _handle_data_deletion(json_filename: str) -> None:
     """Prompt user to delete data file."""
+    import sys
+
     print("\n" + "="*70)
+    print("Data Collection Complete")
+    print("="*70)
+
+    # Flush output to ensure user sees the prompt
+    sys.stdout.flush()
 
     try:
-        response = input("Delete this data? (y/n): ").strip().lower()
+        # Give a clear prompt
+        print(f"\nData saved to: {json_filename}")
+        response = input("\nDelete this data? (y/n): ").strip().lower()
 
         if response in ['y', 'yes']:
             try:
                 os.remove(json_filename)
+                print(f"✓ Data deleted: {json_filename}")
                 logger.info(f"Data deleted: {json_filename}")
             except OSError as e:
+                print(f"✗ Failed to delete file: {e}")
                 logger.error(f"Failed to delete file: {e}")
         else:
+            print(f"✓ Data saved: {json_filename}")
             logger.info(f"Data saved: {json_filename}")
 
     except (KeyboardInterrupt, EOFError):
+        # User interrupted or EOF - keep the data
+        print(f"\n✓ Data saved: {json_filename}")
         logger.info(f"Data saved: {json_filename}")
 
     print("="*70)
+    sys.stdout.flush()

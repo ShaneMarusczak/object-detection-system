@@ -263,14 +263,23 @@ def shutdown_processes(detector: Process, analyzer: Process, config: dict) -> No
         else:
             logger.info("Detector stopped")
 
-    # Wait for analyzer to finish processing remaining events
+    # Wait for analyzer to finish processing remaining events and prompt user
     if analyzer.is_alive():
         logger.info("Waiting for analyzer to complete...")
+
+        # Give analyzer plenty of time for user to respond to delete prompt
+        # Default timeout is 10 seconds, but we need more for user interaction
         timeout = config['runtime'].get('analyzer_shutdown_timeout', 10)
-        analyzer.join(timeout=timeout)
+
+        # If events were recorded, wait longer for user input (up to 5 minutes)
+        # Otherwise use default timeout
+        extended_timeout = 300  # 5 minutes for user to respond
+
+        analyzer.join(timeout=extended_timeout)
 
         if analyzer.is_alive():
             logger.warning("Analyzer timeout - forcing shutdown...")
+            logger.warning("If you were prompted to delete data, it has been saved.")
             analyzer.terminate()
             analyzer.join()
         else:
