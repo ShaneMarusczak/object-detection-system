@@ -91,6 +91,9 @@ def load_config(config_path: str = 'config.yaml', skip_validation: bool = False)
     """
     Load and optionally validate configuration file.
 
+    Supports pointer files: if config only contains `use: path/to/config.yaml`,
+    that file is loaded instead.
+
     Args:
         config_path: Path to config.yaml
         skip_validation: If True, skip validation (for --validate/--plan modes)
@@ -106,6 +109,17 @@ def load_config(config_path: str = 'config.yaml', skip_validation: bool = False)
     try:
         with open(config_file, 'r') as f:
             config = yaml.safe_load(f)
+
+        # Support pointer files: { use: "path/to/actual/config.yaml" }
+        if config and list(config.keys()) == ['use']:
+            pointer_target = config['use']
+            # Resolve relative to the pointer file's directory
+            pointer_path = Path(config_file).parent / pointer_target
+            logger.info(f"Config pointer: {config_path} -> {pointer_target}")
+            with open(pointer_path, 'r') as f:
+                config = yaml.safe_load(f)
+            config_path = str(pointer_path)
+
         logger.info(f"Configuration loaded from {config_path}")
 
     except yaml.YAMLError as e:
