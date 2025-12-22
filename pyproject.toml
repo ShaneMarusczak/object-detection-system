@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "object-detection"
+version = "2.0.0"
+description = "Production-quality object detection system for tracking movement"
+authors = [{name = "Shane"}]
+license = {text = "MIT"}
+requires-python = ">=3.7"
+dependencies = [
+    "ultralytics>=8.0.0",
+    "opencv-python>=4.5.0",
+    "pyyaml>=6.0",
+    "numpy>=1.21.0",
+]
+
+[project.scripts]
+object-detection = "object_detection.cli:main"
+
+[tool.setuptools.package-data]
+object_detection = ["*.yaml"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
