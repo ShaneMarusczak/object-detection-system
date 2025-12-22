@@ -180,11 +180,7 @@ def setup_logging(quiet: bool = False) -> None:
     # Custom formatter with shorter module names
     class ShortNameFormatter(logging.Formatter):
         def format(self, record):
-            # Abbreviate object_detection.processor.x -> od.p.x
-            record.name = record.name.replace('object_detection.', 'od.') \
-                                     .replace('processor.', 'p.') \
-                                     .replace('config.', 'c.') \
-                                     .replace('core.', 'co.')
+            record.name = record.name.replace('object_detection.', 'od.')
             return super().format(record)
 
     handler = logging.StreamHandler()
