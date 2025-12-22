@@ -126,12 +126,13 @@ class EmailService:
 
         return self.send(subject, body)
 
-    def send_digest(self, period: str, stats: Dict[str, Any]) -> bool:
-        """Send a digest email with aggregated statistics.
+    def send_digest(self, period: str, stats: Dict[str, Any], frame_urls: Dict[str, str] = None) -> bool:
+        """Send a digest email with aggregated statistics and photo links.
 
         Args:
             period: Time period description (e.g., "Last Hour", "Last 24 Hours")
             stats: Dictionary with statistics to include
+            frame_urls: Optional dictionary mapping event_id to frame URL/path
 
         Returns:
             True if email sent successfully
@@ -185,6 +186,35 @@ class EmailService:
             for track_id, obj_class, count in top_tracks[:5]:
                 body += f"  Track {track_id} ({obj_class}): {count} events\n"
             body += "\n"
+
+        # Photo links (if available)
+        if frame_urls:
+            body += "Captured Frames:\n"
+            body += "=" * 50 + "\n"
+            events = stats.get('events', [])
+
+            # Group frames by zone/line for better organization
+            frames_by_location = {}
+            for event in events:
+                event_id = f"{event['timestamp']}_{event['track_id']}"
+                if event_id in frame_urls:
+                    location = event.get('zone_description') or event.get('line_description', 'Unknown')
+                    if location not in frames_by_location:
+                        frames_by_location[location] = []
+
+                    frames_by_location[location].append({
+                        'timestamp': event['timestamp'],
+                        'object': event.get('object_class_name', 'unknown'),
+                        'event_type': event.get('event_type', 'N/A'),
+                        'url': frame_urls[event_id]
+                    })
+
+            # Format frame links by location
+            for location, frames in sorted(frames_by_location.items()):
+                body += f"\n{location}:\n"
+                for frame in frames:
+                    body += f"  {frame['timestamp']} - {frame['object']} ({frame['event_type']})\n"
+                    body += f"  Photo: {frame['url']}\n\n"
 
         # Time range
         start_time = stats.get('start_time')

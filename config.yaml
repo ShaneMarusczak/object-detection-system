@@ -118,6 +118,13 @@ frame_saving:
   interval: 500        # Save every Nth frame
   output_dir: "output_frames"
 
+# Temp frame buffer for event capture
+# Maintains short rolling buffer of recent frames for frame capture consumer
+temp_frames_enabled: true               # Enable temp frame buffering
+temp_frame_dir: "/tmp/frames"           # Directory for temp frames
+temp_frame_interval: 5                  # Save every N frames (5 = ~1-2fps at 30fps input)
+temp_frame_max_age_seconds: 30          # Keep last 30 seconds
+
 
 # ==============================================================================
 # OUTPUT SETTINGS
@@ -160,6 +167,48 @@ consumers:
     enabled: false               # Set to true to enable (requires notifications config below)
     period_minutes: 60           # How often to send digest (60 = hourly)
     period_label: "Last Hour"    # Label for email subject
+
+    # For multiple digest configurations with filters:
+    # digests:
+    #   - id: "food_bowl_daily"
+    #     period_minutes: 1440    # 24 hours
+    #     period_label: "Daily Food Bowl Activity"
+    #     filters:
+    #       event_types: ["ZONE_ENTER"]
+    #       zone_descriptions: ["food bowl"]
+    #       object_classes: ["cat"]
+    #
+    #   - id: "water_bowl_daily"
+    #     period_minutes: 1440
+    #     period_label: "Daily Water Bowl Activity"
+    #     filters:
+    #       event_types: ["ZONE_ENTER"]
+    #       zone_descriptions: ["water bowl"]
+    #       object_classes: ["cat"]
+
+  # Frame Capture - saves frames when events match filters
+  frame_capture:
+    enabled: false               # Set to true to enable frame capture
+    cooldown_seconds: 180        # Cooldown per (track_id, zone/line) - 3 minutes default
+
+    # Filters - which events trigger frame capture
+    filters:
+      event_types: ["ZONE_ENTER", "LINE_CROSS"]  # Event types to capture
+      zone_descriptions: []      # Empty = all zones, or specify: ["food bowl", "water bowl"]
+      line_descriptions: []      # Empty = all lines, or specify: ["feeder approach"]
+      object_classes: []         # Empty = all classes, or specify: ["cat", "dog"]
+
+    # Storage configuration
+    storage:
+      type: "local"              # Options: "local" | "s3"
+      local_dir: "frames"        # Local storage directory
+
+      # For S3 storage (requires boto3: pip install boto3)
+      # Uses IAM role or AWS credentials from environment
+      # s3:
+      #   bucket: "my-object-detection-frames"
+      #   region: "us-east-1"
+      #   presigned_url_expires: 604800  # 7 days in seconds
 
 
 # ==============================================================================
@@ -243,8 +292,10 @@ runtime:
 # EXAMPLE CONFIGURATIONS
 # ==============================================================================
 
-# Example 1: Pet Monitoring with Email Alerts
-# --------------------------------------------
+# Example 1: Pet Monitoring with Email Alerts & Photos
+# ------------------------------------------------------
+# Complete setup for monitoring cats with daily digest emails including photos
+#
 # detection:
 #   model_file: "yolo11n.pt"
 #   track_classes: [15, 16]  # cats, dogs
@@ -254,13 +305,41 @@ runtime:
 #   enabled: true
 #   level: "silent"  # Minimal output for long-term monitoring
 #
+# temp_frames_enabled: true
+# temp_frame_dir: "/tmp/frames"
+# temp_frame_interval: 5
+# temp_frame_max_age_seconds: 30
+#
 # consumers:
+#   json_writer:
+#     enabled: true
+#
 #   email_notifier:
-#     enabled: true              # Per-event notifications for tagged zones
+#     enabled: false             # Disable per-event emails to reduce noise
+#
 #   email_digest:
-#     enabled: true              # Hourly summary emails
-#     period_minutes: 60
-#     period_label: "Last Hour"
+#     enabled: true
+#     digests:
+#       - id: "daily_summary"
+#         period_minutes: 1440   # 24 hours
+#         period_label: "Daily Pet Activity Summary"
+#         filters:
+#           event_types: ["ZONE_ENTER"]
+#           object_classes: ["cat"]
+#
+#   frame_capture:
+#     enabled: true
+#     cooldown_seconds: 600     # 10 minutes between photos per cat per zone
+#     filters:
+#       event_types: ["ZONE_ENTER"]
+#       zone_descriptions: ["food bowl", "water bowl"]
+#       object_classes: ["cat"]
+#     storage:
+#       type: "s3"
+#       s3:
+#         bucket: "my-pet-monitoring"
+#         region: "us-east-1"
+#         presigned_url_expires: 604800  # 7 days
 #
 # zones:
 #   - x1_pct: 10
@@ -269,9 +348,6 @@ runtime:
 #     y2_pct: 40
 #     description: "food bowl"
 #     allowed_classes: [15]
-#     notify_email: true
-#     cooldown_minutes: 60
-#     message: "Your cat visited the food bowl!"
 #
 #   - x1_pct: 40
 #     y1_pct: 20
@@ -279,8 +355,6 @@ runtime:
 #     y2_pct: 40
 #     description: "water bowl"
 #     allowed_classes: [15]
-#     notify_email: true
-#     cooldown_minutes: 120
 #
 # notifications:
 #   enabled: true

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 from typing import Dict
 
-from .consumers import json_writer_consumer, email_notifier_consumer, email_digest_consumer
+from .consumers import json_writer_consumer, email_notifier_consumer, email_digest_consumer, frame_capture_consumer
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,28 @@ def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str])
         digest_process.start()
         consumers.append(digest_process)
         logger.info(f"Started Email Digest consumer (period: {digest_config.get('period_minutes', 60)} min)")
+
+    # Frame Capture Consumer (captures frames for matching events, default disabled)
+    frame_config = config.get('consumers', {}).get('frame_capture', {})
+    if frame_config.get('enabled', False):
+        frame_queue = Queue()
+        consumer_queues.append(frame_queue)
+
+        frame_consumer_config = {
+            'filters': frame_config.get('filters', {}),
+            'cooldown_seconds': frame_config.get('cooldown_seconds', 180),
+            'temp_frame_dir': config.get('temp_frame_dir', '/tmp/frames'),
+            'storage': frame_config.get('storage', {'type': 'local', 'local_dir': 'frames'})
+        }
+
+        frame_process = Process(
+            target=frame_capture_consumer,
+            args=(frame_queue, frame_consumer_config),
+            name='FrameCapture'
+        )
+        frame_process.start()
+        consumers.append(frame_process)
+        logger.info("Started Frame Capture consumer")
 
     if not consumers:
         logger.warning("No consumers enabled - events will be discarded!")

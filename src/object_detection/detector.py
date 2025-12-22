@@ -136,6 +136,16 @@ def _detection_loop(
     event_count = 0
     start_time = time.time()
 
+    # Temp frame saving configuration
+    temp_frame_dir = config.get('temp_frame_dir', '/tmp/frames')
+    temp_frame_enabled = config.get('temp_frames_enabled', True)
+    temp_frame_interval = config.get('temp_frame_interval', 5)  # Save every N frames
+    temp_frame_max_age = config.get('temp_frame_max_age_seconds', 30)  # Keep last 30s
+
+    if temp_frame_enabled:
+        os.makedirs(temp_frame_dir, exist_ok=True)
+        logger.info(f"Temp frames: {temp_frame_dir} (every {temp_frame_interval} frames, {temp_frame_max_age}s retention)")
+
     logger.info("Detection started")
 
     try:
@@ -174,6 +184,10 @@ def _detection_loop(
                     relative_time,
                     speed_enabled
                 )
+
+            # Save temp frames for event capture (short buffer)
+            if temp_frame_enabled and frame_count % temp_frame_interval == 0:
+                _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
 
             # Save frames if enabled
             if frame_config.get('enabled') and frame_count % frame_config.get('interval', 500) == 0:
@@ -514,6 +528,43 @@ def _parse_roi(config: dict) -> ROIConfig:
         v_from=v_roi.get('crop_from_top_pct', 0),
         v_to=v_roi.get('crop_to_bottom_pct', 100)
     )
+
+
+def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> None:
+    """
+    Save temporary frame for event capture with timestamp-based filename.
+    Cleans up old frames beyond max_age_seconds.
+
+    Args:
+        frame: Raw frame to save
+        temp_dir: Directory for temp frames
+        max_age_seconds: Maximum age of temp frames to retain
+    """
+    try:
+        # Generate timestamp-based filename: frame_YYYYMMDD_HHMMSS_ffffff.jpg
+        now = datetime.now()
+        filename = now.strftime("frame_%Y%m%d_%H%M%S_%f.jpg")
+        filepath = os.path.join(temp_dir, filename)
+
+        # Save frame
+        cv2.imwrite(filepath, frame)
+
+        # Cleanup old frames
+        import glob
+        temp_frames = glob.glob(os.path.join(temp_dir, 'frame_*.jpg'))
+        current_time = time.time()
+
+        for temp_frame_path in temp_frames:
+            try:
+                # Get file modification time
+                file_age = current_time - os.path.getmtime(temp_frame_path)
+                if file_age > max_age_seconds:
+                    os.remove(temp_frame_path)
+            except Exception as e:
+                logger.debug(f"Error cleaning up temp frame {temp_frame_path}: {e}")
+
+    except Exception as e:
+        logger.debug(f"Error saving temp frame: {e}")
 
 
 def _save_annotated_frame(
