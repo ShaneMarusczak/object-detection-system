@@ -1,32 +1,15 @@
 # ==============================================================================
-# Object Detection System Configuration
+# Road Traffic Counter
 # ==============================================================================
-# Define events you care about, and the system handles the rest.
-#
-# Workflow:
-#   1. python -m object_detection --validate   # Check config
-#   2. python -m object_detection --plan       # See what will happen
-#   3. python -m object_detection --dry-run    # Simulate events
-#   4. python -m object_detection 1            # Run for 1 hour
-#
-# See also:
-#   config-v1-equivalent.yaml  - Simple JSON logging only
-#   config-photo-digest.yaml   - Daily email digests with photos
+# Count vehicles traveling north and south on the road.
 # ==============================================================================
 
 
-# ==============================================================================
-# DETECTION SETTINGS
-# ==============================================================================
 detection:
   model_file: "yolo11n.pt"
-  track_classes: []  # Auto-derived from events below
   confidence_threshold: 0.25
 
 
-# ==============================================================================
-# REGION OF INTEREST
-# ==============================================================================
 roi:
   horizontal:
     enabled: true
@@ -38,66 +21,38 @@ roi:
     crop_to_bottom_pct: 95
 
 
-# ==============================================================================
-# GEOMETRY - Lines and Zones
-# ==============================================================================
 lines:
   - type: vertical
     position_pct: 25
-    description: "traffic boundary"
-    allowed_classes: [2, 3, 5, 7]  # car, motorcycle, bus, truck
-
-# zones:
-#   - x1_pct: 10
-#     y1_pct: 20
-#     x2_pct: 30
-#     y2_pct: 40
-#     description: "food bowl"
-#     allowed_classes: [15, 16]  # cat, dog
+    description: "counting line"
 
 
-# ==============================================================================
-# EVENTS - What you want to track
-# ==============================================================================
-# Each event defines:
-#   match: What to look for (event_type, zone/line, object_class)
-#   actions: What to do (json_log, email_immediate, email_digest)
-#
-# AWS-style composition:
-#   email_digest -> auto-enables json_log
-#   email_digest with photos: true -> auto-enables frame_capture
-# ==============================================================================
 events:
-  - name: "vehicle-traffic-cross"
+  - name: "southbound"
     match:
       event_type: "LINE_CROSS"
-      line: "traffic boundary"
+      line: "counting line"
+      direction: "LTR"
+      object_class: ["car", "motorcycle", "bus", "truck"]
+    actions:
+      json_log: true
+
+  - name: "northbound"
+    match:
+      event_type: "LINE_CROSS"
+      line: "counting line"
+      direction: "RTL"
       object_class: ["car", "motorcycle", "bus", "truck"]
     actions:
       json_log: true
 
 
-# ==============================================================================
-# DIGESTS - Periodic email summaries (optional)
-# ==============================================================================
-# digests:
-#   - id: "daily_traffic"
-#     period_minutes: 1440
-#     period_label: "Daily Traffic Summary"
-#     photos: false
-
-
-# ==============================================================================
-# OUTPUT
-# ==============================================================================
 output:
   json_dir: "data"
 
-
 console_output:
   enabled: true
-  level: "detailed"  # detailed | summary | silent
-
+  level: "detailed"
 
 consumers:
   json_writer:
@@ -105,47 +60,10 @@ consumers:
     prompt_save: true
 
 
-# ==============================================================================
-# NOTIFICATIONS (required for email actions)
-# ==============================================================================
-notifications:
-  enabled: false
-
-  email:
-    enabled: false
-    smtp_server: "smtp.gmail.com"
-    smtp_port: 587
-    use_tls: true
-    username: "your-email@gmail.com"
-    password: "your-app-password"
-    from_address: "your-email@gmail.com"
-    to_addresses:
-      - "your-email@gmail.com"
-
-
-# ==============================================================================
-# FRAME CAPTURE (required for photo digests)
-# ==============================================================================
-frame_storage:
-  type: "local"
-  local_dir: "frames"
-
-temp_frames_enabled: false
-temp_frame_dir: "/tmp/frames"
-temp_frame_interval: 5
-temp_frame_max_age_seconds: 30
-
-
-# ==============================================================================
-# CAMERA
-# ==============================================================================
 camera:
   url: "http://192.168.86.33:4747/video"
 
 
-# ==============================================================================
-# RUNTIME
-# ==============================================================================
 runtime:
   default_duration_hours: 1.0
   queue_size: 1000
@@ -154,5 +72,9 @@ runtime:
   analyzer_shutdown_timeout: 10
 
 
-speed_calculation:
+notifications:
   enabled: false
+
+frame_storage:
+  type: "local"
+  local_dir: "frames"
