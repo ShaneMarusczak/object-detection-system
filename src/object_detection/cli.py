@@ -3,6 +3,7 @@ Object Detection System CLI
 Main entry point for running the detection system.
 """
 
+import argparse
 import logging
 import sys
 import time
@@ -18,12 +19,6 @@ from .config import validate_config, load_config_with_env, print_validation_summ
 from .constants import DEFAULT_QUEUE_SIZE
 from .detector import run_detection
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
 logger = logging.getLogger(__name__)
 
 
@@ -113,12 +108,65 @@ def run_analyzer_process(queue: Queue, config: dict, model_names: dict) -> None:
         logger.error(f"Fatal error in analyzer: {e}", exc_info=True)
 
 
-def parse_duration(duration_arg: Optional[str], config: dict) -> float:
+def setup_logging(quiet: bool = False) -> None:
+    """
+    Setup logging configuration.
+
+    Args:
+        quiet: If True, only show warnings and errors
+    """
+    level = logging.WARNING if quiet else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description='Object Detection System - Track movement across boundaries and zones',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python -m object_detection 1           # Run for 1 hour
+  python -m object_detection 0.5         # Run for 30 minutes
+  python -m object_detection 1 --quiet   # Run for 1 hour with minimal logs
+
+Environment Variables:
+  CAMERA_URL - Override camera URL from config
+        """
+    )
+
+    parser.add_argument(
+        'duration',
+        type=float,
+        nargs='?',
+        help='Duration in hours (default: from config.yaml)'
+    )
+
+    parser.add_argument(
+        '-q', '--quiet',
+        action='store_true',
+        help='Quiet mode - only show warnings and errors (events still logged to file)'
+    )
+
+    parser.add_argument(
+        '-c', '--config',
+        default='config.yaml',
+        help='Path to config file (default: config.yaml)'
+    )
+
+    return parser.parse_args()
+
+
+def parse_duration(duration_arg: Optional[float], config: dict) -> float:
     """
     Parse duration from command line argument or config.
 
     Args:
-        duration_arg: Command line duration argument
+        duration_arg: Command line duration argument (float or None)
         config: Configuration dictionary
 
     Returns:
@@ -127,16 +175,12 @@ def parse_duration(duration_arg: Optional[str], config: dict) -> float:
     Raises:
         SystemExit: If duration is invalid
     """
-    if duration_arg:
-        try:
-            duration_hours = float(duration_arg)
-            if duration_hours <= 0:
-                raise ValueError("Duration must be positive")
-            return duration_hours
-        except ValueError as e:
-            logger.error(f"Invalid duration '{duration_arg}' - {e}")
-            logger.error("Usage: python -m object_detection.cli [hours]")
+    if duration_arg is not None:
+        if duration_arg <= 0:
+            logger.error(f"Invalid duration '{duration_arg}' - must be positive")
+            logger.error("Usage: python -m object_detection [hours]")
             sys.exit(1)
+        return duration_arg
     else:
         return config['runtime']['default_duration_hours']
 
@@ -274,17 +318,22 @@ def print_final_status(
 
 def main() -> None:
     """Main orchestrator function."""
+    # Parse command line arguments
+    args = parse_args()
+
+    # Setup logging
+    setup_logging(quiet=args.quiet)
+
     # Check Python version
     if sys.version_info < (3, 7):
         logger.error("Python 3.7 or higher required")
         sys.exit(1)
 
     # Load configuration
-    config = load_config()
+    config = load_config(args.config)
 
     # Parse duration
-    duration_arg = sys.argv[1] if len(sys.argv) > 1 else None
-    duration_hours = parse_duration(duration_arg, config)
+    duration_hours = parse_duration(args.duration, config)
     duration_seconds = int(duration_hours * 3600)
 
     # Print banner
