@@ -59,12 +59,15 @@ lines:
  #   position_pct: 30                    # 30% from left edge
  #   description: "feeder approach"      # Semantic meaning
  #   allowed_classes: [15]               # Only cats (optional - defaults to all track_classes)
-  
+ #   notify_email: true                  # Send email when line crossed
+ #   cooldown_minutes: 30                # Wait 30 min between notifications
+ #   message: "Cat crossed into feeding area"  # Optional custom message
+
  # - type: vertical
  #   position_pct: 70
  #   description: "feeder exit"
  #   allowed_classes: [15]
-  
+
   # Horizontal lines (measured from top edge, detect top-bottom movement)
  # - type: horizontal
  #   position_pct: 50                    # 50% from top (center line)
@@ -89,6 +92,9 @@ lines:
  #   y2_pct: 40    # Bottom edge
  #   description: "food bowl area"
  #   allowed_classes: [15, 16]  # Cats and dogs
+ #   notify_email: true          # Send email when zone entered/exited
+ #   cooldown_minutes: 60        # Wait 60 min between notifications
+ #   message: "Your cat visited the food bowl!"  # Optional custom message
 
 # Zone events include automatic dwell time calculation
 
@@ -137,65 +143,45 @@ console_output:
 # ==============================================================================
 # NOTIFICATIONS
 # ==============================================================================
-# Send email/SMS alerts when specific event patterns occur
+# Send email alerts when objects cross lines or enter/exit zones
 # Perfect for long-term monitoring (e.g., pet activity while traveling)
+#
+# To enable notifications on a zone or line, add:
+#   notify_email: true           # Enable email for this zone/line
+#   cooldown_minutes: 60         # Optional: wait time between emails (default: 60)
+#   message: "Custom message"    # Optional: custom notification text
 notifications:
   enabled: false  # Set to true to enable notifications
 
-  # Email notifications via SMTP
+  # Email configuration
   email:
     enabled: false
-    smtp_server: "smtp.gmail.com"        # Gmail example
-    smtp_port: 587
+    smtp_server: "smtp.gmail.com"        # Gmail, Outlook, AWS SES, etc.
+    smtp_port: 587                       # Usually 587 for TLS
     use_tls: true
     username: "your-email@gmail.com"
-    password: "your-app-password"        # Use app-specific password for Gmail
+    password: "your-app-password"        # App-specific password for Gmail
     from_address: "your-email@gmail.com"
     to_addresses:
       - "your-email@gmail.com"
-      # - "another-email@example.com"
 
-  # SMS notifications via Twilio (requires: pip install twilio)
-  sms:
-    enabled: false
-    account_sid: "your-twilio-account-sid"
-    auth_token: "your-twilio-auth-token"
-    from_number: "+1234567890"
-    to_numbers:
-      - "+1234567890"
-
-  # Notification rules - when to send alerts
-  rules:
-    # Example: Cat visiting food bowl
-    - name: "Cat at Food Bowl"
-      enabled: true
-      cooldown_minutes: 60  # Don't spam - wait 60 min between notifications
-      message: "Your cat just visited the food bowl!"
-      conditions:
-        event_type: "ZONE_ENTER"
-        zone_description: "food bowl"
-        object_class_name: "cat"
-
-    # Example: Cat spending significant time at water
-    - name: "Cat Drinking Water"
-      enabled: true
-      cooldown_minutes: 120
-      message: "Your cat spent time at the water bowl"
-      conditions:
-        event_type: "ZONE_EXIT"
-        zone_description: "water bowl"
-        object_class_name: "cat"
-        dwell_time:
-          gte: 5  # At least 5 seconds
-
-    # Example: Multiple cats detected
-    - name: "Both Cats Active"
-      enabled: false
-      cooldown_minutes: 180
-      message: "Multiple cats detected - both are active!"
-      conditions:
-        event_type: "LINE_CROSS"
-        # Add custom logic for multiple tracks if needed
+# Email Provider Examples:
+#
+# Gmail:
+#   smtp_server: "smtp.gmail.com"
+#   smtp_port: 587
+#   (Requires app-specific password: https://myaccount.google.com/apppasswords)
+#
+# Outlook/Office 365:
+#   smtp_server: "smtp-mail.outlook.com"
+#   smtp_port: 587
+#
+# AWS SES:
+#   smtp_server: "email-smtp.us-east-1.amazonaws.com"  # Use your region
+#   smtp_port: 587
+#   username: "your-ses-smtp-username"
+#   password: "your-ses-smtp-password"
+#   (Generate SMTP credentials in AWS SES console)
 
 
 # ==============================================================================
@@ -235,18 +221,16 @@ runtime:
 # EXAMPLE CONFIGURATIONS
 # ==============================================================================
 
-# Example 1: Pet Monitoring
-# -------------------------
+# Example 1: Pet Monitoring with Email Alerts
+# --------------------------------------------
 # detection:
 #   model_file: "yolo11n.pt"
 #   track_classes: [15, 16]  # cats, dogs
 #   confidence_threshold: 0.25
 #
-# lines:
-#   - type: vertical
-#     position_pct: 25
-#     description: "food bowl approach"
-#     allowed_classes: [15]
+# console_output:
+#   enabled: true
+#   level: "silent"  # Minimal output for long-term monitoring
 #
 # zones:
 #   - x1_pct: 10
@@ -254,7 +238,32 @@ runtime:
 #     x2_pct: 30
 #     y2_pct: 40
 #     description: "food bowl"
-#     allowed_classes: [15, 16]
+#     allowed_classes: [15]
+#     notify_email: true
+#     cooldown_minutes: 60
+#     message: "Your cat visited the food bowl!"
+#
+#   - x1_pct: 40
+#     y1_pct: 20
+#     x2_pct: 60
+#     y2_pct: 40
+#     description: "water bowl"
+#     allowed_classes: [15]
+#     notify_email: true
+#     cooldown_minutes: 120
+#
+# notifications:
+#   enabled: true
+#   email:
+#     enabled: true
+#     smtp_server: "smtp.gmail.com"
+#     smtp_port: 587
+#     use_tls: true
+#     username: "your-email@gmail.com"
+#     password: "your-app-password"
+#     from_address: "your-email@gmail.com"
+#     to_addresses:
+#       - "your-email@gmail.com"
 #
 # speed_calculation:
 #   enabled: false

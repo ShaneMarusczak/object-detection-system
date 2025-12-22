@@ -1,71 +1,12 @@
-# Notification System
+# Email Notifications
 
-The object detection system includes a powerful notification feature that allows you to receive email or SMS alerts when specific event patterns occur. This is perfect for long-term monitoring scenarios, such as checking on pets while traveling.
-
-## Overview
-
-The notification system:
-- ✅ Runs independently of console output (works in silent mode)
-- ✅ Still logs all events to JSON files
-- ✅ Sends alerts via email (SMTP) and/or SMS (Twilio)
-- ✅ Supports pattern matching on event properties
-- ✅ Includes cooldown periods to prevent spam
-- ✅ Requires no code changes - configure via YAML
-
-## Use Case Example
-
-You're going out of town for 2 weeks and want to monitor your cats eating and drinking:
-
-1. Set console output to `silent` mode (minimal logging)
-2. Configure zones for food and water bowls
-3. Set up notification rules to alert you when cats visit these areas
-4. Run the system for extended periods
-5. Receive periodic notifications confirming your cats are active
+Get email alerts when objects cross lines or enter/exit zones - perfect for long-term monitoring while you're away.
 
 ## Quick Start
 
-### 1. Configure Zones in `config.yaml`
+### 1. Configure Email Settings
 
-First, define zones for the areas you want to monitor:
-
-```yaml
-zones:
-  - x1_pct: 10
-    y1_pct: 20
-    x2_pct: 30
-    y2_pct: 40
-    description: "food bowl"
-    allowed_classes: [15, 16]  # cats and dogs
-
-  - x1_pct: 40
-    y1_pct: 20
-    x2_pct: 60
-    y2_pct: 40
-    description: "water bowl"
-    allowed_classes: [15, 16]
-```
-
-### 2. Enable Silent Mode (Optional but Recommended)
-
-For long-running monitoring with minimal console output:
-
-```yaml
-console_output:
-  enabled: true
-  level: "silent"  # No console spam, but still logs to JSON
-```
-
-### 3. Configure Email Notifications
-
-#### Gmail Setup (Recommended)
-
-1. Enable 2-factor authentication on your Gmail account
-2. Create an app-specific password:
-   - Go to https://myaccount.google.com/apppasswords
-   - Select "Mail" and your device
-   - Copy the generated 16-character password
-
-3. Update `config.yaml`:
+Edit `config.yaml`:
 
 ```yaml
 notifications:
@@ -77,245 +18,170 @@ notifications:
     smtp_port: 587
     use_tls: true
     username: "your-email@gmail.com"
-    password: "your-app-specific-password"
+    password: "your-app-password"
     from_address: "your-email@gmail.com"
     to_addresses:
       - "your-email@gmail.com"
 ```
 
-#### Other Email Providers
+### 2. Tag Zones or Lines for Notifications
 
-**Outlook/Office 365:**
+Add `notify_email: true` to any zone or line you want alerts for:
+
+**Zone Example:**
 ```yaml
-smtp_server: "smtp-mail.outlook.com"
-smtp_port: 587
-```
-
-**Yahoo:**
-```yaml
-smtp_server: "smtp.mail.yahoo.com"
-smtp_port: 587
-```
-
-**Custom SMTP:**
-```yaml
-smtp_server: "mail.example.com"
-smtp_port: 587
-use_tls: true
-```
-
-### 4. Configure SMS Notifications (Optional)
-
-SMS notifications require a Twilio account:
-
-1. Sign up at https://www.twilio.com/
-2. Get your Account SID and Auth Token from the dashboard
-3. Purchase a phone number or use your trial number
-4. Install Twilio SDK: `pip install twilio`
-
-```yaml
-notifications:
-  sms:
-    enabled: true
-    account_sid: "your-account-sid"
-    auth_token: "your-auth-token"
-    from_number: "+1234567890"
-    to_numbers:
-      - "+1987654321"
-```
-
-### 5. Define Notification Rules
-
-Rules determine when to send notifications. Each rule has:
-- `name`: Descriptive name for the alert
-- `enabled`: Whether this rule is active
-- `cooldown_minutes`: Minimum time between notifications (prevents spam)
-- `message`: Text to include in notification
-- `conditions`: Event properties that must match
-
-```yaml
-notifications:
-  rules:
-    - name: "Cat at Food Bowl"
-      enabled: true
-      cooldown_minutes: 60
-      message: "Your cat just visited the food bowl!"
-      conditions:
-        event_type: "ZONE_ENTER"
-        zone_description: "food bowl"
-        object_class_name: "cat"
-```
-
-## Advanced Pattern Matching
-
-### Exact Match Conditions
-
-```yaml
-conditions:
-  event_type: "LINE_CROSS"
-  object_class_name: "cat"
-  direction: "LTR"
-```
-
-### List Match (any of)
-
-```yaml
-conditions:
-  object_class_name: ["cat", "dog"]
-  zone_description: ["food bowl", "water bowl"]
-```
-
-### Comparison Operators
-
-For numeric fields, use comparison operators:
-
-```yaml
-conditions:
-  event_type: "ZONE_EXIT"
-  zone_description: "food bowl"
-  dwell_time:
-    gte: 10  # Greater than or equal to 10 seconds
-```
-
-Available operators:
-- `gt`: Greater than
-- `gte`: Greater than or equal
-- `lt`: Less than
-- `lte`: Less than or equal
-- `eq`: Equal to
-- `ne`: Not equal to
-
-### Example: Long Dwell Time Alert
-
-Notify if a cat spends more than 20 seconds drinking:
-
-```yaml
-- name: "Cat Drinking Water"
-  enabled: true
-  cooldown_minutes: 120
-  message: "Your cat spent significant time at the water bowl - staying hydrated!"
-  conditions:
-    event_type: "ZONE_EXIT"
-    zone_description: "water bowl"
-    object_class_name: "cat"
-    dwell_time:
-      gte: 20
-```
-
-### Example: Directional Movement
-
-Notify when a cat crosses a specific line in a specific direction:
-
-```yaml
-- name: "Cat Entering Room"
-  enabled: true
-  cooldown_minutes: 30
-  message: "Your cat just entered the bedroom"
-  conditions:
-    event_type: "LINE_CROSS"
-    line_description: "bedroom doorway"
-    object_class_name: "cat"
-    direction: "LTR"
-```
-
-## Complete Example Configuration
-
-Here's a full configuration for monitoring cats while away:
-
-```yaml
-# Minimal console output for long-running monitoring
-console_output:
-  enabled: true
-  level: "silent"
-
-# Define monitoring areas
 zones:
   - x1_pct: 10
     y1_pct: 20
     x2_pct: 30
     y2_pct: 40
     description: "food bowl"
-    allowed_classes: [15]
+    allowed_classes: [15]  # cats
+    notify_email: true     # Get email when cat enters/exits
+    cooldown_minutes: 60   # Max one email per hour
+```
 
-  - x1_pct: 40
-    y1_pct: 20
-    x2_pct: 60
-    y2_pct: 40
-    description: "water bowl"
-    allowed_classes: [15]
+**Line Example:**
+```yaml
+lines:
+  - type: vertical
+    position_pct: 50
+    description: "doorway"
+    allowed_classes: [0]   # people
+    notify_email: true     # Get email when line crossed
+    cooldown_minutes: 30   # Max one email per 30 minutes
+```
 
-# Notification configuration
-notifications:
+### 3. Run in Silent Mode (Optional)
+
+For long-term monitoring with minimal console output:
+
+```yaml
+console_output:
   enabled: true
-
-  email:
-    enabled: true
-    smtp_server: "smtp.gmail.com"
-    smtp_port: 587
-    use_tls: true
-    username: "yourname@gmail.com"
-    password: "your-app-password"
-    from_address: "yourname@gmail.com"
-    to_addresses:
-      - "yourname@gmail.com"
-
-  sms:
-    enabled: false  # Optional
-
-  rules:
-    # Alert when cat visits food bowl (max once per hour)
-    - name: "Cat Eating"
-      enabled: true
-      cooldown_minutes: 60
-      message: "Your cat visited the food bowl - good appetite!"
-      conditions:
-        event_type: "ZONE_ENTER"
-        zone_description: "food bowl"
-        object_class_name: "cat"
-
-    # Alert when cat drinks water for significant time (max once per 2 hours)
-    - name: "Cat Drinking"
-      enabled: true
-      cooldown_minutes: 120
-      message: "Your cat spent time at the water bowl - staying hydrated!"
-      conditions:
-        event_type: "ZONE_EXIT"
-        zone_description: "water bowl"
-        object_class_name: "cat"
-        dwell_time:
-          gte: 5
+  level: "silent"
 ```
 
-## Running the System
-
-### Short Test Run (1 hour)
+### 4. Start Monitoring
 
 ```bash
-python -m object_detection 1
-```
-
-### Long-term Monitoring (336 hours = 2 weeks)
-
-```bash
+# Run for 2 weeks (336 hours)
 python -m object_detection 336
 ```
 
-### Run Until Manually Stopped
+## Email Configuration by Provider
 
-```bash
-python -m object_detection 999999
+### Gmail (Recommended)
+
+1. Enable 2-factor authentication on your Google account
+2. Create app-specific password:
+   - Visit https://myaccount.google.com/apppasswords
+   - Select "Mail" and your device
+   - Copy the 16-character password
+
+```yaml
+email:
+  enabled: true
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  use_tls: true
+  username: "your-email@gmail.com"
+  password: "abcd efgh ijkl mnop"  # Your 16-char app password
+  from_address: "your-email@gmail.com"
+  to_addresses:
+    - "your-email@gmail.com"
 ```
 
-Press `Ctrl+C` to stop at any time.
+### AWS SES
 
-## Notification Email Format
+Great for high-volume notifications or if you're already using AWS:
 
-When a rule triggers, you'll receive an email like this:
+1. Verify your sender email in AWS SES console
+2. Generate SMTP credentials in SES console
+3. Choose your region's SMTP endpoint
+
+```yaml
+email:
+  enabled: true
+  smtp_server: "email-smtp.us-east-1.amazonaws.com"  # Use your region
+  smtp_port: 587
+  use_tls: true
+  username: "your-ses-smtp-username"  # From SES console
+  password: "your-ses-smtp-password"  # From SES console
+  from_address: "verified@yourdomain.com"  # Must be verified in SES
+  to_addresses:
+    - "your-email@example.com"
+```
+
+**AWS SES Regions:**
+- `us-east-1`: email-smtp.us-east-1.amazonaws.com
+- `us-west-2`: email-smtp.us-west-2.amazonaws.com
+- `eu-west-1`: email-smtp.eu-west-1.amazonaws.com
+
+### Outlook / Office 365
+
+```yaml
+email:
+  enabled: true
+  smtp_server: "smtp-mail.outlook.com"
+  smtp_port: 587
+  use_tls: true
+  username: "your-email@outlook.com"
+  password: "your-password"
+  from_address: "your-email@outlook.com"
+  to_addresses:
+    - "your-email@outlook.com"
+```
+
+### Yahoo Mail
+
+```yaml
+email:
+  enabled: true
+  smtp_server: "smtp.mail.yahoo.com"
+  smtp_port: 587
+  use_tls: true
+  username: "your-email@yahoo.com"
+  password: "your-app-password"  # Generate at account.yahoo.com/account/security
+  from_address: "your-email@yahoo.com"
+  to_addresses:
+    - "your-email@yahoo.com"
+```
+
+### Custom SMTP Server
+
+```yaml
+email:
+  enabled: true
+  smtp_server: "mail.yourdomain.com"
+  smtp_port: 587
+  use_tls: true
+  username: "you@yourdomain.com"
+  password: "your-password"
+  from_address: "you@yourdomain.com"
+  to_addresses:
+    - "recipient@example.com"
+```
+
+## Notification Options
+
+### Required
+
+- `notify_email: true` - Enable notifications for this zone/line
+
+### Optional
+
+- `cooldown_minutes: 60` - Minimum time between notifications (default: 60)
+- `message: "Custom text"` - Override default notification message
+
+## What You'll Receive
+
+### Zone Entry Email
 
 ```
-Subject: Object Detection Alert: Cat Eating
+Subject: Object Detection Alert: food bowl
 
-Your cat visited the food bowl - good appetite!
+A cat entered food bowl
 
 Event Details:
 Time: 2025-12-22T14:35:47.123Z
@@ -324,109 +190,200 @@ Object: cat
 Zone: food bowl
 ```
 
-## Notification SMS Format
-
-SMS messages are concise (160 characters max):
+### Zone Exit Email
 
 ```
-Cat Eating: Your cat visited the food bowl - good appetite!
+Subject: Object Detection Alert: water bowl
+
+A cat exited water bowl (dwell: 12.4s)
+
+Event Details:
+Time: 2025-12-22T14:36:02.654Z
+Type: ZONE_EXIT
+Object: cat
+Zone: water bowl
+Dwell Time: 12.4s
 ```
 
-## Cooldown Periods
+### Line Cross Email
 
-Cooldown prevents notification spam. Each rule tracks its last trigger time and won't fire again until the cooldown period expires.
+```
+Subject: Object Detection Alert: doorway
 
-**Example:** With `cooldown_minutes: 60`, you'll receive at most one notification per hour per rule, even if your cat visits the food bowl multiple times.
+A person crossed doorway (LTR)
 
-**Tips:**
-- Use longer cooldowns (120-180 min) for frequent events
-- Use shorter cooldowns (30-60 min) for rare events
-- Critical alerts can have shorter cooldowns (15-30 min)
+Event Details:
+Time: 2025-12-22T15:20:15.789Z
+Type: LINE_CROSS
+Object: person
+Line: doorway
+Direction: LTR
+```
+
+### Custom Message Email
+
+If you specify a custom message:
+
+```yaml
+zones:
+  - description: "food bowl"
+    notify_email: true
+    message: "Your cat is eating - good appetite!"
+```
+
+You'll receive:
+
+```
+Subject: Object Detection Alert: food bowl
+
+Your cat is eating - good appetite!
+
+Event Details:
+Time: 2025-12-22T14:35:47.123Z
+Type: ZONE_ENTER
+Object: cat
+Zone: food bowl
+```
+
+## Complete Example: Cat Monitoring
+
+Monitor your cats' food and water consumption while traveling for 2 weeks:
+
+```yaml
+detection:
+  model_file: "yolo11n.pt"
+  track_classes: [15]  # cats only
+  confidence_threshold: 0.25
+
+console_output:
+  enabled: true
+  level: "silent"  # Minimal output
+
+zones:
+  # Food bowl monitoring
+  - x1_pct: 10
+    y1_pct: 20
+    x2_pct: 30
+    y2_pct: 40
+    description: "food bowl"
+    allowed_classes: [15]
+    notify_email: true
+    cooldown_minutes: 60
+    message: "Your cat visited the food bowl!"
+
+  # Water bowl monitoring
+  - x1_pct: 40
+    y1_pct: 20
+    x2_pct: 60
+    y2_pct: 40
+    description: "water bowl"
+    allowed_classes: [15]
+    notify_email: true
+    cooldown_minutes: 120
+    message: "Your cat is staying hydrated!"
+
+notifications:
+  enabled: true
+  email:
+    enabled: true
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    use_tls: true
+    username: "your-email@gmail.com"
+    password: "your-app-password"
+    from_address: "your-email@gmail.com"
+    to_addresses:
+      - "your-email@gmail.com"
+```
+
+Run for 2 weeks:
+```bash
+python -m object_detection 336
+```
+
+## Cooldown Period
+
+The cooldown prevents notification spam. Each zone/line tracks its last notification time independently.
+
+**Example:** With `cooldown_minutes: 60`, you'll receive at most one email per hour for that specific zone, even if your cat visits it multiple times.
+
+**Guidelines:**
+- **Frequent events** (like food bowl visits): 60-120 minutes
+- **Rare events** (like entering garage): 30-60 minutes
+- **Critical alerts**: 15-30 minutes
+
+## Multiple Recipients
+
+Send notifications to multiple people:
+
+```yaml
+email:
+  to_addresses:
+    - "you@example.com"
+    - "partner@example.com"
+    - "petsitter@example.com"
+```
 
 ## Troubleshooting
 
-### No Notifications Received
+### No Emails Received
 
-1. **Check logs:** System will log notification attempts
-   ```
-   INFO - Notification manager initialized with 2 rules
-   INFO - Email notification sent: Cat at Food Bowl
-   ```
+1. **Check logs** - System logs all notification attempts
+2. **Verify email settings** - Test SMTP credentials
+3. **Check spam folder**
+4. **Verify zone/line configuration** - Ensure objects are actually triggering events
+5. **Check cooldown** - May be suppressing notifications
 
-2. **Verify email settings:**
-   - Test SMTP credentials manually
-   - Check spam folder
-   - Verify app-specific password for Gmail
+### Gmail Authentication Errors
 
-3. **Check rule conditions:**
-   - Ensure zone descriptions match exactly
-   - Verify object class names (use `detailed` console mode to see events)
-   - Check cooldown hasn't suppressed notifications
+**"Username and Password not accepted":**
+- Must use app-specific password, not your regular password
+- Enable 2-factor authentication first
+- Generate app password at https://myaccount.google.com/apppasswords
 
-### Email Authentication Errors
+### AWS SES Issues
 
-**Gmail "Username and Password not accepted":**
-- Enable 2-factor authentication
-- Create app-specific password (not your regular password)
+**"Email address not verified":**
+- Verify sender email in SES console
+- For production, verify domain instead of individual emails
+- Check you're using correct region endpoint
 
-**Connection refused:**
+**"Daily sending quota exceeded":**
+- Check your SES sending limits in console
+- Request limit increase if needed
+
+### Connection Errors
+
+**"Connection refused" or "Timeout":**
 - Check firewall settings
-- Verify SMTP server and port
+- Verify SMTP server and port are correct
 - Ensure `use_tls: true` for most providers
+- Try port 465 with SSL instead of 587 with TLS (rare)
 
-### SMS Not Working
+### Still Logging Events Without Notifications
 
-1. **Install Twilio SDK:**
-   ```bash
-   pip install twilio
-   ```
-
-2. **Verify credentials:** Check Account SID and Auth Token
-
-3. **Check phone numbers:** Must include country code (e.g., `+1` for US)
+**This is normal!** Events are ALWAYS logged to JSON files regardless of notification settings. Notifications are an optional alert mechanism on top of the logging.
 
 ## Privacy & Security
 
-- **Email passwords:** Store in environment variables for production
-- **JSONL files:** All events still logged regardless of notifications
-- **Network activity:** Only occurs when sending notifications
-- **Data privacy:** No event data sent to third parties (except chosen email/SMS providers)
+- **Credentials**: Consider using environment variables in production instead of hardcoding passwords
+- **Data**: No event data is sent to third parties except your chosen email provider
+- **Network**: SMTP connections use TLS encryption
+- **Logs**: All events still saved to local JSONL files
 
-## Environment Variables (Optional)
+## Performance
 
-For better security, use environment variables instead of hardcoding credentials:
-
-```bash
-export EMAIL_PASSWORD="your-app-password"
-export TWILIO_AUTH_TOKEN="your-auth-token"
-```
-
-Then reference in config:
-```yaml
-# This feature requires code modification - coming in future release
-```
-
-## Performance Impact
-
-The notification system:
-- ✅ Minimal CPU overhead (< 1% on most systems)
-- ✅ No impact on detection FPS
-- ✅ Runs asynchronously with detection
-- ✅ Designed for long-term operation (days/weeks)
+- **CPU Impact**: < 1% overhead
+- **FPS Impact**: None - notifications run asynchronously
+- **Network**: Only sends emails when events occur (respects cooldown)
+- **Long-term**: Designed for weeks of continuous operation
 
 ## What's Still Logged
 
-Even in `silent` mode with notifications enabled:
+Even in silent mode:
 - ✅ All events written to JSONL file
 - ✅ System startup/shutdown messages
-- ✅ Error messages and warnings
-- ✅ Final statistics when stopping
+- ✅ Errors and warnings
+- ✅ Final statistics
 
-## Support
-
-For issues or questions:
-- Check existing GitHub issues
-- Review configuration examples
-- Enable `detailed` console mode for debugging
-
-Enjoy worry-free long-term monitoring! 🐱
+Email notifications are an alert layer on top of the comprehensive logging system.

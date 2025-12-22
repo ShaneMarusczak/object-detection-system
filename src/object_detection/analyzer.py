@@ -29,6 +29,8 @@ def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str])
     # Build lookup tables
     line_descriptions = _build_line_lookup(config)
     zone_descriptions = _build_zone_lookup(config)
+    line_configs = _build_line_config_lookup(config)
+    zone_configs = _build_zone_config_lookup(config)
 
     # Setup output
     os.makedirs(config['output']['json_dir'], exist_ok=True)
@@ -58,7 +60,7 @@ def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str])
         data_queue, json_filename, model_names,
         line_descriptions, zone_descriptions,
         console_enabled, console_level, speed_enabled,
-        notification_manager
+        notification_manager, line_configs, zone_configs
     )
 
 
@@ -71,7 +73,9 @@ def _process_event_stream(
     console_enabled: bool,
     console_level: str,
     speed_enabled: bool,
-    notification_manager: NotificationManager
+    notification_manager: NotificationManager,
+    line_configs: Dict[str, Dict],
+    zone_configs: Dict[str, Dict]
 ) -> None:
     """Process event stream from queue."""
 
@@ -105,8 +109,24 @@ def _process_event_stream(
                 json_file.write(json.dumps(enriched_event) + '\n')
                 json_file.flush()
 
-                # Check notification rules
-                notification_manager.process_event(enriched_event)
+                # Check for notifications on zones/lines
+                event_type = enriched_event['event_type']
+                if event_type == 'LINE_CROSS':
+                    line_id = enriched_event.get('line_id')
+                    if line_id in line_configs:
+                        notification_manager.check_and_notify(
+                            enriched_event,
+                            line_id=line_id,
+                            notify_config=line_configs[line_id]
+                        )
+                elif event_type in ['ZONE_ENTER', 'ZONE_EXIT']:
+                    zone_id = enriched_event.get('zone_id')
+                    if zone_id in zone_configs:
+                        notification_manager.check_and_notify(
+                            enriched_event,
+                            zone_id=zone_id,
+                            notify_config=zone_configs[zone_id]
+                        )
 
                 # Console output
                 if console_enabled:
@@ -318,6 +338,47 @@ def _build_zone_lookup(config: dict) -> Dict[str, str]:
     for i, zone_config in enumerate(config.get('zones', []), 1):
         zone_id = f"Z{i}"
         lookup[zone_id] = zone_config['description']
+
+    return lookup
+
+
+def _build_line_config_lookup(config: dict) -> Dict[str, Dict]:
+    """Build line_id -> full config lookup table for notifications."""
+    lookup = {}
+    vertical_count = 0
+    horizontal_count = 0
+
+    for line_config in config.get('lines', []):
+        if line_config['type'] == 'vertical':
+            vertical_count += 1
+            line_id = f"V{vertical_count}"
+        else:
+            horizontal_count += 1
+            line_id = f"H{horizontal_count}"
+
+        # Store notification-related config
+        lookup[line_id] = {
+            'notify_email': line_config.get('notify_email', False),
+            'cooldown_minutes': line_config.get('cooldown_minutes', 60),
+            'message': line_config.get('message')
+        }
+
+    return lookup
+
+
+def _build_zone_config_lookup(config: dict) -> Dict[str, Dict]:
+    """Build zone_id -> full config lookup table for notifications."""
+    lookup = {}
+
+    for i, zone_config in enumerate(config.get('zones', []), 1):
+        zone_id = f"Z{i}"
+
+        # Store notification-related config
+        lookup[zone_id] = {
+            'notify_email': zone_config.get('notify_email', False),
+            'cooldown_minutes': zone_config.get('cooldown_minutes', 60),
+            'message': zone_config.get('message')
+        }
 
     return lookup
 
