@@ -99,8 +99,3 @@ COCO_NAME_TO_ID = {name: id for id, name in COCO_CLASSES.items()}
 def get_class_name(class_id: int) -> str:
     """Get class name from COCO class ID."""
     return COCO_CLASSES.get(class_id, f'class_{class_id}')
-
-
-def get_class_id(class_name: str) -> int:
-    """Get COCO class ID from class name."""
-    return COCO_NAME_TO_ID[class_name.lower()]

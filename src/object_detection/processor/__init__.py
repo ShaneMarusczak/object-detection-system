@@ -12,7 +12,6 @@ In distributed mode: receives events via Redis Streams
 """
 
 from .coco_classes import COCO_CLASSES, COCO_NAME_TO_ID, get_class_name
-from .enricher import EventEnricher
 from .digest_state import DigestStateManager, DigestPeriodState
 from .dispatcher import dispatch_events, EventDefinition, derive_track_classes
 
@@ -35,7 +34,6 @@ __all__ = [
     'COCO_CLASSES',
     'COCO_NAME_TO_ID',
     'get_class_name',
-    'EventEnricher',
     # State
     'DigestStateManager',
     'DigestPeriodState',
