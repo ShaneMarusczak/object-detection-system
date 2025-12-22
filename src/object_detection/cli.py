@@ -1,0 +1,339 @@
+"""
+Object Detection System CLI
+Main entry point for running the detection system.
+"""
+
+import logging
+import sys
+import time
+import yaml
+from multiprocessing import Process, Queue
+from pathlib import Path
+from typing import Optional
+
+from ultralytics import YOLO
+
+from .analyzer import analyze_events
+from .config import validate_config, load_config_with_env, print_validation_summary, ConfigValidationError
+from .constants import DEFAULT_QUEUE_SIZE
+from .detector import run_detection
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+
+def load_config(config_path: str = 'config.yaml') -> dict:
+    """
+    Load and validate configuration file.
+
+    Args:
+        config_path: Path to config.yaml
+
+    Returns:
+        Validated configuration dictionary
+
+    Raises:
+        SystemExit: If config cannot be loaded or is invalid
+    """
+    config_file = Path(config_path)
+
+    if not config_file.exists():
+        logger.error(f"Configuration file not found: {config_path}")
+        logger.error("Please create config.yaml before running the system")
+        sys.exit(1)
+
+    try:
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+        logger.info(f"Configuration loaded from {config_path}")
+
+    except yaml.YAMLError as e:
+        logger.error(f"Invalid YAML in {config_path}: {e}")
+        sys.exit(1)
+
+    # Apply environment variable overrides
+    config = load_config_with_env(config)
+
+    # Validate configuration
+    try:
+        validate_config(config)
+        logger.info("Configuration validated")
+    except ConfigValidationError as e:
+        logger.error(f"\n{e}")
+        logger.error("\nPlease fix config.yaml and try again")
+        sys.exit(1)
+
+    return config
+
+
+def get_model_class_names(model_path: str) -> dict:
+    """
+    Load YOLO model and extract class names.
+
+    Args:
+        model_path: Path to .pt model file
+
+    Returns:
+        Dictionary mapping class IDs to names
+
+    Raises:
+        SystemExit: If model cannot be loaded
+    """
+    try:
+        logger.info(f"Loading model to extract class names...")
+        model = YOLO(model_path)
+        class_names = model.names
+        logger.info(f"Model loaded: {len(class_names)} classes available")
+        return class_names
+
+    except Exception as e:
+        logger.error(f"Failed to load model: {e}")
+        sys.exit(1)
+
+
+def run_detector_process(queue: Queue, config: dict) -> None:
+    """Wrapper for detection process with error handling."""
+    try:
+        run_detection(queue, config)
+    except Exception as e:
+        logger.error(f"Fatal error in detector: {e}", exc_info=True)
+        queue.put(None)  # Signal analyzer to stop
+
+
+def run_analyzer_process(queue: Queue, config: dict, model_names: dict) -> None:
+    """Wrapper for analysis process with error handling."""
+    try:
+        analyze_events(queue, config, model_names)
+    except Exception as e:
+        logger.error(f"Fatal error in analyzer: {e}", exc_info=True)
+
+
+def parse_duration(duration_arg: Optional[str], config: dict) -> float:
+    """
+    Parse duration from command line argument or config.
+
+    Args:
+        duration_arg: Command line duration argument
+        config: Configuration dictionary
+
+    Returns:
+        Duration in hours
+
+    Raises:
+        SystemExit: If duration is invalid
+    """
+    if duration_arg:
+        try:
+            duration_hours = float(duration_arg)
+            if duration_hours <= 0:
+                raise ValueError("Duration must be positive")
+            return duration_hours
+        except ValueError as e:
+            logger.error(f"Invalid duration '{duration_arg}' - {e}")
+            logger.error("Usage: python -m object_detection.cli [hours]")
+            sys.exit(1)
+    else:
+        return config['runtime']['default_duration_hours']
+
+
+def print_banner(config: dict, duration_hours: float) -> None:
+    """Print system startup banner."""
+    duration_seconds = int(duration_hours * 3600)
+
+    print("\n" + "="*70)
+    print("OBJECT DETECTION SYSTEM v2.0")
+    print("="*70)
+
+    print_validation_summary(config)
+
+    print(f"Runtime Configuration:")
+    print(f"  Duration: {duration_hours} hour(s) ({duration_seconds/60:.0f} minutes)")
+    print(f"  Camera: {config['camera']['url']}")
+    print(f"  Queue size: {config['runtime'].get('queue_size', DEFAULT_QUEUE_SIZE)}")
+    print(f"  Press Ctrl+C to stop early")
+    print("="*70)
+    print()
+
+
+def monitor_processes(
+    detector: Process,
+    analyzer: Process,
+    duration_seconds: int,
+    start_time: float
+) -> str:
+    """
+    Monitor processes and return reason for stopping.
+
+    Args:
+        detector: Detector process
+        analyzer: Analyzer process
+        duration_seconds: Maximum runtime in seconds
+        start_time: Start timestamp
+
+    Returns:
+        Reason for stopping ('duration', 'detector_died', 'analyzer_died', 'interrupted')
+    """
+    try:
+        while True:
+            elapsed = time.time() - start_time
+
+            # Check if duration reached
+            if elapsed >= duration_seconds:
+                return 'duration'
+
+            # Check if detector died unexpectedly
+            if not detector.is_alive():
+                return 'detector_died'
+
+            # Check if analyzer died unexpectedly
+            if not analyzer.is_alive():
+                return 'analyzer_died'
+
+            # Sleep briefly to avoid busy waiting
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        return 'interrupted'
+
+
+def shutdown_processes(detector: Process, analyzer: Process, config: dict) -> None:
+    """Gracefully shutdown detector and analyzer processes."""
+    logger.info("Shutting down...")
+
+    # Stop detector first (stops producing events)
+    if detector.is_alive():
+        logger.info("Stopping detector...")
+        detector.terminate()
+        timeout = config['runtime'].get('detector_shutdown_timeout', 5)
+        detector.join(timeout=timeout)
+
+        if detector.is_alive():
+            logger.warning("Detector not responding - forcing shutdown...")
+            detector.kill()
+            detector.join()
+        else:
+            logger.info("Detector stopped")
+
+    # Wait for analyzer to finish processing remaining events
+    if analyzer.is_alive():
+        logger.info("Waiting for analyzer to complete...")
+        timeout = config['runtime'].get('analyzer_shutdown_timeout', 10)
+        analyzer.join(timeout=timeout)
+
+        if analyzer.is_alive():
+            logger.warning("Analyzer timeout - forcing shutdown...")
+            analyzer.terminate()
+            analyzer.join()
+        else:
+            logger.info("Analyzer completed")
+
+
+def print_final_status(
+    detector: Process,
+    analyzer: Process,
+    config: dict,
+    reason: str,
+    elapsed: float
+) -> None:
+    """Print final status and output file locations."""
+    print(f"\n{'='*70}")
+
+    if reason == 'duration':
+        print(f"Duration reached - stopped after {elapsed/60:.1f} minutes")
+    elif reason == 'detector_died':
+        print(f"Detector process ended")
+    elif reason == 'analyzer_died':
+        print(f"Analyzer process ended unexpectedly")
+    elif reason == 'interrupted':
+        print(f"Interrupted by user")
+
+    print("="*70)
+    print("SYSTEM SHUTDOWN COMPLETE")
+    print("="*70)
+
+    # Check process exit codes
+    if detector.exitcode != 0 and detector.exitcode is not None:
+        logger.warning(f"Detector exited with code {detector.exitcode}")
+
+    if analyzer.exitcode != 0 and analyzer.exitcode is not None:
+        logger.warning(f"Analyzer exited with code {analyzer.exitcode}")
+
+    print(f"\nCheck output files in:")
+    print(f"  {config['output']['json_dir']}/")
+
+    if config.get('frame_saving', {}).get('enabled', False):
+        print(f"  {config['frame_saving']['output_dir']}/")
+
+    print(f"{'='*70}\n")
+
+
+def main() -> None:
+    """Main orchestrator function."""
+    # Check Python version
+    if sys.version_info < (3, 7):
+        logger.error("Python 3.7 or higher required")
+        sys.exit(1)
+
+    # Load configuration
+    config = load_config()
+
+    # Parse duration
+    duration_arg = sys.argv[1] if len(sys.argv) > 1 else None
+    duration_hours = parse_duration(duration_arg, config)
+    duration_seconds = int(duration_hours * 3600)
+
+    # Print banner
+    print_banner(config, duration_hours)
+
+    # Get model class names before spawning processes
+    model_names = get_model_class_names(config['detection']['model_file'])
+
+    # Create shared queue
+    queue_size = config['runtime'].get('queue_size', DEFAULT_QUEUE_SIZE)
+    queue = Queue(maxsize=queue_size)
+
+    # Start analyzer first (consumer must be ready)
+    logger.info("Starting analyzer process...")
+    analyzer = Process(
+        target=run_analyzer_process,
+        args=(queue, config, model_names),
+        name="Analyzer"
+    )
+    analyzer.start()
+
+    # Brief delay to ensure analyzer is ready
+    startup_delay = config['runtime'].get('analyzer_startup_delay', 1)
+    time.sleep(startup_delay)
+
+    # Start detector
+    logger.info("Starting detector process...")
+    detector = Process(
+        target=run_detector_process,
+        args=(queue, config),
+        name="Detector"
+    )
+    detector.start()
+
+    print("\n" + "="*70)
+    print("SYSTEM RUNNING")
+    print("="*70 + "\n")
+
+    # Monitor processes
+    start_time = time.time()
+    reason = monitor_processes(detector, analyzer, duration_seconds, start_time)
+    elapsed = time.time() - start_time
+
+    # Graceful shutdown
+    shutdown_processes(detector, analyzer, config)
+
+    # Print final status
+    print_final_status(detector, analyzer, config, reason, elapsed)
+
+
+if __name__ == "__main__":
+    main()

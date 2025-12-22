@@ -1,0 +1,95 @@
+# Object Detection System Requirements
+# For NVIDIA Jetson Orin Nano
+
+# ============================================================================
+# PyTorch for Jetson (DO NOT install from pip)
+# ============================================================================
+# Follow installation instructions at:
+# https://docs.nvidia.com/deeplearning/frameworks/install-pytorch-jetson-platform/index.html
+#
+# For Jetson Orin Nano with JetPack 5.x:
+#   1. Download PyTorch wheel from:
+#      https://developer.download.nvidia.com/compute/redist/jp/v50/pytorch/
+#   2. Install with:
+#      pip install torch-*.whl
+#
+# Expected version: torch>=2.0.0+nv23.x
+# torch  # DO NOT UNCOMMENT - Install manually from NVIDIA
+# torchvision  # DO NOT UNCOMMENT - Install manually from NVIDIA
+
+# ============================================================================
+# Core Dependencies
+# ============================================================================
+ultralytics>=8.0.0          # YOLO models and training
+opencv-python>=4.5.0        # Computer vision library
+pyyaml>=6.0                 # Configuration file parsing
+numpy>=1.21.0               # Numerical computing
+
+# ============================================================================
+# Optional Dependencies
+# ============================================================================
+# Uncomment if needed for your use case
+
+# Data analysis
+# pandas>=1.3.0
+# matplotlib>=3.5.0
+
+# MongoDB integration
+# pymongo>=4.0.0
+
+# Advanced analytics
+# scipy>=1.7.0
+# scikit-learn>=1.0.0
+
+# Web interface
+# flask>=2.0.0
+# fastapi>=0.95.0
+
+# ============================================================================
+# Installation Instructions for Jetson Orin Nano
+# ============================================================================
+#
+# 1. Setup virtual environment (recommended):
+#    python3 -m venv venv
+#    source venv/bin/activate
+#
+# 2. Install PyTorch from NVIDIA (REQUIRED):
+#    # For JetPack 5.x (Ubuntu 20.04):
+#    wget https://developer.download.nvidia.com/compute/redist/jp/v50/pytorch/torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl
+#    pip install torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl
+#
+#    # Install torchvision (compatible version):
+#    sudo apt-get install libjpeg-dev zlib1g-dev libpython3-dev libopenblas-dev libavcodec-dev libavformat-dev libswscale-dev
+#    git clone --branch v0.15.1 https://github.com/pytorch/vision torchvision
+#    cd torchvision
+#    export BUILD_VERSION=0.15.1
+#    python3 setup.py install --user
+#    cd ..
+#    rm -rf torchvision
+#
+# 3. Install other dependencies:
+#    pip install -r requirements.txt
+#
+# 4. Verify installation:
+#    python3 -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
+#
+# 5. Download YOLO model:
+#    wget https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt
+#
+# ============================================================================
+# Troubleshooting
+# ============================================================================
+#
+# If you encounter "illegal instruction" errors:
+#   - Make sure you're using ARM-compiled wheels from NVIDIA
+#   - Don't install torch/torchvision from PyPI
+#
+# If CUDA is not detected:
+#   - Check JetPack version: apt-cache show nvidia-jetpack
+#   - Verify CUDA: /usr/local/cuda/bin/nvcc --version
+#   - Check GPU: sudo nvpmodel -q
+#
+# For OpenCV issues on Jetson:
+#   - Use system OpenCV: sudo apt-get install python3-opencv
+#   - Or build from source for better performance
+#
