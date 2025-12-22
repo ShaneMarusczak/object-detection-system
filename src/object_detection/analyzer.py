@@ -27,10 +27,8 @@ def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str])
         model_names: Dictionary mapping COCO class IDs to names
     """
     # Build lookup tables
-    line_descriptions = _build_line_lookup(config)
-    zone_descriptions = _build_zone_lookup(config)
-    line_configs = _build_line_config_lookup(config)
-    zone_configs = _build_zone_config_lookup(config)
+    line_descriptions, line_configs = _build_line_lookups(config)
+    zone_descriptions, zone_configs = _build_zone_lookups(config)
 
     # Setup output
     os.makedirs(config['output']['json_dir'], exist_ok=True)
@@ -192,59 +190,32 @@ def _enrich_event(
     event_type = event['event_type']
 
     if event_type == 'LINE_CROSS':
-        _enrich_line_cross_event(enriched, event, line_descriptions, speed_enabled)
+        line_id = event['line_id']
+        enriched['line_id'] = line_id
+        enriched['line_description'] = line_descriptions.get(line_id, 'unknown')
+        enriched['direction'] = event['direction']
+
+        # Add speed data if available
+        if speed_enabled and 'distance_pixels' in event and 'time_elapsed' in event:
+            distance = event['distance_pixels']
+            time_elapsed = event['time_elapsed']
+            speed = distance / time_elapsed if time_elapsed > 0 else 0
+            enriched['distance_pixels'] = round(distance, 2)
+            enriched['time_elapsed'] = round(time_elapsed, 3)
+            enriched['speed_px_per_sec'] = round(speed, 2)
+
     elif event_type == 'ZONE_ENTER':
-        _enrich_zone_enter_event(enriched, event, zone_descriptions)
+        zone_id = event['zone_id']
+        enriched['zone_id'] = zone_id
+        enriched['zone_description'] = zone_descriptions.get(zone_id, 'unknown')
+
     elif event_type == 'ZONE_EXIT':
-        _enrich_zone_exit_event(enriched, event, zone_descriptions)
+        zone_id = event['zone_id']
+        enriched['zone_id'] = zone_id
+        enriched['zone_description'] = zone_descriptions.get(zone_id, 'unknown')
+        enriched['dwell_time'] = round(event['dwell_time'], 3)
 
     return enriched
-
-
-def _enrich_line_cross_event(
-    enriched: dict,
-    event: dict,
-    line_descriptions: Dict[str, str],
-    speed_enabled: bool
-) -> None:
-    """Add line crossing specific fields."""
-    line_id = event['line_id']
-    enriched['line_id'] = line_id
-    enriched['line_description'] = line_descriptions.get(line_id, 'unknown')
-    enriched['direction'] = event['direction']
-
-    # Add speed data if available
-    if speed_enabled and 'distance_pixels' in event and 'time_elapsed' in event:
-        distance = event['distance_pixels']
-        time_elapsed = event['time_elapsed']
-        speed = distance / time_elapsed if time_elapsed > 0 else 0
-
-        enriched['distance_pixels'] = round(distance, 2)
-        enriched['time_elapsed'] = round(time_elapsed, 3)
-        enriched['speed_px_per_sec'] = round(speed, 2)
-
-
-def _enrich_zone_enter_event(
-    enriched: dict,
-    event: dict,
-    zone_descriptions: Dict[str, str]
-) -> None:
-    """Add zone enter specific fields."""
-    zone_id = event['zone_id']
-    enriched['zone_id'] = zone_id
-    enriched['zone_description'] = zone_descriptions.get(zone_id, 'unknown')
-
-
-def _enrich_zone_exit_event(
-    enriched: dict,
-    event: dict,
-    zone_descriptions: Dict[str, str]
-) -> None:
-    """Add zone exit specific fields."""
-    zone_id = event['zone_id']
-    enriched['zone_id'] = zone_id
-    enriched['zone_description'] = zone_descriptions.get(zone_id, 'unknown')
-    enriched['dwell_time'] = round(event['dwell_time'], 3)
 
 
 def _print_event(event: dict, level: str, event_count: int) -> None:
@@ -312,11 +283,10 @@ def _log_final_summary(
     logger.info(f"Output: {json_filename}")
 
 
-def _build_line_lookup(config: dict) -> Dict[str, str]:
-    """Build line_id -> description lookup table."""
-    lookup = {}
-    vertical_count = 0
-    horizontal_count = 0
+def _build_line_lookups(config: dict) -> tuple[Dict[str, str], Dict[str, Dict]]:
+    """Build line_id -> description and config lookup tables."""
+    descriptions, configs = {}, {}
+    vertical_count = horizontal_count = 0
 
     for line_config in config.get('lines', []):
         if line_config['type'] == 'vertical':
@@ -326,61 +296,30 @@ def _build_line_lookup(config: dict) -> Dict[str, str]:
             horizontal_count += 1
             line_id = f"H{horizontal_count}"
 
-        lookup[line_id] = line_config['description']
-
-    return lookup
-
-
-def _build_zone_lookup(config: dict) -> Dict[str, str]:
-    """Build zone_id -> description lookup table."""
-    lookup = {}
-
-    for i, zone_config in enumerate(config.get('zones', []), 1):
-        zone_id = f"Z{i}"
-        lookup[zone_id] = zone_config['description']
-
-    return lookup
-
-
-def _build_line_config_lookup(config: dict) -> Dict[str, Dict]:
-    """Build line_id -> full config lookup table for notifications."""
-    lookup = {}
-    vertical_count = 0
-    horizontal_count = 0
-
-    for line_config in config.get('lines', []):
-        if line_config['type'] == 'vertical':
-            vertical_count += 1
-            line_id = f"V{vertical_count}"
-        else:
-            horizontal_count += 1
-            line_id = f"H{horizontal_count}"
-
-        # Store notification-related config
-        lookup[line_id] = {
+        descriptions[line_id] = line_config['description']
+        configs[line_id] = {
             'notify_email': line_config.get('notify_email', False),
             'cooldown_minutes': line_config.get('cooldown_minutes', 60),
             'message': line_config.get('message')
         }
 
-    return lookup
+    return descriptions, configs
 
 
-def _build_zone_config_lookup(config: dict) -> Dict[str, Dict]:
-    """Build zone_id -> full config lookup table for notifications."""
-    lookup = {}
+def _build_zone_lookups(config: dict) -> tuple[Dict[str, str], Dict[str, Dict]]:
+    """Build zone_id -> description and config lookup tables."""
+    descriptions, configs = {}, {}
 
     for i, zone_config in enumerate(config.get('zones', []), 1):
         zone_id = f"Z{i}"
-
-        # Store notification-related config
-        lookup[zone_id] = {
+        descriptions[zone_id] = zone_config['description']
+        configs[zone_id] = {
             'notify_email': zone_config.get('notify_email', False),
             'cooldown_minutes': zone_config.get('cooldown_minutes', 60),
             'message': zone_config.get('message')
         }
 
-    return lookup
+    return descriptions, configs
 
 
 def _generate_output_filename(output_dir: str) -> str:
