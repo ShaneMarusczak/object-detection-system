@@ -1,0 +1,210 @@
+# ==============================================================================
+# STRESS TEST CONFIG - Exercises all features for --validate and --plan testing
+# ==============================================================================
+
+detection:
+  model_file: "yolo11n.pt"
+  confidence_threshold: 0.3
+  track_classes: [0, 1, 2, 3, 5, 7, 15, 16]
+
+roi:
+  horizontal:
+    enabled: true
+    crop_from_left_pct: 10
+    crop_to_right_pct: 90
+  vertical:
+    enabled: true
+    crop_from_top_pct: 5
+    crop_to_bottom_pct: 95
+
+lines:
+  - type: vertical
+    position_pct: 30
+    description: "entrance gate"
+  - type: vertical
+    position_pct: 70
+    description: "exit gate"
+  - type: horizontal
+    position_pct: 50
+    description: "midpoint crossing"
+
+zones:
+  - description: "loading dock"
+    x1_pct: 0
+    x2_pct: 25
+    y1_pct: 60
+    y2_pct: 100
+  - description: "restricted area"
+    x1_pct: 75
+    x2_pct: 100
+    y1_pct: 0
+    y2_pct: 40
+  - description: "parking zone"
+    x1_pct: 40
+    x2_pct: 60
+    y1_pct: 70
+    y2_pct: 100
+
+events:
+  - name: "vehicle_entering"
+    match:
+      event_type: "LINE_CROSS"
+      line: "entrance gate"
+      direction: "LTR"
+      object_class: ["car", "motorcycle", "bus", "truck"]
+    actions:
+      json_log: true
+      email_digest: "hourly_traffic"
+
+  - name: "vehicle_exiting"
+    match:
+      event_type: "LINE_CROSS"
+      line: "exit gate"
+      direction: "LTR"
+      object_class: ["car", "motorcycle", "bus", "truck"]
+    actions:
+      json_log: true
+      email_digest: "hourly_traffic"
+
+  - name: "pedestrian_crossing"
+    match:
+      event_type: "LINE_CROSS"
+      line: "midpoint crossing"
+      object_class: "person"
+    actions:
+      json_log: true
+
+  - name: "cyclist_any_gate"
+    match:
+      event_type: "LINE_CROSS"
+      object_class: "bicycle"
+    actions:
+      json_log: true
+      frame_capture:
+        enabled: true
+        annotate: true
+
+  - name: "loading_dock_arrival"
+    match:
+      event_type: "ZONE_ENTER"
+      zone: "loading dock"
+      object_class: ["truck", "car"]
+    actions:
+      json_log: true
+      email_immediate:
+        enabled: true
+        subject: "Vehicle at loading dock"
+        include_frame: true
+
+  - name: "restricted_zone_intrusion"
+    match:
+      event_type: "ZONE_ENTER"
+      zone: "restricted area"
+      object_class: "person"
+    actions:
+      json_log: true
+      email_immediate:
+        enabled: true
+        subject: "ALERT: Person in restricted area"
+        include_frame: true
+        priority: "high"
+      frame_capture:
+        enabled: true
+        annotate: true
+
+  - name: "animal_in_restricted"
+    match:
+      event_type: "ZONE_ENTER"
+      zone: "restricted area"
+      object_class: ["cat", "dog"]
+    actions:
+      json_log: true
+      email_digest: "daily_anomalies"
+
+  - name: "parking_zone_entry"
+    match:
+      event_type: "ZONE_ENTER"
+      zone: "parking zone"
+      object_class: ["car", "motorcycle"]
+    actions:
+      json_log: true
+
+  - name: "loading_dock_departure"
+    match:
+      event_type: "ZONE_EXIT"
+      zone: "loading dock"
+      object_class: ["truck", "car"]
+    actions:
+      json_log: true
+      email_digest: "hourly_traffic"
+
+  - name: "restricted_zone_clear"
+    match:
+      event_type: "ZONE_EXIT"
+      zone: "restricted area"
+      object_class: "person"
+    actions:
+      json_log: true
+
+  - name: "parking_zone_exit"
+    match:
+      event_type: "ZONE_EXIT"
+      zone: "parking zone"
+      object_class: ["car", "motorcycle"]
+    actions:
+      json_log: true
+      email_digest: "daily_summary"
+
+digests:
+  - id: "hourly_traffic"
+    schedule: "0 * * * *"
+    subject: "Hourly Traffic Report"
+    events: ["vehicle_entering", "vehicle_exiting", "loading_dock_departure"]
+    photos: true
+    frame_config:
+      max_photos: 10
+      annotate: true
+
+  - id: "daily_summary"
+    schedule: "0 8 * * *"
+    subject: "Daily Parking Summary"
+    events: ["parking_zone_entry", "parking_zone_exit"]
+    photos: false
+
+  - id: "daily_anomalies"
+    schedule: "0 18 * * *"
+    subject: "Daily Anomaly Report"
+    events: ["animal_in_restricted"]
+    photos: true
+
+notifications:
+  enabled: true
+  email:
+    smtp_server: "smtp.example.com"
+    smtp_port: 587
+    use_tls: true
+    username: "alerts@example.com"
+    password_env: "SMTP_PASSWORD"
+    from_address: "Object Detection <alerts@example.com>"
+    to_addresses:
+      - "security@example.com"
+      - "operations@example.com"
+
+frame_storage:
+  type: "local"
+  local_dir: "frames"
+  retention_days: 30
+
+output:
+  json_dir: "data"
+
+console_output:
+  enabled: true
+  level: "detailed"
+
+camera:
+  url: "rtsp://192.168.1.100:554/stream1"
+
+runtime:
+  default_duration_hours: 24.0
+  queue_size: 2000
