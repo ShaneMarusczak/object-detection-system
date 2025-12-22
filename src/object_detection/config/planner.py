@@ -324,11 +324,12 @@ def _validate_digests(config: dict, result: ValidationResult) -> Set[str]:
                 result.errors.append(f"{digest_ref}: duplicate digest id '{digest_id}'")
             digest_ids.add(digest_id)
 
-        # Period
+        # Period - either period_minutes or schedule (cron) required
         period = digest.get('period_minutes')
-        if period is None:
-            result.errors.append(f"{digest_ref}.period_minutes is required")
-        elif not isinstance(period, (int, float)) or period <= 0:
+        schedule = digest.get('schedule')
+        if period is None and schedule is None:
+            result.errors.append(f"{digest_ref}: either period_minutes or schedule is required")
+        elif period is not None and (not isinstance(period, (int, float)) or period <= 0):
             result.errors.append(f"{digest_ref}.period_minutes must be positive")
 
         # Photos flag
@@ -443,8 +444,9 @@ def _validate_notifications(config: dict, result: ValidationResult) -> None:
         return
 
     email = notifications.get('email', {})
-    if not email.get('enabled'):
-        result.errors.append("Events use email actions but notifications.email.enabled is false")
+    # Email is implicitly enabled if smtp_server is configured
+    if not email.get('enabled') and not email.get('smtp_server'):
+        result.errors.append("Events use email actions but notifications.email is not configured")
         return
 
     # Required email fields
@@ -777,10 +779,13 @@ def print_plan(plan: ConfigPlan) -> None:
         print(f"\n{Colors.CYAN}Digest Schedule:{Colors.RESET}")
         for digest_id, digest in plan.digests.items():
             period = digest.get('period_minutes', 0)
+            schedule = digest.get('schedule')
             label = digest.get('period_label', digest_id)
             photos = "with photos" if digest.get('photos') else "counts only"
 
-            if period >= 1440:
+            if schedule:
+                period_str = f"cron: {schedule}"
+            elif period >= 1440:
                 period_str = f"{period // 1440} day(s)"
             elif period >= 60:
                 period_str = f"{period // 60} hour(s)"
