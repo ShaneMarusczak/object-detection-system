@@ -505,18 +505,14 @@ def _parse_zones(config: dict) -> List[ZoneConfig]:
 def _parse_roi(config: dict) -> ROIConfig:
     """Parse ROI configuration from config."""
     roi = config.get('roi', {})
-    h_roi = roi.get('horizontal', {})
-    v_roi = roi.get('vertical', {})
-
-    h_enabled = h_roi.get('enabled', False)
-    v_enabled = v_roi.get('enabled', False)
+    h_roi, v_roi = roi.get('horizontal', {}), roi.get('vertical', {})
 
     return ROIConfig(
-        enabled=h_enabled or v_enabled,
-        h_from=h_roi.get('crop_from_left_pct', 0) if h_enabled else 0,
-        h_to=h_roi.get('crop_to_right_pct', 100) if h_enabled else 100,
-        v_from=v_roi.get('crop_from_top_pct', 0) if v_enabled else 0,
-        v_to=v_roi.get('crop_to_bottom_pct', 100) if v_enabled else 100
+        enabled=h_roi.get('enabled', False) or v_roi.get('enabled', False),
+        h_from=h_roi.get('crop_from_left_pct', 0),
+        h_to=h_roi.get('crop_to_right_pct', 100),
+        v_from=v_roi.get('crop_from_top_pct', 0),
+        v_to=v_roi.get('crop_to_bottom_pct', 100)
     )
 
 

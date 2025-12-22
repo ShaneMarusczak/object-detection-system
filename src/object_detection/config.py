@@ -83,72 +83,46 @@ def print_validation_summary(config: dict) -> None:
 
     # Detection
     detection = config.get('detection', {})
-    print(f"\nDetection:")
-    print(f"  Model: {detection.get('model_file', 'N/A')}")
-    print(f"  Classes: {detection.get('track_classes', [])}")
+    print(f"\nDetection: {detection.get('model_file', 'N/A')}")
+    print(f"  Tracking classes: {detection.get('track_classes', [])}")
     print(f"  Confidence: {detection.get('confidence_threshold', 'N/A')}")
 
-    # ROI
+    # ROI (if enabled)
     roi = config.get('roi', {})
-    h_roi = roi.get('horizontal', {})
-    v_roi = roi.get('vertical', {})
-
+    h_roi, v_roi = roi.get('horizontal', {}), roi.get('vertical', {})
     if h_roi.get('enabled') or v_roi.get('enabled'):
-        print(f"\nROI Cropping:")
+        parts = []
         if h_roi.get('enabled'):
-            print(f"  Horizontal: {h_roi.get('crop_from_left_pct')}% - "
-                  f"{h_roi.get('crop_to_right_pct')}% from left")
+            parts.append(f"H:{h_roi.get('crop_from_left_pct')}-{h_roi.get('crop_to_right_pct')}%")
         if v_roi.get('enabled'):
-            print(f"  Vertical: {v_roi.get('crop_from_top_pct')}% - "
-                  f"{v_roi.get('crop_to_bottom_pct')}% from top")
+            parts.append(f"V:{v_roi.get('crop_from_top_pct')}-{v_roi.get('crop_to_bottom_pct')}%")
+        print(f"  ROI: {', '.join(parts)}")
 
-    # Lines
-    lines = config.get('lines', [])
+    # Lines and zones (counts only)
+    lines, zones = config.get('lines', []), config.get('zones', [])
+    features = []
     if lines:
-        print(f"\nCounting Lines ({len(lines)}):")
-        for i, line in enumerate(lines, 1):
-            allowed = line.get('allowed_classes', detection.get('track_classes', []))
-            line_type = line['type'][0].upper()
-            idx = i if line['type'] == 'vertical' else sum(1 for l in lines[:i] if l['type'] == 'horizontal')
-            print(f"  {line_type}{idx}: {line['position_pct']}% - "
-                  f"\"{line['description']}\" (classes: {allowed})")
-
-    # Zones
-    zones = config.get('zones', [])
+        features.append(f"{len(lines)} line(s)")
     if zones:
-        print(f"\nZones ({len(zones)}):")
-        for i, zone in enumerate(zones, 1):
-            allowed = zone.get('allowed_classes', detection.get('track_classes', []))
-            print(f"  Z{i}: ({zone['x1_pct']},{zone['y1_pct']})-"
-                  f"({zone['x2_pct']},{zone['y2_pct']})% - "
-                  f"\"{zone['description']}\" (classes: {allowed})")
+        features.append(f"{len(zones)} zone(s)")
+    if features:
+        print(f"\nMonitoring: {', '.join(features)}")
 
-    # Speed calculation
-    speed = config.get('speed_calculation', {})
-    if speed.get('enabled'):
-        print(f"\nSpeed Calculation: Enabled")
-
-    # Frame saving
-    frames = config.get('frame_saving', {})
-    if frames.get('enabled'):
-        print(f"\nFrame Saving: Every {frames.get('interval', 'N/A')} frames")
-
-    # Runtime
-    runtime = config.get('runtime', {})
-    queue_size = runtime.get('queue_size', DEFAULT_QUEUE_SIZE)
-    print(f"\nRuntime:")
-    print(f"  Queue size: {queue_size}")
-    print(f"  Default duration: {runtime.get('default_duration_hours', 1.0)} hours")
-
-    # Output
-    output = config.get('output', {})
-    print(f"\nOutput:")
-    print(f"  JSON: {output.get('json_dir', 'N/A')}/events_YYYYMMDD_HHMMSS.jsonl")
-
-    # Console
+    # Console output
     console = config.get('console_output', {})
     if console.get('enabled'):
-        print(f"  Console: {console.get('level', 'detailed')}")
+        print(f"Console: {console.get('level', 'detailed')}")
+
+    # Optional features
+    extras = []
+    if config.get('speed_calculation', {}).get('enabled'):
+        extras.append("speed tracking")
+    if config.get('frame_saving', {}).get('enabled'):
+        extras.append("frame saving")
+    if config.get('notifications', {}).get('enabled'):
+        extras.append("email notifications")
+    if extras:
+        print(f"Enabled: {', '.join(extras)}")
 
     print("\n" + "="*70 + "\n")
 
