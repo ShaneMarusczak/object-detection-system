@@ -8,26 +8,46 @@ Supports Terraform-like workflow:
   --validate  Check configuration validity
   --plan      Show event routing plan
   --dry-run   Simulate with sample events
+
+Package structure:
+  core/       - Detection and event dispatching
+  config/     - Configuration loading and validation
+  consumers/  - Event consumers (JSON, email, frames)
+  utils/      - Constants and COCO class mappings
 """
 
 __version__ = "2.1.0"
 __author__ = "Shane"
 
-from .detector import run_detection
-from .dispatcher import dispatch_events, derive_track_classes, EventDefinition
-from .config import ConfigValidationError
-from .models import TrackedObject
-from .planner import validate_config_full, build_plan, ConfigPlan, ValidationResult
+# Core components
+from .core import (
+    run_detection,
+    dispatch_events,
+    derive_track_classes,
+    EventDefinition,
+    TrackedObject,
+)
+
+# Configuration
+from .config import (
+    ConfigValidationError,
+    validate_config_full,
+    build_plan,
+    ConfigPlan,
+    ValidationResult,
+)
 
 __all__ = [
+    # Core
     "run_detection",
     "dispatch_events",
     "derive_track_classes",
     "EventDefinition",
+    "TrackedObject",
+    # Config
+    "ConfigValidationError",
     "validate_config_full",
     "build_plan",
     "ConfigPlan",
     "ValidationResult",
-    "ConfigValidationError",
-    "TrackedObject",
 ]

@@ -17,7 +17,7 @@ import cv2
 import torch
 from ultralytics import YOLO
 
-from .constants import (
+from ..utils.constants import (
     FPS_REPORT_INTERVAL,
     FPS_WINDOW_SIZE,
     MIN_TRACKING_TIME,

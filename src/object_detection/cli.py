@@ -20,11 +20,9 @@ from typing import Optional
 
 from ultralytics import YOLO
 
-from .config import load_config_with_env, print_validation_summary
-from .constants import DEFAULT_QUEUE_SIZE
-from .detector import run_detection
-from .dispatcher import dispatch_events
-from .planner import (
+from .config import (
+    load_config_with_env,
+    print_validation_summary,
     validate_config_full,
     build_plan,
     print_validation_result,
@@ -33,6 +31,8 @@ from .planner import (
     generate_sample_events,
     load_sample_events,
 )
+from .utils import DEFAULT_QUEUE_SIZE
+from .core import run_detection, dispatch_events
 
 logger = logging.getLogger(__name__)
 

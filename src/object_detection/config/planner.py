@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Set, Any, Optional, Tuple
 
-from .coco_classes import COCO_NAME_TO_ID, COCO_CLASSES
+from ..utils.coco_classes import COCO_NAME_TO_ID, COCO_CLASSES
 
 
 # ANSI color codes for terminal output

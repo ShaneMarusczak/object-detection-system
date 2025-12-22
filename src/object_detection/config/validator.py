@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any
 
-from .constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
+from ..utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
 
 logger = logging.getLogger(__name__)
 

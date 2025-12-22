@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Any, Set
 
-from .coco_classes import COCO_NAME_TO_ID
-from .consumers import json_writer_consumer, email_notifier_consumer, email_digest_consumer, frame_capture_consumer
+from ..utils.coco_classes import COCO_NAME_TO_ID
+from ..consumers import json_writer_consumer, email_notifier_consumer, email_digest_consumer, frame_capture_consumer
 
 logger = logging.getLogger(__name__)
 
