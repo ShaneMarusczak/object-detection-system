@@ -111,10 +111,8 @@ def _process_event_stream(
         logger.error(f"Error in analysis: {e}", exc_info=True)
     finally:
         _log_final_summary(event_count, event_counts_by_type, json_filename)
-        if event_count > 0:
-            _handle_data_deletion(json_filename)
-        else:
-            logger.info("No events recorded")
+        # Always prompt user, even if no events (file still exists)
+        _handle_data_saving(json_filename)
 
 
 def _enrich_event(
