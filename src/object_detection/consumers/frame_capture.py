@@ -1,15 +1,16 @@
 """
 Frame Capture Consumer
-Captures and saves frames when events match configured filters.
+Captures and saves frames for events. No filtering - if it's on the queue, capture it.
+Cooldown configuration comes from event metadata.
 """
 
 import glob
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from multiprocessing import Queue
-from typing import Dict, Set, Tuple
+from typing import Dict, Optional, Tuple
 
 from .frame_service import FrameService
 
@@ -18,82 +19,49 @@ logger = logging.getLogger(__name__)
 
 def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     """
-    Consume enriched events and capture frames for matching events.
+    Capture frames for events. No filtering - events are pre-filtered by dispatcher.
 
     Args:
-        event_queue: Queue receiving enriched events
-        config: Consumer configuration
+        event_queue: Queue receiving events that need frame capture
+        config: Consumer configuration with frame settings
     """
     # Initialize frame service
     frame_service = FrameService(config)
 
-    # Get filters
-    filters = config.get('filters', {})
-    event_types = filters.get('event_types', ['ZONE_ENTER', 'LINE_CROSS'])
-    zone_descriptions = filters.get('zone_descriptions', [])
-    line_descriptions = filters.get('line_descriptions', [])
-    object_classes = filters.get('object_classes', [])
-
-    # Cooldown configuration
-    cooldown_seconds = config.get('cooldown_seconds', 180)  # 3 minutes default
-
     # Temp frame directory
     temp_frame_dir = config.get('temp_frame_dir', '/tmp/frames')
 
-    # Track cooldowns per (track_id, zone/line identifier)
+    # Track cooldowns per (track_id, zone/line)
     cooldowns: Dict[Tuple[int, str], float] = {}
 
-    logger.info("Frame Capture Consumer started")
-    logger.info(f"Filters: event_types={event_types}, zones={zone_descriptions or 'all'}, "
-                f"lines={line_descriptions or 'all'}, classes={object_classes or 'all'}")
-    logger.info(f"Cooldown: {cooldown_seconds}s per track per zone/line")
-    logger.info(f"Temp frames: {temp_frame_dir}")
+    logger.info("Frame Capture consumer started")
+    logger.info(f"Temp frame dir: {temp_frame_dir}")
+    logger.info(f"Storage: {frame_service.storage_type}")
 
     try:
         while True:
             event = event_queue.get()
 
-            if event is None:  # Shutdown signal
+            if event is None:
+                logger.info("Frame Capture received shutdown signal")
                 break
 
-            # Filter by event type
-            if event['event_type'] not in event_types:
-                continue
+            # Extract frame config from event metadata
+            frame_config = event.get('_frame_capture_config', {})
+            cooldown_seconds = frame_config.get('cooldown_seconds', 180)
 
-            # Filter by object class
-            if object_classes and event.get('object_class_name') not in object_classes:
-                continue
-
-            # Determine zone/line identifier for cooldown
-            cooldown_key = None
-
-            if event['event_type'] in ['ZONE_ENTER', 'ZONE_EXIT']:
-                zone_desc = event.get('zone_description')
-
-                # Filter by zone if specified
-                if zone_descriptions and zone_desc not in zone_descriptions:
-                    continue
-
-                cooldown_key = (event['track_id'], f"zone:{zone_desc}")
-
-            elif event['event_type'] == 'LINE_CROSS':
-                line_desc = event.get('line_description')
-
-                # Filter by line if specified
-                if line_descriptions and line_desc not in line_descriptions:
-                    continue
-
-                cooldown_key = (event['track_id'], f"line:{line_desc}")
-
-            if not cooldown_key:
-                continue
+            # Build cooldown key
+            track_id = event.get('track_id')
+            zone = event.get('zone_description', '')
+            line = event.get('line_description', '')
+            location = zone or line
+            cooldown_key = (track_id, location)
 
             # Check cooldown
             current_time = time.time()
             if cooldown_key in cooldowns:
-                last_capture = cooldowns[cooldown_key]
-                if current_time - last_capture < cooldown_seconds:
-                    logger.debug(f"Skipping frame capture - cooldown active for {cooldown_key}")
+                if current_time - cooldowns[cooldown_key] < cooldown_seconds:
+                    logger.debug(f"Skipping frame capture due to cooldown: {cooldown_key}")
                     continue
 
             # Find matching temp frame
@@ -101,36 +69,35 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
 
             if temp_frame:
                 # Save frame permanently
-                result = frame_service.save_event_frame(event, temp_frame)
+                saved_path = frame_service.save_event_frame(event, temp_frame)
 
-                if result:
-                    # Update cooldown
+                if saved_path:
+                    logger.info(f"Captured frame for: {event.get('event_definition')}")
                     cooldowns[cooldown_key] = current_time
-                    logger.info(f"Captured frame for {event['object_class_name']} "
-                               f"{event['event_type']} (track {event['track_id']})")
                 else:
-                    logger.warning(f"Failed to save frame for event: {event['track_id']}")
+                    logger.warning("Failed to save frame")
             else:
-                logger.warning(f"No temp frame found for timestamp: {event['timestamp']}")
+                logger.warning(f"No temp frame found near {event['timestamp']}")
 
     except KeyboardInterrupt:
-        logger.info("Frame Capture Consumer stopped by user")
+        logger.info("Frame Capture stopped by user")
     except Exception as e:
-        logger.error(f"Error in Frame Capture Consumer: {e}", exc_info=True)
+        logger.error(f"Error in Frame Capture: {e}", exc_info=True)
     finally:
-        logger.info("Frame Capture Consumer shutdown complete")
+        logger.info("Frame Capture shutdown complete")
 
 
-def _find_temp_frame(temp_dir: str, event_timestamp: str) -> str:
+def _find_temp_frame(temp_dir: str, event_timestamp: str, tolerance_seconds: int = 5) -> Optional[str]:
     """
-    Find temporary frame file closest to event timestamp.
+    Find temp frame closest to event timestamp.
 
     Args:
         temp_dir: Directory containing temp frames
         event_timestamp: ISO timestamp of event
+        tolerance_seconds: Maximum time difference to accept
 
     Returns:
-        Path to temp frame file, or None if not found
+        Path to matching frame, or None
     """
     if not os.path.exists(temp_dir):
         return None
@@ -138,46 +105,39 @@ def _find_temp_frame(temp_dir: str, event_timestamp: str) -> str:
     # Parse event timestamp
     try:
         event_time = datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
-        event_time = event_time.replace(tzinfo=None)
+        event_time = event_time.replace(tzinfo=None)  # Make naive for comparison
     except:
-        logger.error(f"Failed to parse timestamp: {event_timestamp}")
+        logger.warning(f"Could not parse event timestamp: {event_timestamp}")
         return None
 
     # Find all temp frames
-    frame_files = glob.glob(os.path.join(temp_dir, 'frame_*.jpg'))
+    temp_frames = glob.glob(os.path.join(temp_dir, 'frame_*.jpg'))
 
-    if not frame_files:
+    if not temp_frames:
         return None
 
-    # Find frame closest to event time (within ±5 seconds)
-    best_match = None
-    min_diff = float('inf')
+    # Find closest frame within tolerance
+    best_frame = None
+    best_diff = float('inf')
 
-    for frame_path in frame_files:
+    for frame_path in temp_frames:
         try:
             # Extract timestamp from filename: frame_YYYYMMDD_HHMMSS_ffffff.jpg
-            basename = os.path.basename(frame_path)
-            parts = basename.replace('.jpg', '').split('_')
+            filename = os.path.basename(frame_path)
+            timestamp_str = filename.replace('frame_', '').replace('.jpg', '')
 
-            if len(parts) >= 4:
-                # frame_20251222_143547_123456.jpg
-                date_str = parts[1]  # YYYYMMDD
-                time_str = parts[2]  # HHMMSS
-                micro_str = parts[3] if len(parts) > 3 else '000000'  # microseconds
+            # Parse: YYYYMMDD_HHMMSS_ffffff
+            frame_time = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S_%f')
 
-                # Parse frame timestamp
-                frame_time = datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S")
+            # Calculate time difference
+            diff = abs((frame_time - event_time).total_seconds())
 
-                # Calculate time difference
-                diff = abs((frame_time - event_time).total_seconds())
-
-                # Only consider frames within 5 seconds
-                if diff < 5 and diff < min_diff:
-                    min_diff = diff
-                    best_match = frame_path
+            if diff < best_diff and diff <= tolerance_seconds:
+                best_diff = diff
+                best_frame = frame_path
 
         except Exception as e:
-            logger.debug(f"Error parsing frame filename {frame_path}: {e}")
+            logger.debug(f"Error parsing frame timestamp from {frame_path}: {e}")
             continue
 
-    return best_match
+    return best_frame

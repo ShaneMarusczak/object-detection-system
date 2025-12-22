@@ -1,12 +1,12 @@
 """
-Per-Event Email Notifier Consumer
-Sends immediate email notifications when tagged zones/lines are crossed.
+Email Notifier Consumer
+Sends immediate emails for events. No filtering - if it's on the queue, send it.
+Cooldown configuration comes from event metadata.
 """
 
 import logging
 from datetime import datetime, timedelta
-from multiprocessing import Queue
-from typing import Dict, Optional
+from typing import Dict
 
 from .email_service import EmailService
 
@@ -14,56 +14,31 @@ logger = logging.getLogger(__name__)
 
 
 class EventNotifier:
-    """Manages per-event notifications with cooldown tracking."""
+    """Tracks cooldowns for immediate email notifications."""
 
-    def __init__(self, email_service: EmailService):
-        """Initialize event notifier.
-
-        Args:
-            email_service: Shared email service for sending emails
-        """
-        self.email_service = email_service
+    def __init__(self):
         self._last_notification: Dict[str, datetime] = {}
 
     def should_notify(self, identifier: str, cooldown_minutes: int) -> bool:
-        """Check if enough time has passed since last notification.
-
-        Args:
-            identifier: Unique identifier (e.g., "Z1" or "V1")
-            cooldown_minutes: Minimum minutes between notifications
-
-        Returns:
-            True if notification should be sent
-        """
+        """Check if enough time has passed since last notification."""
         if identifier not in self._last_notification:
             return True
 
         elapsed = datetime.now() - self._last_notification[identifier]
         return elapsed >= timedelta(minutes=cooldown_minutes)
 
-    def notify(self, event: Dict, identifier: str, custom_message: Optional[str] = None) -> bool:
-        """Send notification for an event.
-
-        Args:
-            event: Enriched event dictionary
-            identifier: Unique identifier for cooldown tracking
-            custom_message: Optional custom message
-
-        Returns:
-            True if notification sent successfully
-        """
-        if self.email_service.send_event_notification(event, custom_message):
-            self._last_notification[identifier] = datetime.now()
-            return True
-        return False
+    def mark_notified(self, identifier: str):
+        """Mark that notification was sent."""
+        self._last_notification[identifier] = datetime.now()
 
 
-def email_notifier_consumer(event_queue: Queue, config: dict) -> None:
+def email_notifier_consumer(event_queue, config: dict) -> None:
     """
-    Consume enriched events and send immediate email notifications.
+    Send immediate email notifications for events.
+    No filtering - events are pre-filtered by dispatcher.
 
     Args:
-        event_queue: Queue receiving enriched events
+        event_queue: Queue receiving events that need immediate emails
         config: Consumer configuration with notification settings
     """
     # Initialize email service
@@ -71,57 +46,50 @@ def email_notifier_consumer(event_queue: Queue, config: dict) -> None:
     email_config = notification_config.get('email', {})
     email_service = EmailService(email_config)
 
-    # Initialize notifier
-    notifier = EventNotifier(email_service)
+    # Initialize cooldown tracker
+    notifier = EventNotifier()
 
-    # Get zone/line configs for notification matching
-    line_configs = config.get('line_configs', {})
-    zone_configs = config.get('zone_configs', {})
-
-    logger.info("Per-Event Email Notifier started")
+    logger.info("Email Notifier started")
     if email_service.enabled:
-        logger.info("Per-event email notifications: Enabled")
+        logger.info("Immediate email notifications: Enabled")
     else:
-        logger.info("Per-event email notifications: Disabled")
+        logger.info("Immediate email notifications: Disabled (will process but not send)")
 
     try:
         while True:
             event = event_queue.get()
 
-            if event is None:  # Shutdown signal
+            if event is None:
+                logger.info("Email Notifier received shutdown signal")
                 break
 
-            if not email_service.enabled:
-                continue
+            # Extract email config from event metadata
+            email_config = event.get('_email_immediate_config', {})
+            cooldown_minutes = email_config.get('cooldown_minutes', 60)
+            custom_message = email_config.get('message')
 
-            # Check for notifications on zones/lines
-            event_type = event['event_type']
+            # Build cooldown identifier from (track_id, zone/line)
+            track_id = event.get('track_id')
+            zone = event.get('zone_description', '')
+            line = event.get('line_description', '')
+            location = zone or line
+            identifier = f"{track_id}:{location}"
 
-            if event_type == 'LINE_CROSS':
-                line_id = event.get('line_id')
-                if line_id in line_configs:
-                    config = line_configs[line_id]
-                    if config.get('notify_email', False):
-                        cooldown = config.get('cooldown_minutes', 60)
-                        if notifier.should_notify(line_id, cooldown):
-                            notifier.notify(event, line_id, config.get('message'))
-                        else:
-                            logger.debug(f"Skipping notification for {line_id} - cooldown active")
+            # Check cooldown
+            if notifier.should_notify(identifier, cooldown_minutes):
+                logger.info(f"Sending email for: {event.get('event_definition')}")
 
-            elif event_type in ['ZONE_ENTER', 'ZONE_EXIT']:
-                zone_id = event.get('zone_id')
-                if zone_id in zone_configs:
-                    config = zone_configs[zone_id]
-                    if config.get('notify_email', False):
-                        cooldown = config.get('cooldown_minutes', 60)
-                        if notifier.should_notify(zone_id, cooldown):
-                            notifier.notify(event, zone_id, config.get('message'))
-                        else:
-                            logger.debug(f"Skipping notification for {zone_id} - cooldown active")
+                if email_service.send_event_notification(event, custom_message):
+                    notifier.mark_notified(identifier)
+                    logger.debug(f"Email sent (cooldown: {cooldown_minutes} min)")
+                else:
+                    logger.warning("Failed to send email notification")
+            else:
+                logger.debug(f"Skipping email due to cooldown: {identifier}")
 
     except KeyboardInterrupt:
-        logger.info("Per-Event Email Notifier stopped by user")
+        logger.info("Email Notifier stopped by user")
     except Exception as e:
-        logger.error(f"Error in Per-Event Email Notifier: {e}", exc_info=True)
+        logger.error(f"Error in Email Notifier: {e}", exc_info=True)
     finally:
-        logger.info("Per-Event Email Notifier shutdown complete")
+        logger.info("Email Notifier shutdown complete")
