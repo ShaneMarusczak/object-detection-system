@@ -22,7 +22,7 @@ from ultralytics import YOLO
 
 from .config import (
     load_config_with_env,
-    print_validation_summary,
+    prepare_runtime_config,
     validate_config_full,
     build_plan,
     print_validation_result,
@@ -276,15 +276,22 @@ def print_banner(config: dict, duration_hours: float) -> None:
     duration_seconds = int(duration_hours * 3600)
 
     print("\n" + "="*70)
-    print("OBJECT DETECTION SYSTEM v2.0")
+    print("OBJECT DETECTION SYSTEM v2.1")
     print("="*70)
 
-    print_validation_summary(config)
+    # Quick config summary
+    detection = config.get('detection', {})
+    events = config.get('events', [])
+    lines = config.get('lines', [])
+    zones = config.get('zones', [])
 
-    print(f"Runtime Configuration:")
+    print(f"\nModel: {detection.get('model_file', 'N/A')}")
+    print(f"Events: {len(events)} defined")
+    print(f"Geometry: {len(lines)} line(s), {len(zones)} zone(s)")
+
+    print(f"\nRuntime:")
     print(f"  Duration: {duration_hours} hour(s) ({duration_seconds/60:.0f} minutes)")
     print(f"  Camera: {config['camera']['url']}")
-    print(f"  Queue size: {config['runtime'].get('queue_size', DEFAULT_QUEUE_SIZE)}")
     print(f"  Press Ctrl+C to stop early")
     print("="*70)
     print()
@@ -482,6 +489,9 @@ def main() -> None:
     # Normal execution mode
     # Load configuration
     config = load_config(args.config)
+
+    # Derive track_classes from events (event-driven wiring)
+    config = prepare_runtime_config(config)
 
     # Parse duration
     duration_hours = parse_duration(args.duration, config)

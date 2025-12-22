@@ -24,6 +24,7 @@ ultralytics>=8.0.0          # YOLO models and training
 opencv-python>=4.5.0        # Computer vision library
 pyyaml>=6.0                 # Configuration file parsing
 numpy>=1.21.0               # Numerical computing
+pydantic>=2.0.0             # Configuration validation
 
 # ============================================================================
 # Optional Dependencies

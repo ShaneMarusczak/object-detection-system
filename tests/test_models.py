@@ -3,7 +3,7 @@ Tests for data models
 """
 
 import unittest
-from src.object_detection.models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
+from src.object_detection.core.models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
 
 
 class TestTrackedObject(unittest.TestCase):

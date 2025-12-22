@@ -1,39 +1,78 @@
 """
 Configuration loading, validation, and planning.
+
+Provides Terraform-like workflow:
+- validate_config_full: Comprehensive validation with errors/warnings
+- build_plan: Show what events will be routed where
+- simulate_dry_run: Test with sample events
+- load_config_with_env: Apply environment variable overrides
+
+Pydantic schemas available for type-safe validation:
+- Config: Complete configuration schema
+- validate_config_pydantic: Validate and parse config to Pydantic model
 """
 
-from .validator import (
-    ConfigValidationError,
-    validate_config,
-    load_config_with_env,
-    print_validation_summary,
-)
 from .planner import (
+    # Exception
+    ConfigValidationError,
+    # Config loading & preparation
+    load_config_with_env,
+    prepare_runtime_config,
+    derive_track_classes,
+    # Validation
     validate_config_full,
+    ValidationResult,
+    # Planning
     build_plan,
+    ConfigPlan,
+    EventPlan,
+    # Display
     print_validation_result,
     print_plan,
+    # Dry-run
     simulate_dry_run,
     generate_sample_events,
     load_sample_events,
-    ConfigPlan,
-    ValidationResult,
+)
+
+from .schemas import (
+    Config,
+    validate_config_pydantic,
+    # Sub-schemas for type hints
+    DetectionConfig,
+    EventConfig,
+    LineConfig,
+    ZoneConfig,
+    DigestConfig,
 )
 
 __all__ = [
-    # Validator
+    # Exception
     "ConfigValidationError",
-    "validate_config",
+    # Config loading & preparation
     "load_config_with_env",
-    "print_validation_summary",
-    # Planner
+    "prepare_runtime_config",
+    "derive_track_classes",
+    # Validation
     "validate_config_full",
+    "ValidationResult",
+    # Pydantic validation
+    "Config",
+    "validate_config_pydantic",
+    "DetectionConfig",
+    "EventConfig",
+    "LineConfig",
+    "ZoneConfig",
+    "DigestConfig",
+    # Planning
     "build_plan",
+    "ConfigPlan",
+    "EventPlan",
+    # Display
     "print_validation_result",
     "print_plan",
+    # Dry-run
     "simulate_dry_run",
     "generate_sample_events",
     "load_sample_events",
-    "ConfigPlan",
-    "ValidationResult",
 ]

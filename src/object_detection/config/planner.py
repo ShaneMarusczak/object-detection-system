@@ -5,15 +5,26 @@ Provides:
 - validate: Check config syntax and semantic correctness
 - plan: Show event routing graph and dependency resolution
 - dry-run: Simulate event processing with sample events
+- load_config_with_env: Apply environment variable overrides
 """
 
 import json
+import logging
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Set, Any, Optional, Tuple
 
 from ..utils.coco_classes import COCO_NAME_TO_ID, COCO_CLASSES
+from ..utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
+
+logger = logging.getLogger(__name__)
+
+
+class ConfigValidationError(Exception):
+    """Raised when config validation fails."""
+    pass
 
 
 # ANSI color codes for terminal output
@@ -86,6 +97,9 @@ def validate_config_full(config: dict) -> ValidationResult:
     # Detection settings
     _validate_detection_settings(config, result)
 
+    # ROI settings
+    _validate_roi(config, result)
+
     # Geometry (lines and zones)
     zone_descriptions = _validate_zones(config, result)
     line_descriptions = _validate_lines(config, result)
@@ -109,6 +123,33 @@ def validate_config_full(config: dict) -> ValidationResult:
         result.valid = False
 
     return result
+
+
+def load_config_with_env(config: dict) -> dict:
+    """
+    Apply environment variable overrides to config.
+
+    Args:
+        config: Base configuration dictionary
+
+    Returns:
+        Configuration with environment variables applied
+    """
+    # Override camera URL from environment if set
+    if ENV_CAMERA_URL in os.environ:
+        camera_url = os.environ[ENV_CAMERA_URL]
+        logger.info(f"Using camera URL from environment: {ENV_CAMERA_URL}")
+        if 'camera' not in config:
+            config['camera'] = {}
+        config['camera']['url'] = camera_url
+
+    # Set default queue size if not specified
+    if 'runtime' not in config:
+        config['runtime'] = {}
+    if 'queue_size' not in config['runtime']:
+        config['runtime']['queue_size'] = DEFAULT_QUEUE_SIZE
+
+    return config
 
 
 def _validate_required_sections(config: dict, result: ValidationResult) -> None:
@@ -140,6 +181,51 @@ def _validate_detection_settings(config: dict, result: ValidationResult) -> None
         result.errors.append("detection.confidence_threshold is required")
     elif not isinstance(conf, (int, float)) or not 0.0 <= conf <= 1.0:
         result.errors.append("detection.confidence_threshold must be between 0.0 and 1.0")
+
+
+def _validate_roi(config: dict, result: ValidationResult) -> None:
+    """Validate ROI (region of interest) settings."""
+    roi = config.get('roi')
+    if not roi:
+        return  # ROI is optional
+
+    # Validate horizontal ROI
+    h_roi = roi.get('horizontal', {})
+    if h_roi.get('enabled'):
+        left = h_roi.get('crop_from_left_pct')
+        right = h_roi.get('crop_to_right_pct')
+
+        if left is None:
+            result.errors.append("roi.horizontal.crop_from_left_pct required when enabled")
+        elif not isinstance(left, (int, float)) or not 0 <= left <= 100:
+            result.errors.append("roi.horizontal.crop_from_left_pct must be 0-100")
+
+        if right is None:
+            result.errors.append("roi.horizontal.crop_to_right_pct required when enabled")
+        elif not isinstance(right, (int, float)) or not 0 <= right <= 100:
+            result.errors.append("roi.horizontal.crop_to_right_pct must be 0-100")
+
+        if left is not None and right is not None and left >= right:
+            result.errors.append("roi.horizontal: crop_to_right_pct must be > crop_from_left_pct")
+
+    # Validate vertical ROI
+    v_roi = roi.get('vertical', {})
+    if v_roi.get('enabled'):
+        top = v_roi.get('crop_from_top_pct')
+        bottom = v_roi.get('crop_to_bottom_pct')
+
+        if top is None:
+            result.errors.append("roi.vertical.crop_from_top_pct required when enabled")
+        elif not isinstance(top, (int, float)) or not 0 <= top <= 100:
+            result.errors.append("roi.vertical.crop_from_top_pct must be 0-100")
+
+        if bottom is None:
+            result.errors.append("roi.vertical.crop_to_bottom_pct required when enabled")
+        elif not isinstance(bottom, (int, float)) or not 0 <= bottom <= 100:
+            result.errors.append("roi.vertical.crop_to_bottom_pct must be 0-100")
+
+        if top is not None and bottom is not None and top >= bottom:
+            result.errors.append("roi.vertical: crop_to_bottom_pct must be > crop_from_top_pct")
 
 
 def _validate_zones(config: dict, result: ValidationResult) -> Set[str]:
@@ -415,6 +501,66 @@ def _derive_track_classes_from_events(config: dict, result: ValidationResult) ->
             track_classes.append((COCO_NAME_TO_ID[name], name))
 
     return track_classes
+
+
+def derive_track_classes(config: dict) -> List[int]:
+    """
+    Derive COCO class IDs from event definitions.
+
+    This is the public API for getting track_classes from events.
+    Returns just the IDs (not name pairs) for use by detector.
+    """
+    class_names = set()
+
+    for event in config.get('events', []):
+        obj_class = event.get('match', {}).get('object_class')
+        if obj_class:
+            if isinstance(obj_class, list):
+                class_names.update(c.lower() for c in obj_class)
+            else:
+                class_names.add(obj_class.lower())
+
+    # Convert to IDs
+    class_ids = []
+    for name in class_names:
+        if name in COCO_NAME_TO_ID:
+            class_ids.append(COCO_NAME_TO_ID[name])
+        else:
+            logger.warning(f"Unknown class '{name}' in events (not in COCO)")
+
+    return sorted(class_ids)
+
+
+def prepare_runtime_config(config: dict) -> dict:
+    """
+    Prepare config for runtime by deriving track_classes from events.
+
+    This completes the event-driven wiring - you define events,
+    and the system figures out what classes to track.
+
+    Args:
+        config: Validated configuration
+
+    Returns:
+        Config with track_classes populated from events
+    """
+    # Get track_classes from events
+    derived_classes = derive_track_classes(config)
+
+    # Check if config has explicit track_classes
+    explicit_classes = config.get('detection', {}).get('track_classes', [])
+
+    if derived_classes:
+        # Use derived classes from events
+        if explicit_classes and explicit_classes != derived_classes:
+            logger.info(f"Overriding track_classes with classes derived from events: {derived_classes}")
+        config['detection']['track_classes'] = derived_classes
+    elif not explicit_classes:
+        # No events and no explicit classes - warn
+        logger.warning("No track_classes specified and no events defined - nothing will be tracked!")
+        config['detection']['track_classes'] = []
+
+    return config
 
 
 def _derive_consumers(config: dict) -> List[str]:

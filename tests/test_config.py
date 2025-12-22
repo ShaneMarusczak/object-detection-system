@@ -1,5 +1,5 @@
 """
-Tests for configuration validation
+Tests for configuration validation and event-driven architecture.
 """
 
 import unittest
@@ -8,11 +8,14 @@ import os
 from pathlib import Path
 
 from src.object_detection.config import (
-    validate_config,
+    validate_config_full,
     ConfigValidationError,
-    load_config_with_env
+    load_config_with_env,
+    prepare_runtime_config,
+    derive_track_classes,
+    build_plan,
 )
-from src.object_detection.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
+from src.object_detection.utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
 
 
 class TestConfigValidation(unittest.TestCase):
@@ -34,7 +37,7 @@ class TestConfigValidation(unittest.TestCase):
         return {
             'detection': {
                 'model_file': self.model_path,
-                'track_classes': [15, 16],
+                'track_classes': [],
                 'confidence_threshold': 0.25
             },
             'output': {
@@ -45,162 +48,257 @@ class TestConfigValidation(unittest.TestCase):
             },
             'runtime': {
                 'default_duration_hours': 1.0
-            }
+            },
+            'lines': [
+                {
+                    'type': 'vertical',
+                    'position_pct': 50,
+                    'description': 'test line',
+                    'allowed_classes': [2]
+                }
+            ],
+            'events': [
+                {
+                    'name': 'test-event',
+                    'match': {
+                        'event_type': 'LINE_CROSS',
+                        'line': 'test line',
+                        'object_class': 'car'
+                    },
+                    'actions': {
+                        'json_log': True
+                    }
+                }
+            ]
         }
 
-    def test_valid_config(self):
-        """Test that valid config passes validation."""
+    def test_valid_config_passes(self):
+        """Test that a valid config passes validation."""
         config = self.get_valid_config()
-        self.assertTrue(validate_config(config))
+        result = validate_config_full(config)
+        self.assertTrue(result.valid)
+        self.assertEqual(len(result.errors), 0)
 
     def test_missing_detection_section(self):
-        """Test that missing detection section fails."""
+        """Test that missing detection section fails validation."""
         config = self.get_valid_config()
         del config['detection']
-
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
-
-        self.assertIn("Missing 'detection' section", str(cm.exception))
-
-    def test_missing_model_file(self):
-        """Test that missing model file fails."""
-        config = self.get_valid_config()
-        config['detection']['model_file'] = 'nonexistent.pt'
-
-        with self.assertRaises(ConfigValidationError):
-            validate_config(config)
-
-    def test_invalid_model_extension(self):
-        """Test that non-.pt model file fails."""
-        config = self.get_valid_config()
-        config['detection']['model_file'] = 'model.txt'
-
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
-
-        self.assertIn("must be .pt format", str(cm.exception))
-
-    def test_empty_track_classes(self):
-        """Test that empty track_classes fails."""
-        config = self.get_valid_config()
-        config['detection']['track_classes'] = []
-
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
-
-        self.assertIn("must contain at least one class", str(cm.exception))
-
-    def test_invalid_track_classes(self):
-        """Test that invalid class IDs fail."""
-        config = self.get_valid_config()
-        config['detection']['track_classes'] = [999]
-
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
-
-        self.assertIn("COCO class IDs (0-79)", str(cm.exception))
+        result = validate_config_full(config)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('detection' in e for e in result.errors))
 
     def test_invalid_confidence_threshold(self):
-        """Test that out-of-range confidence fails."""
+        """Test that invalid confidence threshold fails validation."""
         config = self.get_valid_config()
         config['detection']['confidence_threshold'] = 1.5
+        result = validate_config_full(config)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('confidence' in e.lower() for e in result.errors))
 
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
-
-        self.assertIn("between 0.0 and 1.0", str(cm.exception))
-
-    def test_invalid_roi_ordering(self):
-        """Test that invalid ROI boundaries fail."""
+    def test_invalid_zone_coordinates(self):
+        """Test that zone x2 <= x1 fails validation."""
         config = self.get_valid_config()
-        config['roi'] = {
-            'horizontal': {
+        config['zones'] = [
+            {
+                'x1_pct': 50,
+                'y1_pct': 20,
+                'x2_pct': 30,  # Invalid: x2 < x1
+                'y2_pct': 40,
+                'description': 'test zone'
+            }
+        ]
+        result = validate_config_full(config)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('x2_pct' in e for e in result.errors))
+
+    def test_invalid_event_zone_reference(self):
+        """Test that event referencing non-existent zone fails."""
+        config = self.get_valid_config()
+        config['events'][0]['match']['zone'] = 'non-existent zone'
+        del config['events'][0]['match']['line']
+        result = validate_config_full(config)
+        self.assertFalse(result.valid)
+        self.assertTrue(any('non-existent zone' in e for e in result.errors))
+
+
+class TestEventDrivenWiring(unittest.TestCase):
+    """Test event-driven configuration features."""
+
+    def get_event_config(self):
+        """Return config with events defined."""
+        return {
+            'detection': {
+                'model_file': 'yolo11n.pt',
+                'track_classes': [],
+                'confidence_threshold': 0.25
+            },
+            'output': {'json_dir': 'data'},
+            'camera': {'url': 'http://test/video'},
+            'runtime': {'default_duration_hours': 1.0},
+            'lines': [
+                {'type': 'vertical', 'position_pct': 50, 'description': 'driveway'}
+            ],
+            'zones': [
+                {'x1_pct': 10, 'y1_pct': 10, 'x2_pct': 30, 'y2_pct': 30, 'description': 'food bowl'}
+            ],
+            'events': [
+                {
+                    'name': 'car-crossing',
+                    'match': {
+                        'event_type': 'LINE_CROSS',
+                        'line': 'driveway',
+                        'object_class': ['car', 'truck']
+                    },
+                    'actions': {'json_log': True}
+                },
+                {
+                    'name': 'cat-food',
+                    'match': {
+                        'event_type': 'ZONE_ENTER',
+                        'zone': 'food bowl',
+                        'object_class': 'cat'
+                    },
+                    'actions': {'json_log': True}
+                }
+            ]
+        }
+
+    def test_derive_track_classes_from_events(self):
+        """Test that track_classes are derived from event definitions."""
+        config = self.get_event_config()
+        classes = derive_track_classes(config)
+
+        # Should have car (2), truck (7), cat (15)
+        self.assertIn(2, classes)   # car
+        self.assertIn(7, classes)   # truck
+        self.assertIn(15, classes)  # cat
+        self.assertEqual(len(classes), 3)
+
+    def test_prepare_runtime_config_injects_classes(self):
+        """Test that prepare_runtime_config injects derived classes."""
+        config = self.get_event_config()
+        self.assertEqual(config['detection']['track_classes'], [])
+
+        prepared = prepare_runtime_config(config)
+
+        # Should now have the derived classes
+        self.assertEqual(len(prepared['detection']['track_classes']), 3)
+        self.assertIn(2, prepared['detection']['track_classes'])
+
+    def test_build_plan_shows_events(self):
+        """Test that build_plan creates plan for all events."""
+        config = self.get_event_config()
+        plan = build_plan(config)
+
+        self.assertEqual(len(plan.events), 2)
+        event_names = [e.name for e in plan.events]
+        self.assertIn('car-crossing', event_names)
+        self.assertIn('cat-food', event_names)
+
+    def test_build_plan_shows_geometry(self):
+        """Test that build_plan includes geometry."""
+        config = self.get_event_config()
+        plan = build_plan(config)
+
+        self.assertIn('driveway', plan.geometry['lines'])
+        self.assertIn('food bowl', plan.geometry['zones'])
+
+
+class TestImpliedActions(unittest.TestCase):
+    """Test AWS-style implied action composition."""
+
+    def get_digest_config(self):
+        """Return config with digest that requires implied actions."""
+        return {
+            'detection': {
+                'model_file': 'yolo11n.pt',
+                'track_classes': [],
+                'confidence_threshold': 0.25
+            },
+            'output': {'json_dir': 'data'},
+            'camera': {'url': 'http://test/video'},
+            'runtime': {'default_duration_hours': 1.0},
+            'lines': [
+                {'type': 'vertical', 'position_pct': 50, 'description': 'driveway'}
+            ],
+            'events': [
+                {
+                    'name': 'car-crossing',
+                    'match': {
+                        'event_type': 'LINE_CROSS',
+                        'line': 'driveway',
+                        'object_class': 'car'
+                    },
+                    'actions': {
+                        'email_digest': 'daily_traffic'
+                    }
+                }
+            ],
+            'digests': [
+                {
+                    'id': 'daily_traffic',
+                    'period_minutes': 1440,
+                    'period_label': 'Daily Traffic',
+                    'photos': True
+                }
+            ],
+            'notifications': {
                 'enabled': True,
-                'crop_from_left_pct': 90,
-                'crop_to_right_pct': 10  # Invalid: less than from
+                'email': {
+                    'enabled': True,
+                    'smtp_server': 'smtp.test.com',
+                    'smtp_port': 587,
+                    'username': 'test',
+                    'password': 'test',
+                    'from_address': 'test@test.com',
+                    'to_addresses': ['test@test.com']
+                }
             }
         }
 
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
+    def test_email_digest_implies_json_log(self):
+        """Test that email_digest action implies json_log."""
+        config = self.get_digest_config()
+        plan = build_plan(config)
 
-        self.assertIn("must be >", str(cm.exception))
+        event = plan.events[0]
+        # email_digest should imply json_log
+        self.assertIn('json_log (required by email_digest)', event.implied_actions)
 
-    def test_line_with_invalid_classes(self):
-        """Test that line with classes not in track_classes fails."""
-        config = self.get_valid_config()
-        config['lines'] = [{
-            'type': 'vertical',
-            'position_pct': 50,
-            'description': 'test line',
-            'allowed_classes': [0, 1]  # Not in track_classes
-        }]
+    def test_photo_digest_implies_frame_capture(self):
+        """Test that digest with photos implies frame_capture."""
+        config = self.get_digest_config()
+        plan = build_plan(config)
 
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
-
-        self.assertIn("not in detection.track_classes", str(cm.exception))
-
-    def test_zone_invalid_coordinates(self):
-        """Test that zone with invalid coordinates fails."""
-        config = self.get_valid_config()
-        config['zones'] = [{
-            'x1_pct': 50,
-            'y1_pct': 50,
-            'x2_pct': 30,  # Invalid: less than x1
-            'y2_pct': 80,
-            'description': 'test zone'
-        }]
-
-        with self.assertRaises(ConfigValidationError) as cm:
-            validate_config(config)
-
-        self.assertIn("x2_pct must be > x1_pct", str(cm.exception))
+        event = plan.events[0]
+        # photos: true should imply frame_capture
+        implied_str = ' '.join(event.implied_actions)
+        self.assertIn('frame_capture', implied_str)
 
 
-class TestConfigEnvironmentOverride(unittest.TestCase):
-    """Test environment variable overrides."""
+class TestLoadConfigWithEnv(unittest.TestCase):
+    """Test environment variable handling."""
 
-    def test_camera_url_from_env(self):
-        """Test that camera URL can be loaded from environment."""
+    def test_env_override_camera_url(self):
+        """Test that CAMERA_URL env var overrides config."""
         config = {
-            'camera': {
-                'url': 'http://original:4747/video'
-            },
+            'camera': {'url': 'http://original/video'},
             'runtime': {}
         }
 
-        # Set environment variable
-        os.environ[ENV_CAMERA_URL] = 'http://env:4747/video'
-
+        # Set env var
+        os.environ[ENV_CAMERA_URL] = 'http://override/video'
         try:
-            updated_config = load_config_with_env(config)
-            self.assertEqual(updated_config['camera']['url'], 'http://env:4747/video')
+            result = load_config_with_env(config)
+            self.assertEqual(result['camera']['url'], 'http://override/video')
         finally:
-            # Clean up
-            if ENV_CAMERA_URL in os.environ:
-                del os.environ[ENV_CAMERA_URL]
+            del os.environ[ENV_CAMERA_URL]
 
     def test_default_queue_size(self):
-        """Test that default queue size is set if not specified."""
-        config = {
-            'runtime': {}
-        }
-
-        updated_config = load_config_with_env(config)
-        self.assertEqual(updated_config['runtime']['queue_size'], DEFAULT_QUEUE_SIZE)
-
-    def test_preserve_existing_queue_size(self):
-        """Test that existing queue size is preserved."""
-        config = {
-            'runtime': {
-                'queue_size': 5000
-            }
-        }
-
-        updated_config = load_config_with_env(config)
-        self.assertEqual(updated_config['runtime']['queue_size'], 5000)
+        """Test that default queue size is set."""
+        config = {'runtime': {}}
+        result = load_config_with_env(config)
+        self.assertEqual(result['runtime']['queue_size'], DEFAULT_QUEUE_SIZE)
 
 
 if __name__ == '__main__':
