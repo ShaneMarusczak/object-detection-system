@@ -135,6 +135,70 @@ console_output:
 
 
 # ==============================================================================
+# NOTIFICATIONS
+# ==============================================================================
+# Send email/SMS alerts when specific event patterns occur
+# Perfect for long-term monitoring (e.g., pet activity while traveling)
+notifications:
+  enabled: false  # Set to true to enable notifications
+
+  # Email notifications via SMTP
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"        # Gmail example
+    smtp_port: 587
+    use_tls: true
+    username: "your-email@gmail.com"
+    password: "your-app-password"        # Use app-specific password for Gmail
+    from_address: "your-email@gmail.com"
+    to_addresses:
+      - "your-email@gmail.com"
+      # - "another-email@example.com"
+
+  # SMS notifications via Twilio (requires: pip install twilio)
+  sms:
+    enabled: false
+    account_sid: "your-twilio-account-sid"
+    auth_token: "your-twilio-auth-token"
+    from_number: "+1234567890"
+    to_numbers:
+      - "+1234567890"
+
+  # Notification rules - when to send alerts
+  rules:
+    # Example: Cat visiting food bowl
+    - name: "Cat at Food Bowl"
+      enabled: true
+      cooldown_minutes: 60  # Don't spam - wait 60 min between notifications
+      message: "Your cat just visited the food bowl!"
+      conditions:
+        event_type: "ZONE_ENTER"
+        zone_description: "food bowl"
+        object_class_name: "cat"
+
+    # Example: Cat spending significant time at water
+    - name: "Cat Drinking Water"
+      enabled: true
+      cooldown_minutes: 120
+      message: "Your cat spent time at the water bowl"
+      conditions:
+        event_type: "ZONE_EXIT"
+        zone_description: "water bowl"
+        object_class_name: "cat"
+        dwell_time:
+          gte: 5  # At least 5 seconds
+
+    # Example: Multiple cats detected
+    - name: "Both Cats Active"
+      enabled: false
+      cooldown_minutes: 180
+      message: "Multiple cats detected - both are active!"
+      conditions:
+        event_type: "LINE_CROSS"
+        # Add custom logic for multiple tracks if needed
+
+
+# ==============================================================================
 # CAMERA SETTINGS
 # ==============================================================================
 camera:

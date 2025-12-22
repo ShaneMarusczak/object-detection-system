@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from .constants import SUMMARY_EVENT_INTERVAL
+from .notifier import NotificationManager
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +41,24 @@ def analyze_events(data_queue: Queue, config: dict, model_names: Dict[int, str])
 
     speed_enabled = config.get('speed_calculation', {}).get('enabled', False)
 
+    # Initialize notification manager
+    notification_config = config.get('notifications', {})
+    notification_manager = NotificationManager(notification_config)
+
     logger.info(f"Analyzer initialized")
     logger.info(f"Output: {json_filename}")
     logger.info(f"Console: {console_level if console_enabled else 'disabled'}")
     if speed_enabled:
         logger.info("Speed calculation: Enabled")
+    if notification_manager.enabled:
+        logger.info("Notifications: Enabled")
 
     # Process events
     _process_event_stream(
         data_queue, json_filename, model_names,
         line_descriptions, zone_descriptions,
-        console_enabled, console_level, speed_enabled
+        console_enabled, console_level, speed_enabled,
+        notification_manager
     )
 
 
@@ -62,7 +70,8 @@ def _process_event_stream(
     zone_descriptions: Dict[str, str],
     console_enabled: bool,
     console_level: str,
-    speed_enabled: bool
+    speed_enabled: bool,
+    notification_manager: NotificationManager
 ) -> None:
     """Process event stream from queue."""
 
@@ -95,6 +104,9 @@ def _process_event_stream(
                 # Write to JSONL
                 json_file.write(json.dumps(enriched_event) + '\n')
                 json_file.flush()
+
+                # Check notification rules
+                notification_manager.process_event(enriched_event)
 
                 # Console output
                 if console_enabled:
