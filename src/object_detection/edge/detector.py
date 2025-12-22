@@ -236,7 +236,7 @@ class EdgeDetector:
         line: LineConfig, roi_w: int, roi_h: int
     ) -> tuple:
         """Detect if movement crossed a line."""
-        if line.line_type == 'vertical':
+        if line.type == 'vertical':
             pos = roi_w * line.position_pct / 100
             if prev_x < pos <= curr_x:
                 return True, 'LTR'

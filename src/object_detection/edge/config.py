@@ -24,7 +24,7 @@ class ROIConfig:
 class LineConfig:
     """Counting line configuration."""
     line_id: str
-    line_type: str  # 'vertical' or 'horizontal'
+    type: str  # 'vertical' or 'horizontal'
     position_pct: float
     allowed_classes: List[int] = field(default_factory=list)
 
@@ -113,7 +113,7 @@ class EdgeConfig:
 
             lines.append(LineConfig(
                 line_id=line_id,
-                line_type=line_data['type'],
+                type=line_data['type'],
                 position_pct=line_data['position_pct'],
                 allowed_classes=line_data.get('allowed_classes', detection.get('track_classes', [])),
             ))

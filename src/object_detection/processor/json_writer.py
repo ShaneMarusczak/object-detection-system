@@ -7,7 +7,6 @@ import json
 import logging
 import os
 from datetime import datetime
-from multiprocessing import Queue
 from typing import Dict
 
 from ..utils import SUMMARY_EVENT_INTERVAL
@@ -15,18 +14,18 @@ from ..utils import SUMMARY_EVENT_INTERVAL
 logger = logging.getLogger(__name__)
 
 
-def json_writer_consumer(event_queue: Queue, config: dict) -> None:
+def json_writer_consumer(event_queue, config: dict) -> None:
     """
     Consume enriched events and write to JSONL file.
 
     Args:
         event_queue: Queue receiving enriched events
-        config: Consumer configuration
+        config: Consumer configuration with json_dir, console_enabled, console_level
     """
     # Setup output
-    output_dir = config.get('output_dir', 'data')
-    os.makedirs(output_dir, exist_ok=True)
-    json_filename = _generate_output_filename(output_dir)
+    json_dir = config.get('json_dir', 'data')
+    os.makedirs(json_dir, exist_ok=True)
+    json_filename = _generate_output_filename(json_dir)
 
     # Console settings
     console_enabled = config.get('console_enabled', True)
@@ -130,7 +129,7 @@ def _log_final_summary(event_count: int, event_counts_by_type: Dict[str, int], j
     logger.info(f"Output: {json_filename}")
 
 
-def _generate_output_filename(output_dir: str) -> str:
+def _generate_output_filename(json_dir: str) -> str:
     """Generate timestamped output filename."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{output_dir}/events_{timestamp}.jsonl"
+    return f"{json_dir}/events_{timestamp}.jsonl"
