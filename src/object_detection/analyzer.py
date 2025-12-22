@@ -232,24 +232,24 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
 
         if 'speed_px_per_sec' in event:
             speed = event['speed_px_per_sec']
-            logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name:12s}) "
-                       f"crossed {line_id} ({line_desc:20s}) {direction:3s} @ {speed:6.1f} px/s")
+            logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
+                       f"crossed {line_id} ({line_desc}) {direction} @ {speed:.1f} px/s")
         else:
-            logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name:12s}) "
-                       f"crossed {line_id} ({line_desc:20s}) {direction:3s}")
+            logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
+                       f"crossed {line_id} ({line_desc}) {direction}")
 
     elif event_type == 'ZONE_ENTER':
         zone_id = event['zone_id']
         zone_desc = event['zone_description']
-        logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name:12s}) "
+        logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
                    f"entered {zone_id} ({zone_desc})")
 
     elif event_type == 'ZONE_EXIT':
         zone_id = event['zone_id']
         zone_desc = event['zone_description']
         dwell = event['dwell_time']
-        logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name:12s}) "
-                   f"exited  {zone_id} ({zone_desc}) - {dwell:.1f}s dwell")
+        logger.info(f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
+                   f"exited {zone_id} ({zone_desc}) - {dwell:.1f}s dwell")
 
 
 def _print_summary(
