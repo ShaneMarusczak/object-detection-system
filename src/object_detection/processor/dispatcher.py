@@ -132,6 +132,9 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
     """
     Central event dispatcher - routes events to consumers based on event definitions.
 
+    Consumers are started automatically based on what actions are used in events.
+    No separate "consumers" config needed - events drive everything.
+
     Args:
         data_queue: Queue receiving raw events from detector
         config: Configuration dictionary
@@ -148,24 +151,28 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
         zone_lookup = _build_zone_lookup(config)
         line_lookup = _build_line_lookup(config)
 
-        # Initialize consumers
+        # Derive which consumers are needed from event actions
+        needed_consumers = _derive_needed_consumers(event_defs, config)
+        logger.info(f"Consumers needed: {needed_consumers}")
+
+        # Initialize only the consumers that are needed
         consumers = []
         consumer_queues = {}
+        notification_config = config.get('notifications', {})
 
-        # JSON Writer (always enabled - logs all matched events)
-        json_config = config.get('consumers', {}).get('json_writer', {})
-        if json_config.get('enabled', True):
+        # JSON Writer - if any event has json_log: true
+        if 'json_writer' in needed_consumers:
             json_queue = Queue()
             consumer_queues['json_log'] = json_queue
 
-            json_dir = config.get('output', {}).get('json_dir', 'data')
+            output_config = config.get('output', {})
             console_config = config.get('console_output', {})
 
             json_consumer_config = {
-                'json_dir': json_dir,
+                'json_dir': output_config.get('json_dir', 'data'),
                 'console_enabled': console_config.get('enabled', True),
                 'console_level': console_config.get('level', 'detailed'),
-                'prompt_save': json_config.get('prompt_save', True)
+                'prompt_save': output_config.get('prompt_save', True)
             }
 
             json_process = Process(
@@ -177,32 +184,28 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             consumers.append(json_process)
             logger.info("Started JSON Writer consumer")
 
-        # Email Notifier (always enabled - processes events with email_immediate action)
-        email_queue = Queue()
-        consumer_queues['email_immediate'] = email_queue
+        # Email Notifier - if any event has email_immediate action
+        if 'email_notifier' in needed_consumers:
+            email_queue = Queue()
+            consumer_queues['email_immediate'] = email_queue
 
-        notification_config = config.get('notifications', {})
-        email_config = notification_config.get('email', {})
+            email_consumer_config = {
+                'notification_config': notification_config
+            }
 
-        email_consumer_config = {
-            'notification_config': notification_config
-        }
+            email_process = Process(
+                target=email_notifier_consumer,
+                args=(email_queue, email_consumer_config),
+                name='EmailNotifier'
+            )
+            email_process.start()
+            consumers.append(email_process)
+            logger.info("Started Email Notifier consumer")
 
-        email_process = Process(
-            target=email_notifier_consumer,
-            args=(email_queue, email_consumer_config),
-            name='EmailNotifier'
-        )
-        email_process.start()
-        consumers.append(email_process)
-        logger.info("Started Email Notifier consumer")
-
-        # Email Digest (always enabled - processes digests defined in config)
-        digest_config = config.get('digests', [])
-        if digest_config:
+        # Email Digest - if any event has email_digest action
+        if 'email_digest' in needed_consumers:
+            digest_config = config.get('digests', [])
             json_dir = config.get('output', {}).get('json_dir', 'data')
-
-            # Build frame service config for digest
             frame_storage_config = config.get('frame_storage', {})
 
             digest_consumer_config = {
@@ -220,27 +223,28 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             consumers.append(digest_process)
             logger.info(f"Started Email Digest consumer with {len(digest_config)} digest(s)")
 
-        # Frame Capture (always enabled - processes events with frame_capture action)
-        frame_queue = Queue()
-        consumer_queues['frame_capture'] = frame_queue
+        # Frame Capture - if any event has frame_capture action
+        if 'frame_capture' in needed_consumers:
+            frame_queue = Queue()
+            consumer_queues['frame_capture'] = frame_queue
 
-        frame_storage_config = config.get('frame_storage', {})
-        frame_consumer_config = {
-            'temp_frame_dir': config.get('temp_frame_dir', '/tmp/frames'),
-            'storage': frame_storage_config
-        }
+            frame_storage_config = config.get('frame_storage', {})
+            frame_consumer_config = {
+                'temp_frame_dir': config.get('temp_frame_dir', '/tmp/frames'),
+                'storage': frame_storage_config
+            }
 
-        frame_process = Process(
-            target=frame_capture_consumer,
-            args=(frame_queue, frame_consumer_config),
-            name='FrameCapture'
-        )
-        frame_process.start()
-        consumers.append(frame_process)
-        logger.info("Started Frame Capture consumer")
+            frame_process = Process(
+                target=frame_capture_consumer,
+                args=(frame_queue, frame_consumer_config),
+                name='FrameCapture'
+            )
+            frame_process.start()
+            consumers.append(frame_process)
+            logger.info("Started Frame Capture consumer")
 
         if not consumers:
-            logger.warning("No consumers enabled - events will be discarded!")
+            logger.warning("No consumers needed - no events define any actions!")
 
         logger.info(f"Dispatcher initialized with {len(consumers)} consumer(s)")
 
@@ -293,6 +297,53 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
                 consumer.terminate()
 
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")
+
+
+def _derive_needed_consumers(event_defs: List[EventDefinition], config: dict) -> Set[str]:
+    """
+    Derive which consumers are needed based on event actions.
+
+    Events drive everything - if an event has json_log: true, json_writer starts.
+    No separate "consumers" config needed.
+    """
+    needed = set()
+    digests = {d.get('id'): d for d in config.get('digests', []) if d.get('id')}
+
+    for event_def in event_defs:
+        actions = event_def.actions
+
+        # json_log -> json_writer
+        if actions.get('json_log'):
+            needed.add('json_writer')
+
+        # email_immediate -> email_notifier
+        email_immediate = actions.get('email_immediate')
+        if email_immediate:
+            if isinstance(email_immediate, dict) and email_immediate.get('enabled', True):
+                needed.add('email_notifier')
+            elif email_immediate is True:
+                needed.add('email_notifier')
+
+        # email_digest -> email_digest (and implicitly json_writer)
+        digest_id = actions.get('email_digest')
+        if digest_id:
+            needed.add('email_digest')
+            needed.add('json_writer')  # Digest reads from JSON logs
+
+            # If digest has photos, need frame_capture
+            digest = digests.get(digest_id, {})
+            if digest.get('photos'):
+                needed.add('frame_capture')
+
+        # frame_capture -> frame_capture
+        frame_capture = actions.get('frame_capture')
+        if frame_capture:
+            if isinstance(frame_capture, dict) and frame_capture.get('enabled', True):
+                needed.add('frame_capture')
+            elif frame_capture is True:
+                needed.add('frame_capture')
+
+    return needed
 
 
 def _parse_event_definitions(config: dict) -> List[EventDefinition]:

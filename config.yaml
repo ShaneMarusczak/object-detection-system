@@ -49,15 +49,11 @@ events:
 
 output:
   json_dir: "data"
+  prompt_save: true
 
 console_output:
   enabled: true
   level: "detailed"
-
-consumers:
-  json_writer:
-    enabled: true
-    prompt_save: true
 
 
 camera:
