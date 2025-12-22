@@ -1,442 +1,158 @@
+# ==============================================================================
 # Object Detection System Configuration
-# Complete example showing all available options
+# ==============================================================================
+# Define events you care about, and the system handles the rest.
+#
+# Workflow:
+#   1. python -m object_detection --validate   # Check config
+#   2. python -m object_detection --plan       # See what will happen
+#   3. python -m object_detection --dry-run    # Simulate events
+#   4. python -m object_detection 1            # Run for 1 hour
+#
+# See also:
+#   config-v1-equivalent.yaml  - Simple JSON logging only
+#   config-photo-digest.yaml   - Daily email digests with photos
+# ==============================================================================
+
 
 # ==============================================================================
 # DETECTION SETTINGS
 # ==============================================================================
 detection:
-  # YOLO model file (.pt format) - must exist in current directory
-  # Options: yolov8n.pt, yolo11n.pt, yolo11s.pt, etc.
   model_file: "yolo11n.pt"
-  
-  # COCO class IDs to track (0-79)
-  # Common classes:
-  #   0: person
-  #   2: car, 3: motorcycle, 5: bus, 7: truck
-  #   15: cat, 16: dog
-  #   17: horse, 18: sheep, 19: cow
-  # See https://docs.ultralytics.com/datasets/detect/coco/ for full list
-  track_classes: [15, 16, 2, 3, 5, 7]  # cats and dogs
-  
-  # Confidence threshold (0.0-1.0)
-  # Higher = fewer false positives, may miss some objects
-  # Lower = catch more objects, more false positives
+  track_classes: []  # Auto-derived from events below
   confidence_threshold: 0.25
 
 
 # ==============================================================================
-# REGION OF INTEREST (ROI) CROPPING
+# REGION OF INTEREST
 # ==============================================================================
-# Crop frame to specific region before processing
-# Useful to ignore irrelevant areas and improve performance
 roi:
   horizontal:
     enabled: true
-    crop_from_left_pct: 0    # Left edge (0-100)
-    crop_to_right_pct: 45   # Right edge (0-100)
-    # Example: 0-50 = left half only, 25-75 = middle half
-  
+    crop_from_left_pct: 0
+    crop_to_right_pct: 45
   vertical:
     enabled: true
-    crop_from_top_pct: 5     # Top edge (0-100)
-    crop_to_bottom_pct: 95  # Bottom edge (0-100)
-    # Example: 0-50 = top half only, 25-75 = middle region
+    crop_from_top_pct: 5
+    crop_to_bottom_pct: 95
 
 
 # ==============================================================================
-# COUNTING LINES
+# GEOMETRY - Lines and Zones
 # ==============================================================================
-# Define lines that trigger events when objects cross them
-# Lines are numbered automatically: V1, V2, V3... and H1, H2, H3...
 lines:
   - type: vertical
     position_pct: 25
     description: "traffic boundary"
-    allowed_classes: [2,3,5,7]
-    
-  # Vertical lines (measured from left edge, detect left-right movement)
- # - type: vertical
- #   position_pct: 30                    # 30% from left edge
- #   description: "feeder approach"      # Semantic meaning
- #   allowed_classes: [15]               # Only cats (optional - defaults to all track_classes)
- #   notify_email: true                  # Send email when line crossed
- #   cooldown_minutes: 30                # Wait 30 min between notifications
- #   message: "Cat crossed into feeding area"  # Optional custom message
+    allowed_classes: [2, 3, 5, 7]  # car, motorcycle, bus, truck
 
- # - type: vertical
- #   position_pct: 70
- #   description: "feeder exit"
- #   allowed_classes: [15]
-
-  # Horizontal lines (measured from top edge, detect top-bottom movement)
- # - type: horizontal
- #   position_pct: 50                    # 50% from top (center line)
- #   description: "room divider"
-    # allowed_classes omitted = all track_classes
-
-# Line crossing directions:
-#   Vertical lines:   LTR (left-to-right), RTL (right-to-left)
-#   Horizontal lines: TTB (top-to-bottom), BTT (bottom-to-top)
-
-
-# ==============================================================================
-# ZONES
-# ==============================================================================
-# Define rectangular zones that trigger entry/exit events
-# Zones are numbered automatically: Z1, Z2, Z3...
-# zones:
-  # Zone coordinates are percentages (0-100) measured from top-left
- # - x1_pct: 10    # Left edge
- #   y1_pct: 20    # Top edge
- #   x2_pct: 30    # Right edge
- #   y2_pct: 40    # Bottom edge
- #   description: "food bowl area"
- #   allowed_classes: [15, 16]  # Cats and dogs
- #   notify_email: true          # Send email when zone entered/exited
- #   cooldown_minutes: 60        # Wait 60 min between notifications
- #   message: "Your cat visited the food bowl!"  # Optional custom message
-
-# Zone events include automatic dwell time calculation
-
-
-# ==============================================================================
-# SPEED CALCULATION
-# ==============================================================================
-# Optional speed calculation for linear motion (e.g., traffic analysis)
-# Tracks distance traveled and time elapsed between first detection and line crossing
-speed_calculation:
-  enabled: false  # Enable for traffic/vehicle domains, disable for pets
-
-
-# ==============================================================================
-# FRAME SAVING
-# ==============================================================================
-# Save annotated frames periodically for debugging/verification
-# Frames show lines, zones, and detection boxes
-frame_saving:
-  enabled: false       # Default off to save disk space
-  interval: 500        # Save every Nth frame
-  output_dir: "output_frames"
-
-# Temp frame buffer for event capture
-# Maintains short rolling buffer of recent frames for frame capture consumer
-temp_frames_enabled: true               # Enable temp frame buffering
-temp_frame_dir: "/tmp/frames"           # Directory for temp frames
-temp_frame_interval: 5                  # Save every N frames (5 = ~1-2fps at 30fps input)
-temp_frame_max_age_seconds: 30          # Keep last 30 seconds
-
-
-# ==============================================================================
-# OUTPUT SETTINGS
-# ==============================================================================
-output:
-  # Directory for JSONL event log
-  # Filename format: events_YYYYMMDD_HHMMSS.jsonl
-  json_dir: "data"
-
-
-# ==============================================================================
-# CONSOLE OUTPUT
-# ==============================================================================
-console_output:
-  enabled: true
-  level: "detailed"  # Options: "detailed" | "summary" | "silent"
-  
-  # detailed: Print every event as it happens
-  # summary:  Print periodic statistics only
-  # silent:   No console output (data still written to file)
-
-
-# ==============================================================================
-# EVENT CONSUMERS
-# ==============================================================================
-# Configure which consumers process events
-# Consumers run as independent processes and receive all enriched events
-consumers:
-  # JSON Writer - writes events to JSONL file
-  json_writer:
-    enabled: true                # Default: true (disable to skip JSON logging)
-    prompt_save: true            # Prompt to save/delete file when done
-
-  # Email Notifier - sends immediate emails for tagged zones/lines
-  email_notifier:
-    enabled: false               # Set to true to enable (requires notifications config below)
-
-  # Email Digest - sends periodic summary emails
-  email_digest:
-    enabled: false               # Set to true to enable (requires notifications config below)
-    period_minutes: 60           # How often to send digest (60 = hourly)
-    period_label: "Last Hour"    # Label for email subject
-
-    # For multiple digest configurations with filters:
-    # digests:
-    #   - id: "food_bowl_daily"
-    #     period_minutes: 1440    # 24 hours
-    #     period_label: "Daily Food Bowl Activity"
-    #     filters:
-    #       event_types: ["ZONE_ENTER"]
-    #       zone_descriptions: ["food bowl"]
-    #       object_classes: ["cat"]
-    #
-    #   - id: "water_bowl_daily"
-    #     period_minutes: 1440
-    #     period_label: "Daily Water Bowl Activity"
-    #     filters:
-    #       event_types: ["ZONE_ENTER"]
-    #       zone_descriptions: ["water bowl"]
-    #       object_classes: ["cat"]
-
-  # Frame Capture - saves frames when events match filters
-  frame_capture:
-    enabled: false               # Set to true to enable frame capture
-    cooldown_seconds: 180        # Cooldown per (track_id, zone/line) - 3 minutes default
-
-    # Filters - which events trigger frame capture
-    filters:
-      event_types: ["ZONE_ENTER", "LINE_CROSS"]  # Event types to capture
-      zone_descriptions: []      # Empty = all zones, or specify: ["food bowl", "water bowl"]
-      line_descriptions: []      # Empty = all lines, or specify: ["feeder approach"]
-      object_classes: []         # Empty = all classes, or specify: ["cat", "dog"]
-
-    # Storage configuration
-    storage:
-      type: "local"              # Options: "local" | "s3"
-      local_dir: "frames"        # Local storage directory
-
-      # For S3 storage (requires boto3: pip install boto3)
-      # Uses IAM role or AWS credentials from environment
-      # s3:
-      #   bucket: "my-object-detection-frames"
-      #   region: "us-east-1"
-      #   presigned_url_expires: 604800  # 7 days in seconds
-
-
-# ==============================================================================
-# NOTIFICATIONS
-# ==============================================================================
-# Send email alerts when objects cross lines or enter/exit zones
-# Perfect for long-term monitoring (e.g., pet activity while traveling)
-#
-# To enable notifications on a zone or line, add:
-#   notify_email: true           # Enable email for this zone/line
-#   cooldown_minutes: 60         # Optional: wait time between emails (default: 60)
-#   message: "Custom message"    # Optional: custom notification text
-notifications:
-  enabled: false  # Set to true to enable notifications
-
-  # Email configuration
-  email:
-    enabled: false
-    smtp_server: "smtp.gmail.com"        # Gmail, Outlook, AWS SES, etc.
-    smtp_port: 587                       # Usually 587 for TLS
-    use_tls: true
-    username: "your-email@gmail.com"
-    password: "your-app-password"        # App-specific password for Gmail
-    from_address: "your-email@gmail.com"
-    to_addresses:
-      - "your-email@gmail.com"
-
-# Email Provider Examples:
-#
-# Gmail:
-#   smtp_server: "smtp.gmail.com"
-#   smtp_port: 587
-#   (Requires app-specific password: https://myaccount.google.com/apppasswords)
-#
-# Outlook/Office 365:
-#   smtp_server: "smtp-mail.outlook.com"
-#   smtp_port: 587
-#
-# AWS SES:
-#   smtp_server: "email-smtp.us-east-1.amazonaws.com"  # Use your region
-#   smtp_port: 587
-#   username: "your-ses-smtp-username"
-#   password: "your-ses-smtp-password"
-#   (Generate SMTP credentials in AWS SES console)
-
-
-# ==============================================================================
-# CAMERA SETTINGS
-# ==============================================================================
-camera:
-  # Camera URL - can be:
-  #   - DroidCam: "http://192.168.x.x:4747/video"
-  #   - Local webcam: 0 (integer for device index)
-  #   - RTSP stream: "rtsp://username:password@ip:port/stream"
-  #   - Video file: "/path/to/video.mp4"
-  url: "http://192.168.86.33:4747/video"
-
-
-# ==============================================================================
-# RUNTIME SETTINGS
-# ==============================================================================
-runtime:
-  # Default duration if not specified on command line
-  default_duration_hours: 1.0
-
-  # Event queue size - max events buffered between detector and analyzer
-  # Increase if analyzer falls behind, decrease to save memory
-  queue_size: 1000
-
-  # Startup delay for analyzer (seconds)
-  # Brief pause to ensure consumer is ready before detector starts
-  analyzer_startup_delay: 1
-
-  # Shutdown timeouts (seconds)
-  # How long to wait for graceful shutdown before forcing
-  detector_shutdown_timeout: 5
-  analyzer_shutdown_timeout: 10
-
-
-# ==============================================================================
-# EXAMPLE CONFIGURATIONS
-# ==============================================================================
-
-# Example 1: Pet Monitoring with Email Alerts & Photos
-# ------------------------------------------------------
-# Complete setup for monitoring cats with daily digest emails including photos
-#
-# detection:
-#   model_file: "yolo11n.pt"
-#   track_classes: [15, 16]  # cats, dogs
-#   confidence_threshold: 0.25
-#
-# console_output:
-#   enabled: true
-#   level: "silent"  # Minimal output for long-term monitoring
-#
-# temp_frames_enabled: true
-# temp_frame_dir: "/tmp/frames"
-# temp_frame_interval: 5
-# temp_frame_max_age_seconds: 30
-#
-# consumers:
-#   json_writer:
-#     enabled: true
-#
-#   email_notifier:
-#     enabled: false             # Disable per-event emails to reduce noise
-#
-#   email_digest:
-#     enabled: true
-#     digests:
-#       - id: "daily_summary"
-#         period_minutes: 1440   # 24 hours
-#         period_label: "Daily Pet Activity Summary"
-#         filters:
-#           event_types: ["ZONE_ENTER"]
-#           object_classes: ["cat"]
-#
-#   frame_capture:
-#     enabled: true
-#     cooldown_seconds: 600     # 10 minutes between photos per cat per zone
-#     filters:
-#       event_types: ["ZONE_ENTER"]
-#       zone_descriptions: ["food bowl", "water bowl"]
-#       object_classes: ["cat"]
-#     storage:
-#       type: "s3"
-#       s3:
-#         bucket: "my-pet-monitoring"
-#         region: "us-east-1"
-#         presigned_url_expires: 604800  # 7 days
-#
 # zones:
 #   - x1_pct: 10
 #     y1_pct: 20
 #     x2_pct: 30
 #     y2_pct: 40
 #     description: "food bowl"
-#     allowed_classes: [15]
-#
-#   - x1_pct: 40
-#     y1_pct: 20
-#     x2_pct: 60
-#     y2_pct: 40
-#     description: "water bowl"
-#     allowed_classes: [15]
-#
-# notifications:
-#   enabled: true
-#   email:
-#     enabled: true
-#     smtp_server: "smtp.gmail.com"
-#     smtp_port: 587
-#     use_tls: true
-#     username: "your-email@gmail.com"
-#     password: "your-app-password"
-#     from_address: "your-email@gmail.com"
-#     to_addresses:
-#       - "your-email@gmail.com"
-#
-# speed_calculation:
-#   enabled: false
+#     allowed_classes: [15, 16]  # cat, dog
 
 
-# Example 2: Traffic Analysis
-# ---------------------------
-# detection:
-#   model_file: "yolo11n.pt"
-#   track_classes: [2, 3, 5, 7]  # car, motorcycle, bus, truck
-#   confidence_threshold: 0.25
+# ==============================================================================
+# EVENTS - What you want to track
+# ==============================================================================
+# Each event defines:
+#   match: What to look for (event_type, zone/line, object_class)
+#   actions: What to do (json_log, email_immediate, email_digest)
 #
-# roi:
-#   horizontal:
-#     enabled: true
-#     crop_from_left_pct: 0
-#     crop_to_right_pct: 50  # Left half only
-#
-# lines:
-#   - type: vertical
-#     position_pct: 50
-#     description: "counting line"
-#
-# speed_calculation:
-#   enabled: true  # Calculate vehicle speeds
+# AWS-style composition:
+#   email_digest -> auto-enables json_log
+#   email_digest with photos: true -> auto-enables frame_capture
+# ==============================================================================
+events:
+  - name: "vehicle-traffic-cross"
+    match:
+      event_type: "LINE_CROSS"
+      line: "traffic boundary"
+      object_class: ["car", "motorcycle", "bus", "truck"]
+    actions:
+      json_log: true
 
 
-# Example 3: Doorway Monitoring
-# -----------------------------
-# detection:
-#   model_file: "yolo11n.pt"
-#   track_classes: [0]  # person only
-#   confidence_threshold: 0.4
-#
-# lines:
-#   - type: vertical
-#     position_pct: 50
-#     description: "doorway"
-#
-# speed_calculation:
-#   enabled: false
+# ==============================================================================
+# DIGESTS - Periodic email summaries (optional)
+# ==============================================================================
+# digests:
+#   - id: "daily_traffic"
+#     period_minutes: 1440
+#     period_label: "Daily Traffic Summary"
+#     photos: false
 
 
-# Example 4: Multi-Zone Activity Tracking
-# ---------------------------------------
-# detection:
-#   model_file: "yolo11n.pt"
-#   track_classes: [0, 15, 16]  # people, cats, dogs
-#   confidence_threshold: 0.3
-#
-# zones:
-#   - x1_pct: 10
-#     y1_pct: 10
-#     x2_pct: 40
-#     y2_pct: 40
-#     description: "kitchen"
-#
-#   - x1_pct: 50
-#     y1_pct: 10
-#     x2_pct: 90
-#     y2_pct: 40
-#     description: "living room"
-#
-#   - x1_pct: 10
-#     y1_pct: 50
-#     x2_pct: 40
-#     y2_pct: 90
-#     description: "bedroom"
-#
-# speed_calculation:
-#   enabled: false
+# ==============================================================================
+# OUTPUT
+# ==============================================================================
+output:
+  json_dir: "data"
 
+
+console_output:
+  enabled: true
+  level: "detailed"  # detailed | summary | silent
+
+
+consumers:
+  json_writer:
+    enabled: true
+    prompt_save: true
+
+
+# ==============================================================================
+# NOTIFICATIONS (required for email actions)
+# ==============================================================================
+notifications:
+  enabled: false
+
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    use_tls: true
+    username: "your-email@gmail.com"
+    password: "your-app-password"
+    from_address: "your-email@gmail.com"
+    to_addresses:
+      - "your-email@gmail.com"
+
+
+# ==============================================================================
+# FRAME CAPTURE (required for photo digests)
+# ==============================================================================
+frame_storage:
+  type: "local"
+  local_dir: "frames"
+
+temp_frames_enabled: false
+temp_frame_dir: "/tmp/frames"
+temp_frame_interval: 5
+temp_frame_max_age_seconds: 30
+
+
+# ==============================================================================
+# CAMERA
+# ==============================================================================
+camera:
+  url: "http://192.168.86.33:4747/video"
+
+
+# ==============================================================================
+# RUNTIME
+# ==============================================================================
+runtime:
+  default_duration_hours: 1.0
+  queue_size: 1000
+  analyzer_startup_delay: 1
+  detector_shutdown_timeout: 5
+  analyzer_shutdown_timeout: 10
+
+
+speed_calculation:
+  enabled: false

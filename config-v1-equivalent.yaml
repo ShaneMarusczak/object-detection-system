@@ -1,0 +1,92 @@
+# ==============================================================================
+# V1 EQUIVALENT - Event-Driven Format
+# ==============================================================================
+# This config replicates V1 behavior using the new event-driven architecture.
+# V1 simply logged all detections to JSON - no emails, no photos.
+#
+# Key difference: Instead of specifying track_classes directly, you define
+# events and the system derives which classes to track automatically.
+# ==============================================================================
+
+detection:
+  model_file: "yolo11n.pt"
+  track_classes: []  # Auto-derived from events below
+  confidence_threshold: 0.25
+
+
+roi:
+  horizontal:
+    enabled: true
+    crop_from_left_pct: 0
+    crop_to_right_pct: 45
+  vertical:
+    enabled: true
+    crop_from_top_pct: 5
+    crop_to_bottom_pct: 95
+
+
+# ==============================================================================
+# GEOMETRY - Same as V1
+# ==============================================================================
+lines:
+  - type: vertical
+    position_pct: 25
+    description: "traffic boundary"
+    allowed_classes: [2, 3, 5, 7]  # car, motorcycle, bus, truck
+
+
+# ==============================================================================
+# EVENTS - The new way to define what you care about
+# ==============================================================================
+# In V1, everything was logged. Here we explicitly define what to track.
+events:
+  # Log all vehicle crossings at traffic boundary
+  - name: "vehicle-traffic-cross"
+    match:
+      event_type: "LINE_CROSS"
+      line: "traffic boundary"
+      object_class: ["car", "motorcycle", "bus", "truck"]
+    actions:
+      json_log: true  # Just log to JSON, like V1
+
+
+# ==============================================================================
+# OUTPUT - Same as V1
+# ==============================================================================
+output:
+  json_dir: "data"
+
+
+console_output:
+  enabled: true
+  level: "detailed"
+
+
+# ==============================================================================
+# CONSUMERS - JSON writer only (V1 behavior)
+# ==============================================================================
+consumers:
+  json_writer:
+    enabled: true
+    prompt_save: true
+
+
+# No notifications needed for V1 equivalent
+notifications:
+  enabled: false
+
+
+camera:
+  url: "http://192.168.86.33:4747/video"
+
+
+runtime:
+  default_duration_hours: 1.0
+  queue_size: 1000
+  analyzer_startup_delay: 1
+  detector_shutdown_timeout: 5
+  analyzer_shutdown_timeout: 10
+
+
+speed_calculation:
+  enabled: false
