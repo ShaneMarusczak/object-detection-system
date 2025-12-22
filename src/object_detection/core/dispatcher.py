@@ -157,8 +157,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             json_consumer_config = {
                 'json_dir': json_dir,
                 'console_enabled': console_config.get('enabled', True),
-                'console_level': console_config.get('level', 'detailed'),
-                'prompt_save': json_config.get('prompt_save', True)
+                'console_level': console_config.get('level', 'detailed')
             }
 
             json_process = Process(

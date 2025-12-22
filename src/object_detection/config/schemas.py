@@ -151,7 +151,6 @@ class NotificationsConfig(BaseModel):
 class OutputConfig(BaseModel):
     """Output configuration."""
     json_dir: str = Field(default="data")
-    prompt_save: bool = Field(default=True, description="Prompt to delete data at end of run")
 
 
 class CameraConfig(BaseModel):

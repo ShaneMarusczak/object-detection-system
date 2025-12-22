@@ -72,10 +72,6 @@ def json_writer_consumer(event_queue: Queue, config: dict) -> None:
     finally:
         _log_final_summary(event_count, event_counts_by_type, json_filename)
 
-        # Prompt user to save/delete
-        if config.get('prompt_save', True):
-            _handle_data_saving(json_filename)
-
 
 def _print_event(event: dict, level: str, event_count: int) -> None:
     """Print event to console based on verbosity level."""
@@ -138,48 +134,3 @@ def _generate_output_filename(output_dir: str) -> str:
     """Generate timestamped output filename."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{output_dir}/events_{timestamp}.jsonl"
-
-
-def _handle_data_saving(json_filename: str) -> None:
-    """Prompt user to save or delete data file."""
-    import sys
-
-    print("\n" + "="*70)
-    print("Data Collection Complete")
-    print("="*70)
-    print(f"\nFile location: {json_filename}")
-    sys.stdout.flush()
-
-    while True:
-        try:
-            response = input("\nSave this data? (y/n) [default: y]: ").strip().lower()
-
-            if not response:
-                response = 'y'
-
-            if response in ['y', 'yes']:
-                print(f"✓ Data saved: {json_filename}")
-                logger.info(f"Data saved: {json_filename}")
-                break
-            elif response in ['n', 'no']:
-                try:
-                    os.remove(json_filename)
-                    print(f"✓ Data deleted: {json_filename}")
-                    logger.info(f"Data deleted: {json_filename}")
-                    break
-                except OSError as e:
-                    print(f"✗ Failed to delete file: {e}")
-                    logger.error(f"Failed to delete file: {e}")
-                    print(f"✓ Data will remain at: {json_filename}")
-                    break
-            else:
-                print("Please enter 'y' or 'n' (or just press Enter to save)")
-                continue
-
-        except (KeyboardInterrupt, EOFError):
-            print(f"\n✓ Data saved: {json_filename}")
-            logger.info(f"Data saved (interrupted): {json_filename}")
-            break
-
-    print("="*70)
-    sys.stdout.flush()

@@ -49,7 +49,6 @@ events:
 
 output:
   json_dir: "data"
-  prompt_save: true
 
 console_output:
   enabled: true
