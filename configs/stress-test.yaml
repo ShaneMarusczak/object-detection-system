@@ -161,9 +161,6 @@ digests:
     subject: "Hourly Traffic Report"
     events: ["vehicle_entering", "vehicle_exiting", "loading_dock_departure"]
     photos: true
-    frame_config:
-      max_photos: 10
-      annotate: true
 
   - id: "daily_summary"
     schedule: "0 8 * * *"

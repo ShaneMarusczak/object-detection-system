@@ -337,10 +337,6 @@ def _validate_digests(config: dict, result: ValidationResult) -> Set[str]:
         if photos is not None and not isinstance(photos, bool):
             result.errors.append(f"{digest_ref}.photos must be a boolean")
 
-        # Frame config (required if photos: true)
-        if digest.get('photos') and not digest.get('frame_config'):
-            result.warnings.append(f"{digest_ref}: photos=true but no frame_config specified (using defaults)")
-
     return digest_ids
 
 
@@ -476,12 +472,8 @@ def _validate_frame_storage(config: dict, result: ValidationResult) -> None:
     if not needs_frames:
         return
 
-    # Check temp_frames_enabled
-    if not config.get('temp_frames_enabled', False):
-        result.warnings.append(
-            "Frame capture is used but temp_frames_enabled is false - "
-            "frames will only be captured if temp frame buffer is running"
-        )
+    # temp_frames is implicitly enabled if any event needs frames
+    # No warning needed - the event owns the frame capture decision
 
 
 def _derive_track_classes_from_events(config: dict, result: ValidationResult) -> List[Tuple[int, str]]:
