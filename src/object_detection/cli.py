@@ -22,6 +22,55 @@ from .detector import run_detection
 logger = logging.getLogger(__name__)
 
 
+def find_config_file(config_path: str) -> Path:
+    """
+    Find config file in standard locations.
+
+    Search order:
+    1. Specified path (if provided and not default)
+    2. Current directory (config.yaml)
+    3. ~/.config/object-detection/config.yaml
+    4. Package default config
+
+    Args:
+        config_path: User-specified config path
+
+    Returns:
+        Path to config file
+
+    Raises:
+        SystemExit: If no config file found
+    """
+    # If user specified a non-default path, use only that
+    if config_path != 'config.yaml':
+        specified = Path(config_path)
+        if specified.exists():
+            return specified
+        else:
+            logger.error(f"Specified config file not found: {config_path}")
+            sys.exit(1)
+
+    # Search standard locations
+    search_paths = [
+        Path.cwd() / 'config.yaml',  # Current directory
+        Path.home() / '.config' / 'object-detection' / 'config.yaml',  # User config
+        Path(__file__).parent / 'default_config.yaml',  # Package default
+    ]
+
+    for path in search_paths:
+        if path.exists():
+            logger.info(f"Using config: {path}")
+            return path
+
+    logger.error("No config file found in any of these locations:")
+    for path in search_paths:
+        logger.error(f"  - {path}")
+    logger.error("\nTo create a config file:")
+    logger.error(f"  mkdir -p ~/.config/object-detection")
+    logger.error(f"  cp {Path(__file__).parent / 'default_config.yaml'} ~/.config/object-detection/config.yaml")
+    sys.exit(1)
+
+
 def load_config(config_path: str = 'config.yaml') -> dict:
     """
     Load and validate configuration file.
@@ -35,12 +84,7 @@ def load_config(config_path: str = 'config.yaml') -> dict:
     Raises:
         SystemExit: If config cannot be loaded or is invalid
     """
-    config_file = Path(config_path)
-
-    if not config_file.exists():
-        logger.error(f"Configuration file not found: {config_path}")
-        logger.error("Please create config.yaml before running the system")
-        sys.exit(1)
+    config_file = find_config_file(config_path)
 
     try:
         with open(config_file, 'r') as f:

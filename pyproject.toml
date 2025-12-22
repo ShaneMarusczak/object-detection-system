@@ -19,5 +19,8 @@ dependencies = [
 [project.scripts]
 object-detection = "object_detection.cli:main"
 
+[tool.setuptools.package-data]
+object_detection = ["*.yaml"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
