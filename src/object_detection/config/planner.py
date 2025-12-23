@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 class ConfigValidationError(Exception):
     """Raised when config validation fails."""
-    pass
 
 
 # ANSI color codes for terminal output
@@ -1117,7 +1116,7 @@ def generate_sample_events(config: dict) -> List[Dict]:
 
 def load_sample_events(path: str) -> List[Dict]:
     """Load sample events from JSON file."""
-    with open(path, 'r') as f:
+    with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     # Handle both array and object with 'events' key

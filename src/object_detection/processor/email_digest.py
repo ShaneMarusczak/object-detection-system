@@ -108,7 +108,7 @@ def email_digest_consumer(json_dir: str, config: dict) -> None:
                         if wants_photos and frame_service and stats.get('events'):
                             frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
                             # Read actual bytes for each frame
-                            for event_id, path in frame_paths.items():
+                            for event_id, _path in frame_paths.items():
                                 frame_bytes = frame_service.read_frame_bytes(event_id)
                                 if frame_bytes:
                                     frame_data_map[event_id] = frame_bytes

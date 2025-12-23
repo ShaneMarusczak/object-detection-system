@@ -196,7 +196,7 @@ class EdgeDetector:
     def _process_detections(self, boxes, roi_dims: tuple, relative_time: float) -> None:
         """Process all detections in frame."""
         current_time = time.time()
-        roi_w, roi_h = roi_dims
+        _roi_w, _roi_h = roi_dims  # Unpacked for potential future use
 
         track_ids = boxes.id.int().cpu().tolist()
         xyxy = boxes.xyxy.cpu().numpy()

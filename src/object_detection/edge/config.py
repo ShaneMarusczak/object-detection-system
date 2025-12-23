@@ -77,7 +77,7 @@ class EdgeConfig:
     @classmethod
     def from_yaml(cls, path: str) -> 'EdgeConfig':
         """Load configuration from YAML file."""
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
         return cls.from_dict(data)
 

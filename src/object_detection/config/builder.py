@@ -646,7 +646,7 @@ class ConfigBuilder:
 
         # Save the config (options 1, 2, 3)
         os.makedirs('configs', exist_ok=True)
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             yaml.dump(self.config, f, default_flow_style=False, sort_keys=False)
 
         print(f"{Colors.GREEN}Saved:{Colors.RESET} {filepath}")
@@ -680,7 +680,7 @@ class ConfigBuilder:
 # Change this to switch configs, or run: python -m object_detection --build-config
 use: {config_path}
 """
-        with open('config.yaml', 'w') as f:
+        with open('config.yaml', 'w', encoding='utf-8') as f:
             f.write(pointer_content)
 
         print(f"{Colors.GREEN}Set as default:{Colors.RESET} config.yaml now points to {config_path}")

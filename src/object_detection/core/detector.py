@@ -276,7 +276,7 @@ def _process_detections(
         Number of events generated
     """
     event_count = 0
-    roi_width, roi_height = roi_dims
+    _roi_width, _roi_height = roi_dims  # Unpacked for potential future use
 
     track_ids = boxes.id.int().cpu().tolist()
     xyxy = boxes.xyxy.cpu().numpy()
