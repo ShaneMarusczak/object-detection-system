@@ -15,6 +15,7 @@ class TrackedObject:
         track_id: Unique identifier from ByteTrack
         object_class: COCO class ID
         current_pos: Current (x, y) center position
+        bbox: Current bounding box (x1, y1, x2, y2) in pixels
         previous_pos: Previous (x, y) center position for movement detection
         first_pos: First detected (x, y) position for distance calculation
         first_seen_time: Timestamp when first detected
@@ -24,16 +25,19 @@ class TrackedObject:
     track_id: int
     object_class: int
     current_pos: Tuple[float, float]
+    bbox: Tuple[int, int, int, int] | None = None
     previous_pos: Tuple[float, float] | None = None
     first_pos: Tuple[float, float] | None = None
     first_seen_time: float | None = None
     crossed_lines: Set[str] = field(default_factory=set)
     active_zones: Dict[str, float] = field(default_factory=dict)
 
-    def update_position(self, x: float, y: float) -> None:
-        """Update position, moving current to previous."""
+    def update_position(self, x: float, y: float, bbox: Tuple[int, int, int, int] = None) -> None:
+        """Update position and bbox, moving current to previous."""
         self.previous_pos = self.current_pos
         self.current_pos = (x, y)
+        if bbox:
+            self.bbox = bbox
 
     def is_new(self) -> bool:
         """Check if this is the first detection of this object."""

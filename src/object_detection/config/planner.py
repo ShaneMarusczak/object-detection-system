@@ -538,20 +538,13 @@ def prepare_runtime_config(config: dict) -> dict:
     Returns:
         Config with track_classes populated from events
     """
-    # Get track_classes from events
+    # Derive track_classes from events (the only way to specify them)
     derived_classes = derive_track_classes(config)
 
-    # Check if config has explicit track_classes
-    explicit_classes = config.get('detection', {}).get('track_classes', [])
-
     if derived_classes:
-        # Use derived classes from events
-        if explicit_classes and explicit_classes != derived_classes:
-            logger.info(f"Overriding track_classes with classes derived from events: {derived_classes}")
         config['detection']['track_classes'] = derived_classes
-    elif not explicit_classes:
-        # No events and no explicit classes - warn
-        logger.warning("No track_classes specified and no events defined - nothing will be tracked!")
+    else:
+        logger.warning("No events defined - nothing will be tracked!")
         config['detection']['track_classes'] = []
 
     return config

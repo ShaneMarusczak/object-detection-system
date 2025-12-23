@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class DetectionConfig(BaseModel):
     """Detection settings."""
     model_file: str = Field(..., description="YOLO model file path (.pt)")
-    track_classes: List[int] = Field(default_factory=list, description="COCO class IDs to track")
     confidence_threshold: float = Field(..., ge=0.0, le=1.0, description="Detection confidence threshold")
+    # track_classes is derived from events by planner, not user-configurable
 
     @field_validator('model_file')
     @classmethod

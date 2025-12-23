@@ -282,7 +282,10 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             frame_storage_config = config.get('frame_storage', {})
             frame_consumer_config = {
                 'temp_frame_dir': config.get('temp_frame_dir', '/tmp/frames'),
-                'storage': frame_storage_config
+                'storage': frame_storage_config,
+                'lines': config.get('lines', []),
+                'zones': config.get('zones', []),
+                'roi': config.get('roi', {})
             }
 
             frame_process = Process(

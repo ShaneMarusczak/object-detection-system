@@ -253,10 +253,11 @@ def _process_detections(
     classes = boxes.cls.int().cpu().tolist()
 
     for track_id, box, obj_class in zip(track_ids, xyxy, classes):
-        # Calculate center point
+        # Calculate center point and bbox
         x1, y1, x2, y2 = box
         center_x = (x1 + x2) / 2
         center_y = (y1 + y2) / 2
+        bbox = (int(x1), int(y1), int(x2), int(y2))
 
         # Get or create tracked object
         if track_id not in tracked_objects:
@@ -264,11 +265,12 @@ def _process_detections(
                 track_id=track_id,
                 object_class=obj_class,
                 current_pos=(center_x, center_y),
+                bbox=bbox,
                 first_pos=(center_x, center_y),
                 first_seen_time=current_time
             )
         else:
-            tracked_objects[track_id].update_position(center_x, center_y)
+            tracked_objects[track_id].update_position(center_x, center_y, bbox)
 
         tracked_obj = tracked_objects[track_id]
 
@@ -327,6 +329,7 @@ def _check_line_crossings(
                 'event_type': 'LINE_CROSS',
                 'track_id': tracked_obj.track_id,
                 'object_class': tracked_obj.object_class,
+                'bbox': tracked_obj.bbox,
                 'line_id': line.line_id,
                 'direction': direction,
                 'timestamp_relative': relative_time
@@ -431,6 +434,7 @@ def _check_zone_events(
                 'event_type': 'ZONE_ENTER',
                 'track_id': tracked_obj.track_id,
                 'object_class': tracked_obj.object_class,
+                'bbox': tracked_obj.bbox,
                 'zone_id': zone.zone_id,
                 'timestamp_relative': relative_time
             })
@@ -446,6 +450,7 @@ def _check_zone_events(
                 'event_type': 'ZONE_EXIT',
                 'track_id': tracked_obj.track_id,
                 'object_class': tracked_obj.object_class,
+                'bbox': tracked_obj.bbox,
                 'zone_id': zone.zone_id,
                 'timestamp_relative': relative_time,
                 'dwell_time': dwell_time
