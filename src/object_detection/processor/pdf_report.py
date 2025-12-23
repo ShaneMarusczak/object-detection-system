@@ -364,23 +364,37 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
             story.append(table)
             story.append(Spacer(1, 10))
 
-        # Photos section
-        if frame_data_map:
-            story.append(Paragraph("Captured Frames", heading_style))
-            events = stats.get('events', [])
+        # Event timeline with inline photos
+        events = stats.get('events', [])
+        if events:
+            story.append(Paragraph("Event Timeline", heading_style))
+
+            # Style for events without photos (smaller, more compact)
+            event_style = ParagraphStyle('Event', parent=normal_style, fontSize=9, leading=12)
+            photo_caption_style = ParagraphStyle('PhotoCaption', parent=normal_style, fontSize=10, fontName='Helvetica-Bold')
 
             for event in events:
+                location = event.get('zone_description') or event.get('line_description', 'detection')
+                obj_class = event.get('object_class_name', 'unknown')
+                direction = event.get('direction', '')
+                direction_str = f" ({direction})" if direction else ""
+                timestamp = event.get('timestamp', '')
+                # Format timestamp more readably
+                try:
+                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    time_str = dt.strftime('%H:%M:%S')
+                except:
+                    time_str = timestamp
+
                 event_id = f"{event['timestamp']}_{event['track_id']}"
+
                 if event_id in frame_data_map:
+                    # Event with photo - more prominent
                     frame_bytes = frame_data_map[event_id]
                     if frame_bytes:
-                        # Add caption
-                        location = event.get('zone_description') or event.get('line_description', 'detection')
-                        obj_class = event.get('object_class_name', 'unknown')
-                        caption = f"{event['timestamp']} - {obj_class} at {location}"
-                        story.append(Paragraph(caption, normal_style))
+                        caption = f"{time_str} - {obj_class} at {location}{direction_str}"
+                        story.append(Paragraph(caption, photo_caption_style))
 
-                        # Add image
                         try:
                             img = Image(io.BytesIO(frame_bytes))
                             img.drawWidth = 4 * inch
@@ -389,6 +403,10 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
                             story.append(Spacer(1, 15))
                         except Exception as e:
                             logger.warning(f"Failed to embed image: {e}")
+                else:
+                    # Event without photo - compact text line
+                    line = f"{time_str} - {obj_class} at {location}{direction_str}"
+                    story.append(Paragraph(line, event_style))
 
         # Build PDF
         doc.build(story)
