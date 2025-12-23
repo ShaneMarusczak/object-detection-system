@@ -7,7 +7,7 @@ Supports multiple digest configurations with independent filters and photos.
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 from collections import Counter

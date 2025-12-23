@@ -7,7 +7,7 @@ Cooldown configuration comes from event metadata.
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict
 
 from .email_service import EmailService
 

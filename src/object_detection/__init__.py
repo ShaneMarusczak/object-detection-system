@@ -29,7 +29,6 @@ from .core import (
 # Processor (dispatcher, consumers)
 from .processor import (
     dispatch_events,
-    derive_track_classes,
     EventDefinition,
     COCO_CLASSES,
     get_class_name,
@@ -50,7 +49,6 @@ __all__ = [
     "TrackedObject",
     # Processor
     "dispatch_events",
-    "derive_track_classes",
     "EventDefinition",
     "COCO_CLASSES",
     "get_class_name",

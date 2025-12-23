@@ -21,13 +21,13 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Callable
+from typing import Dict, Optional, Callable
 
 import cv2
 import torch
 from ultralytics import YOLO
 
-from .config import EdgeConfig, LineConfig, ZoneConfig, ROIConfig
+from .config import EdgeConfig, LineConfig
 from ..core.nighttime import LightingMonitor, HeadlightDetector, HEADLIGHT_CLASS_ID
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,7 @@ Pydantic schemas for configuration validation.
 Provides type-safe, declarative validation with clear error messages.
 """
 
-from typing import Dict, List, Optional, Union, Literal
+from typing import List, Optional, Union, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 

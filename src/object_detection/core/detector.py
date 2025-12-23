@@ -10,7 +10,7 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from multiprocessing import Queue, Event
 from typing import Dict, List, Optional
 

@@ -354,7 +354,7 @@ class ConfigBuilder:
                     print("    Which line?")
                     for i, line in enumerate(lines, 1):
                         print(f"      {i}. {line['description']}")
-                    line_choice = int(input(f"    Choice [1]: ").strip() or '1') - 1
+                    line_choice = int(input("    Choice [1]: ").strip() or '1') - 1
                     match['line'] = lines[line_choice]['description']
             elif type_choice == '2':
                 match['event_type'] = 'ZONE_ENTER'
@@ -362,7 +362,7 @@ class ConfigBuilder:
                     print("    Which zone?")
                     for i, zone in enumerate(zones, 1):
                         print(f"      {i}. {zone['description']}")
-                    zone_choice = int(input(f"    Choice [1]: ").strip() or '1') - 1
+                    zone_choice = int(input("    Choice [1]: ").strip() or '1') - 1
                     match['zone'] = zones[zone_choice]['description']
             elif type_choice == '3':
                 match['event_type'] = 'ZONE_DWELL'
@@ -370,7 +370,7 @@ class ConfigBuilder:
                     print("    Which zone?")
                     for i, zone in enumerate(zones, 1):
                         print(f"      {i}. {zone['description']}")
-                    zone_choice = int(input(f"    Choice [1]: ").strip() or '1') - 1
+                    zone_choice = int(input("    Choice [1]: ").strip() or '1') - 1
                     match['zone'] = zones[zone_choice]['description']
 
             # Object classes with validation

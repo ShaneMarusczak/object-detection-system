@@ -6,7 +6,7 @@ Only what's needed for detection - no event routing, emails, or digests.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 import yaml
 
 

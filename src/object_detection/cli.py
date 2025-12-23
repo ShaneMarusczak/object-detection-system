@@ -82,7 +82,7 @@ def find_config_file(config_path: str) -> Path:
     for path in search_paths:
         logger.error(f"  - {path}")
     logger.error("\nTo create a config file:")
-    logger.error(f"  mkdir -p ~/.config/object-detection")
+    logger.error("  mkdir -p ~/.config/object-detection")
     logger.error(f"  cp {Path(__file__).parent / 'default_config.yaml'} ~/.config/object-detection/config.yaml")
     sys.exit(1)
 
@@ -156,7 +156,7 @@ def get_model_class_names(model_path: str) -> dict:
     from .processor.coco_classes import COCO_CLASSES
 
     try:
-        logger.info(f"Loading model to extract class names...")
+        logger.info("Loading model to extract class names...")
         model = YOLO(model_path)
         class_names = dict(model.names)  # Copy model names
 
@@ -327,10 +327,10 @@ def print_banner(config: dict, duration_hours: float) -> None:
     print(f"Events: {len(events)} defined")
     print(f"Geometry: {len(lines)} line(s), {len(zones)} zone(s)")
 
-    print(f"\nRuntime:")
+    print("\nRuntime:")
     print(f"  Duration: {duration_hours} hour(s) ({duration_seconds/60:.0f} minutes)")
     print(f"  Camera: {config['camera']['url']}")
-    print(f"  Press Ctrl+C to stop early")
+    print("  Press Ctrl+C to stop early")
     print("="*70)
     print()
 
@@ -417,11 +417,11 @@ def print_final_status(
     if reason == 'duration':
         print(f"Duration reached - stopped after {elapsed/60:.1f} minutes")
     elif reason == 'detector_died':
-        print(f"Detector process ended")
+        print("Detector process ended")
     elif reason == 'analyzer_died':
-        print(f"Analyzer process ended unexpectedly")
+        print("Analyzer process ended unexpectedly")
     elif reason == 'interrupted':
-        print(f"Interrupted by user")
+        print("Interrupted by user")
 
     print("="*70)
     print("SYSTEM SHUTDOWN COMPLETE")
@@ -434,7 +434,7 @@ def print_final_status(
     if analyzer.exitcode != 0 and analyzer.exitcode is not None:
         logger.warning(f"Analyzer exited with code {analyzer.exitcode}")
 
-    print(f"\nCheck output files in:")
+    print("\nCheck output files in:")
     print(f"  {config['output']['json_dir']}/")
 
     if config.get('frame_saving', {}).get('enabled', False):

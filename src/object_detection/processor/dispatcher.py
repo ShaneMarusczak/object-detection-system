@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 from typing import Dict, List, Any, Set
 
-from .coco_classes import COCO_NAME_TO_ID
 from .json_writer import json_writer_consumer
 from .email_notifier import email_notifier_consumer
 from .email_digest import email_digest_consumer

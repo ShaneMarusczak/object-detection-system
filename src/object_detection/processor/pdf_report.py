@@ -393,7 +393,7 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
             if num_photos > 0:
                 story.append(PageBreak())
 
-            story.append(Paragraph(f"Event Timeline", heading_style))
+            story.append(Paragraph("Event Timeline", heading_style))
             story.append(Paragraph(
                 f"{total_events} events, {num_photos} photos captured",
                 ParagraphStyle('TimelineSubtitle', parent=normal_style, fontSize=10, textColor=colors.grey, spaceAfter=10)
