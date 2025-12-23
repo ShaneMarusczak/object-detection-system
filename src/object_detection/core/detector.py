@@ -150,11 +150,8 @@ def _detection_loop(
         os.makedirs(temp_frame_dir, exist_ok=True)
         logger.info(f"Temp frames: {temp_frame_dir} (on-demand, {temp_frame_max_age}s retention)")
 
-    # Headlight detection - fallback when YOLO finds nothing (works in darkness)
-    headlight_enabled = config.get('headlight_detection', True)
-    headlight_detector = HeadlightDetector() if headlight_enabled else None
-    if headlight_enabled:
-        logger.info("Headlight detection: enabled (fallback when YOLO finds nothing)")
+    # Headlight detector (runs when YOLO finds nothing)
+    headlight_detector = HeadlightDetector() if config.get('headlight_detection', True) else None
 
     logger.info("Detection started")
 
@@ -210,7 +207,7 @@ def _detection_loop(
                     temp_frame_max_age
                 )
 
-            # Check for headlights if YOLO found nothing (fallback for darkness)
+            # Headlight detection when YOLO found nothing
             if headlight_detector and not yolo_has_detections:
                 event_count += _process_headlight_detections(
                     headlight_detector,
