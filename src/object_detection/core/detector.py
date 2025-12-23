@@ -26,7 +26,7 @@ from ..utils.constants import (
     CAMERA_RECONNECT_DELAY,
 )
 from .models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
-from .nighttime import LightingMonitor, HeadlightDetector, HEADLIGHT_CLASS_ID
+from .nighttime import HeadlightDetector, HEADLIGHT_CLASS_ID
 
 logger = logging.getLogger(__name__)
 
@@ -150,11 +150,11 @@ def _detection_loop(
         os.makedirs(temp_frame_dir, exist_ok=True)
         logger.info(f"Temp frames: {temp_frame_dir} (on-demand, {temp_frame_max_age}s retention)")
 
-    # Nighttime detection - checks lighting and detects headlights when dark
-    nighttime_enabled = config.get('nighttime_detection', True)
-    lighting_monitor = LightingMonitor(enabled=nighttime_enabled)
-    headlight_detector = HeadlightDetector() if nighttime_enabled else None
-    is_night_mode = False
+    # Headlight detection - fallback when YOLO finds nothing (works in darkness)
+    headlight_enabled = config.get('headlight_detection', True)
+    headlight_detector = HeadlightDetector() if headlight_enabled else None
+    if headlight_enabled:
+        logger.info("Headlight detection: enabled (fallback when YOLO finds nothing)")
 
     logger.info("Detection started")
 
@@ -172,10 +172,6 @@ def _detection_loop(
 
             frame_count += 1
             frame_height, frame_width = frame.shape[:2]
-
-            # Check lighting conditions (startup + every 15 minutes)
-            if lighting_monitor.should_check():
-                is_night_mode = lighting_monitor.check_lighting(frame)
 
             # Apply ROI cropping
             roi_frame, roi_dims = _apply_roi_crop(frame, roi_config)
@@ -214,8 +210,8 @@ def _detection_loop(
                     temp_frame_max_age
                 )
 
-            # In night mode, also check for headlights if YOLO found nothing
-            if is_night_mode and headlight_detector and not yolo_has_detections:
+            # Check for headlights if YOLO found nothing (fallback for darkness)
+            if headlight_detector and not yolo_has_detections:
                 event_count += _process_headlight_detections(
                     headlight_detector,
                     frame,
@@ -241,7 +237,7 @@ def _detection_loop(
 
             # Periodic status update
             if frame_count % FPS_REPORT_INTERVAL == 0:
-                _log_status(frame_count, fps_list, event_count, start_time, is_night_mode)
+                _log_status(frame_count, fps_list, event_count, start_time)
 
     except KeyboardInterrupt:
         logger.info("Detection stopped by user")
@@ -944,12 +940,11 @@ def _log_detection_config(
                    f"-> {frame_config.get('output_dir')}/")
 
 
-def _log_status(frame_count: int, fps_list: List[float], event_count: int, start_time: float, is_night_mode: bool = False) -> None:
+def _log_status(frame_count: int, fps_list: List[float], event_count: int, start_time: float) -> None:
     """Log periodic status update."""
     avg_fps = sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE)
     elapsed = time.time() - start_time
-    mode = " [NIGHT]" if is_night_mode else ""
-    logger.info(f"[{elapsed/60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}{mode}")
+    logger.info(f"[{elapsed/60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}")
 
 
 def _log_final_stats(frame_count: int, fps_list: List[float], event_count: int, start_time: float) -> None:
