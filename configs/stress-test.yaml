@@ -55,6 +55,7 @@ events:
     actions:
       json_log: true
       email_digest: "hourly_traffic"
+      pdf_report: "hourly_traffic_pdf"
 
   - name: "vehicle_exiting"
     match:
@@ -65,6 +66,7 @@ events:
     actions:
       json_log: true
       email_digest: "hourly_traffic"
+      pdf_report: "hourly_traffic_pdf"
 
   - name: "pedestrian_crossing"
     match:
@@ -111,6 +113,7 @@ events:
       frame_capture:
         enabled: true
         annotate: true
+      pdf_report: "security_report"
 
   - name: "animal_in_restricted"
     match:
@@ -145,6 +148,7 @@ events:
       object_class: "person"
     actions:
       json_log: true
+      pdf_report: "security_report"
 
   - name: "parking_zone_exit"
     match:
@@ -172,6 +176,21 @@ digests:
     period_minutes: 1440
     subject: "Daily Anomaly Report"
     events: ["animal_in_restricted"]
+    photos: true
+
+pdf_reports:
+  - id: "hourly_traffic_pdf"
+    period_minutes: 60
+    output_dir: "reports/traffic"
+    title: "Hourly Traffic Report"
+    events: ["vehicle_entering", "vehicle_exiting"]
+    photos: true
+
+  - id: "security_report"
+    period_minutes: 120
+    output_dir: "reports/security"
+    title: "Security Incident Report"
+    events: ["restricted_zone_intrusion", "restricted_zone_clear"]
     photos: true
 
 notifications:

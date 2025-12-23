@@ -111,6 +111,7 @@ class EventActions(BaseModel):
     json_log: Optional[bool] = None
     email_immediate: Optional[Union[bool, EmailImmediateAction]] = None
     email_digest: Optional[str] = None
+    pdf_report: Optional[str] = None
     frame_capture: Optional[Union[bool, FrameCaptureAction]] = None
 
 
@@ -132,6 +133,17 @@ class DigestConfig(BaseModel):
     period_minutes: int = Field(..., gt=0, description="Period in minutes between digest emails")
     period_label: str = Field(default="")
     subject: str = Field(default="", description="Email subject line")
+    events: List[str] = Field(default_factory=list, description="Event definition names to include")
+    photos: bool = False
+    frame_config: Optional[FrameConfig] = None
+
+
+class PDFReportConfig(BaseModel):
+    """PDF report configuration."""
+    id: str = Field(..., min_length=1)
+    period_minutes: int = Field(..., gt=0, description="Period in minutes between PDF reports")
+    output_dir: str = Field(default="reports", description="Directory for PDF output")
+    title: str = Field(default="Object Detection Report", description="Report title")
     events: List[str] = Field(default_factory=list, description="Event definition names to include")
     photos: bool = False
     frame_config: Optional[FrameConfig] = None
@@ -200,6 +212,7 @@ class Config(BaseModel):
     zones: List[ZoneConfig] = Field(default_factory=list)
     events: List[EventConfig] = Field(default_factory=list)
     digests: List[DigestConfig] = Field(default_factory=list)
+    pdf_reports: List[PDFReportConfig] = Field(default_factory=list)
     output: OutputConfig = Field(default_factory=OutputConfig)
     camera: CameraConfig
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
@@ -218,6 +231,7 @@ class Config(BaseModel):
         line_names = {line.description for line in self.lines}
         zone_names = {zone.description for zone in self.zones}
         digest_ids = {digest.id for digest in self.digests}
+        pdf_report_ids = {report.id for report in self.pdf_reports}
 
         for event in self.events:
             if event.match.line and event.match.line not in line_names:
@@ -226,6 +240,8 @@ class Config(BaseModel):
                 raise ValueError(f"Event '{event.name}' references non-existent zone: '{event.match.zone}'")
             if event.actions.email_digest and event.actions.email_digest not in digest_ids:
                 raise ValueError(f"Event '{event.name}' references non-existent digest: '{event.actions.email_digest}'")
+            if event.actions.pdf_report and event.actions.pdf_report not in pdf_report_ids:
+                raise ValueError(f"Event '{event.name}' references non-existent pdf_report: '{event.actions.pdf_report}'")
 
         return self
 
