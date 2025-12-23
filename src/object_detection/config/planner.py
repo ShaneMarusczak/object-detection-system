@@ -449,9 +449,9 @@ def _validate_notifications(config: dict, result: ValidationResult) -> None:
 
     # Required email fields
     required_fields = ['smtp_server', 'smtp_port', 'username', 'password', 'from_address', 'to_addresses']
-    for field in required_fields:
-        if not email.get(field):
-            result.errors.append(f"notifications.email.{field} is required for email actions")
+    for field_name in required_fields:
+        if not email.get(field_name):
+            result.errors.append(f"notifications.email.{field_name} is required for email actions")
 
 
 def _validate_frame_storage(config: dict, result: ValidationResult) -> None:
@@ -756,7 +756,7 @@ def build_plan(config: dict) -> ConfigPlan:
             consumers.append(f'email_digest ({digest_id})')
         if pdf_report_id:
             consumers.append(f'pdf_report ({pdf_report_id})')
-        if actions.get('frame_capture', {}).get('enabled', actions.get('frame_capture') == True):
+        if actions.get('frame_capture', {}).get('enabled', actions.get('frame_capture') is True):
             consumers.append('frame_capture')
 
         events.append(EventPlan(
@@ -785,7 +785,7 @@ def build_plan(config: dict) -> ConfigPlan:
     # Geometry summary
     geometry = {
         'zones': [z.get('description', f"zone_{i}") for i, z in enumerate(config.get('zones', []))],
-        'lines': [l.get('description', f"line_{i}") for i, l in enumerate(config.get('lines', []))]
+        'lines': [ln.get('description', f"line_{i}") for i, ln in enumerate(config.get('lines', []))]
     }
 
     # Active consumers
@@ -1077,8 +1077,6 @@ def generate_sample_events(config: dict) -> List[Dict]:
     """Generate sample events based on config for dry-run testing."""
     samples = []
 
-    zones = config.get('zones', [])
-    lines = config.get('lines', [])
     events = config.get('events', [])
 
     # Generate samples based on event definitions

@@ -137,7 +137,7 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                 if should_annotate and annotated and annotated != temp_frame:
                     try:
                         os.remove(annotated)
-                    except:
+                    except Exception:
                         pass
 
                 if saved_path:

@@ -92,7 +92,7 @@ class ConfigBuilder:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception:
             return 'localhost'
 
     def _start_preview_server(self):
@@ -112,7 +112,7 @@ class ConfigBuilder:
             if result == 0:
                 print(f"{Colors.GREEN}Preview server already running:{Colors.RESET} {preview_url}")
                 return
-        except:
+        except Exception:
             pass
 
         # Start server (bind to all interfaces for remote access)
@@ -759,7 +759,7 @@ use: {config_path}
             self.http_server.terminate()
             try:
                 self.http_server.wait(timeout=2)
-            except:
+            except Exception:
                 self.http_server.kill()
             self.http_server = None
 

@@ -428,7 +428,7 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
                 try:
                     dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                     time_str = dt.strftime('%H:%M:%S')
-                except:
+                except Exception:
                     time_str = timestamp
 
                 event_id = f"{event['timestamp']}_{event['track_id']}"

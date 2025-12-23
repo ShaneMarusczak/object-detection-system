@@ -143,7 +143,6 @@ def _detection_loop(
     # Temp frame saving configuration
     temp_frame_dir = config.get('temp_frame_dir', '/tmp/frames')
     temp_frame_enabled = config.get('temp_frames_enabled', True)
-    temp_frame_interval = config.get('temp_frame_interval', 5)  # Save every N frames
     temp_frame_max_age = config.get('temp_frame_max_age_seconds', 30)  # Keep last 30s
 
     if temp_frame_enabled:
