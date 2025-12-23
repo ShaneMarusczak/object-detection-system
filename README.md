@@ -18,17 +18,18 @@ pip install -r requirements.txt
 ./run.sh
 ```
 
-The run script is the preferred entry point. It offers two options:
+The run script is the preferred entry point. It offers three options:
 
 1. **Run with existing config** - Validates, plans, dry-runs, then executes
-2. **Build new config** - Interactive wizard that guides you through setup
+2. **Pick a config** - Choose from saved configs in `configs/`
+3. **Build new config** - Interactive wizard that guides you through setup
 
 ### Config Builder
 
 The config builder is a TUI wizard for first-time setup or creating new configurations:
 
 ```bash
-./run.sh        # Choose option 2
+./run.sh        # Choose option 3
 # or directly:
 python -m object_detection --build-config
 ```

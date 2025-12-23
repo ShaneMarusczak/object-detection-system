@@ -9,6 +9,7 @@ In distributed mode: receives from Redis Streams (swap Queue for RedisConsumer)
 """
 
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Any, Set
@@ -248,6 +249,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
 
         # Process and route events
         event_count = 0
+        events_by_class = Counter()
         while True:
             raw_event = data_queue.get()
 
@@ -264,6 +266,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
                 if event_def.matches(enriched_event):
                     matched = True
                     event_count += 1
+                    events_by_class[enriched_event.get('object_class_name', 'unknown')] += 1
 
                     # Tag event with definition name
                     enriched_event['event_definition'] = event_def.name
@@ -283,6 +286,18 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
     except Exception as e:
         logger.error(f"Error in dispatcher: {e}", exc_info=True)
     finally:
+        # Print shutdown summary
+        end_time = datetime.now(timezone.utc)
+        elapsed = (end_time - start_time).total_seconds()
+        elapsed_str = f"{elapsed/60:.1f} minutes" if elapsed >= 60 else f"{elapsed:.0f} seconds"
+
+        print("\n" + "="*50)
+        print(f"Session: {elapsed_str}, {event_count} events")
+        if events_by_class:
+            class_summary = ", ".join(f"{count} {cls}" for cls, count in events_by_class.most_common())
+            print(f"  {class_summary}")
+        print("="*50)
+
         # Shutdown all consumers
         logger.info("Shutting down consumers...")
         for queue_name, queue in consumer_queues.items():
@@ -296,6 +311,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
 
         # Generate PDF reports synchronously (blocking) after all consumers finish
         if pdf_shutdown_config:
+            print("Generating PDF report...")
             json_dir = config.get('output', {}).get('json_dir', 'data')
             generate_pdf_reports(json_dir, pdf_shutdown_config, start_time)
 

@@ -26,6 +26,17 @@ source ~/traffic-analysis/venv/bin/activate
 echo -e "${CYAN}Object Detection System${NC}"
 echo ""
 
+# Show current config before menu
+if [ -f "config.yaml" ]; then
+    CURRENT_CONFIG=$(grep -E "^use:" "config.yaml" 2>/dev/null | sed 's/use:[[:space:]]*//' || true)
+    if [ -n "$CURRENT_CONFIG" ]; then
+        echo -e "Current config: ${YELLOW}$CURRENT_CONFIG${NC}"
+    else
+        echo -e "Current config: ${YELLOW}config.yaml (inline)${NC}"
+    fi
+    echo ""
+fi
+
 # Entry point choice (skip if -s or -y flag)
 if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
     echo "What would you like to do?"

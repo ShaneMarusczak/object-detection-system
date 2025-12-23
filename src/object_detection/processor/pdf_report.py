@@ -367,13 +367,14 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
         # Event timeline with inline photos
         events = stats.get('events', [])
         if events:
-            story.append(Paragraph("Event Timeline", heading_style))
+            total_events = len(events)
+            story.append(Paragraph(f"Event Timeline ({total_events} events)", heading_style))
 
             # Style for events without photos (smaller, more compact)
             event_style = ParagraphStyle('Event', parent=normal_style, fontSize=9, leading=12)
             photo_caption_style = ParagraphStyle('PhotoCaption', parent=normal_style, fontSize=10, fontName='Helvetica-Bold')
 
-            for event in events:
+            for i, event in enumerate(events, 1):
                 location = event.get('zone_description') or event.get('line_description', 'detection')
                 obj_class = event.get('object_class_name', 'unknown')
                 direction = event.get('direction', '')
@@ -387,12 +388,13 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
                     time_str = timestamp
 
                 event_id = f"{event['timestamp']}_{event['track_id']}"
+                event_num = f"#{i}"
 
                 if event_id in frame_data_map:
                     # Event with photo - more prominent
                     frame_bytes = frame_data_map[event_id]
                     if frame_bytes:
-                        caption = f"{time_str} - {obj_class} at {location}{direction_str}"
+                        caption = f"{event_num} | {time_str} - {obj_class} at {location}{direction_str}"
                         story.append(Paragraph(caption, photo_caption_style))
 
                         try:
@@ -405,7 +407,7 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
                             logger.warning(f"Failed to embed image: {e}")
                 else:
                     # Event without photo - compact text line
-                    line = f"{time_str} - {obj_class} at {location}{direction_str}"
+                    line = f"{event_num} | {time_str} - {obj_class} at {location}{direction_str}"
                     story.append(Paragraph(line, event_style))
 
         # Build PDF
