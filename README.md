@@ -1,130 +1,98 @@
 # Object Detection System
 
-Production-quality object detection for tracking movement across boundaries and through zones. Built on YOLO and ByteTrack with GPU acceleration.
+GPU-accelerated object detection for tracking movement across lines and through zones. YOLO + ByteTrack with headlight detection for nighttime coverage.
 
 ## Features
 
-- **Event-driven architecture**: Define events declaratively, system handles routing
-- **Terraform-like workflow**: `--validate`, `--plan`, `--dry-run` before running
-- **Email digests**: Daily/hourly summaries with optional photos
-- **Multi-line detection**: Vertical/horizontal counting lines
-- **Zone monitoring**: Entry/exit with automatic dwell time
-- **GPU-accelerated**: 40+ FPS on Jetson Orin Nano
+- **Event-driven**: Define what you care about, system routes automatically
+- **Headlight detection**: Blob detection fallback when YOLO can't see (darkness)
+- **PDF reports**: Generated on shutdown with event summaries and photos
+- **Email digests**: Periodic summaries with optional frame captures
+- **Terraform workflow**: `--validate`, `--plan`, `--dry-run` before running
+- **42+ FPS** on Jetson Orin Nano
 
 ## Quick Start
 
 ```bash
-# Install
 pip install -r requirements.txt
 
-# Validate config
-python -m object_detection --validate
-
-# Preview what will happen
-python -m object_detection --plan
-
-# Simulate with sample events
-python -m object_detection --dry-run
-
-# Run for 1 hour
-python -m object_detection 1
+python -m object_detection --validate   # Check config
+python -m object_detection --plan       # Preview routing
+python -m object_detection --dry-run    # Simulate events
+python -m object_detection 1            # Run for 1 hour
 ```
 
 ## Configuration
 
-Edit `config.yaml`:
-
 ```yaml
-# Define geometry
 lines:
   - type: vertical
-    position_pct: 25
-    description: "driveway"
-    allowed_classes: [2, 3, 5, 7]  # car, motorcycle, bus, truck
+    position_pct: 30
+    description: "entrance gate"
 
-# Define what you care about
+zones:
+  - x1_pct: 0
+    y1_pct: 60
+    x2_pct: 25
+    y2_pct: 100
+    description: "loading dock"
+
 events:
-  - name: "vehicle-crossing"
+  - name: "vehicle_entering"
     match:
       event_type: "LINE_CROSS"
-      line: "driveway"
-      object_class: ["car", "truck"]
+      line: "entrance gate"
+      object_class: ["car", "truck", "headlight"]
     actions:
-      json_log: true          # Log to JSON
-      email_digest: "daily"   # Include in daily summary
+      json_log: true
+      pdf_report: "traffic_report"
 
-# Configure digests
-digests:
-  - id: "daily"
-    period_minutes: 1440
-    period_label: "Daily Traffic"
-    photos: true  # Auto-enables frame capture
+pdf_reports:
+  - id: "traffic_report"
+    title: "Traffic Report"
+    photos: true
 ```
 
-### AWS-Style Composition
-
-Actions have automatic dependencies:
-- `email_digest` → auto-enables `json_log`
-- `email_digest` with `photos: true` → auto-enables `frame_capture`
-
-Just say what you want, the system figures out the rest.
-
-## Terraform-like Workflow
-
-```bash
-# Check config validity
-python -m object_detection --validate
-# ✓ Configuration is valid
-# Derived: track_classes: car (2), truck (7)
-# Active consumers: json_writer, email_digest, frame_capture
-
-# Preview event routing
-python -m object_detection --plan
-# Event: vehicle-crossing
-#   Match: LINE_CROSS + driveway + [car, truck]
-#   Actions:
-#     -> json_writer
-#     -> email_digest (daily)
-#     -> frame_capture (implied by photos: true)
-
-# Simulate without running
-python -m object_detection --dry-run
-# [1] LINE_CROSS: car @ driveway
-#     -> Matched: vehicle-crossing
-#        -> Write to JSON log
-#        -> Queue for digest: daily
-```
+Headlight is just another class - use it anywhere you'd use `car` or `truck`.
 
 ## Project Structure
 
 ```
 src/object_detection/
-├── cli.py              # CLI & orchestration
+├── cli.py                 # Entry point
 ├── core/
-│   ├── detector.py     # YOLO detection
-│   ├── dispatcher.py   # Event routing
-│   └── models.py       # Data classes
+│   ├── detector.py        # YOLO + headlight detection
+│   ├── nighttime.py       # HeadlightDetector (blob detection)
+│   └── models.py          # TrackedObject, LineConfig, ZoneConfig
+├── processor/
+│   ├── dispatcher.py      # Event routing
+│   ├── json_writer.py     # JSONL logging + console output
+│   ├── frame_capture.py   # Annotated frame saves
+│   ├── pdf_report.py      # PDF generation
+│   ├── email_digest.py    # Periodic email summaries
+│   └── coco_classes.py    # Class ID mappings (includes headlight)
 ├── config/
-│   ├── validator.py    # Config validation
-│   └── planner.py      # validate/plan/dry-run
-├── consumers/
-│   ├── json_writer.py
-│   ├── email_notifier.py
-│   ├── email_digest.py
-│   └── frame_capture.py
-└── utils/
-    ├── constants.py
-    └── coco_classes.py
+│   ├── planner.py         # validate/plan/dry-run
+│   └── schemas.py         # Config validation
+└── edge/
+    └── detector.py        # Jetson edge deployment
 ```
 
 ## Output
 
-Events logged to `data/events_YYYYMMDD_HHMMSS.jsonl`:
-
+**JSONL** (`data/events_*.jsonl`):
 ```json
-{"event_type":"LINE_CROSS","timestamp":"2025-12-22T14:35:47Z","track_id":47,"object_class_name":"car","line_description":"driveway","direction":"LTR","event_definition":"vehicle-crossing"}
+{"event_type":"LINE_CROSS","track_id":42,"object_class_name":"car","line_description":"entrance gate","direction":"LTR","timestamp":"2025-12-23T04:11:17Z"}
+```
+
+**PDF**: Generated on shutdown with event tables and captured frames.
+
+**Console**:
+```
+od.processor.json_writer INFO #   1 | Track 42 (car) crossed V1 (entrance gate) LTR
+od.processor.json_writer INFO #   2 | Track 10005 (headlight) crossed V1 (entrance gate) LTR
 ```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE).
+MIT
