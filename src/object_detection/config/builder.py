@@ -63,6 +63,8 @@ class ConfigBuilder:
             self._setup_zones()
             self._setup_events()
             self._setup_pdf_reports()
+            self._setup_digests()
+            self._setup_email()
             self._setup_output()
 
             # Save and optionally run
@@ -400,6 +402,17 @@ class ConfigBuilder:
                         'expected_duration_seconds': int(duration_str) * 60
                     }
 
+            # Immediate email
+            email_imm = input("    Send immediate email? (y/N): ").strip().lower()
+            if email_imm == 'y':
+                actions['email_immediate'] = True
+
+            # Email digest
+            email_dig = input("    Add to email digest? (y/N): ").strip().lower()
+            if email_dig == 'y':
+                digest_id = input("    Digest ID [daily_digest]: ").strip() or "daily_digest"
+                actions['email_digest'] = digest_id
+
             event['actions'] = actions
             events.append(event)
 
@@ -462,8 +475,94 @@ class ConfigBuilder:
 
         self.config['pdf_reports'] = pdf_reports
 
+    def _setup_digests(self):
+        """Setup email digest configurations."""
+        events = self.config.get('events', [])
+        if not events:
+            return
+
+        # Collect unique digest IDs from events
+        digest_ids = set()
+        for event in events:
+            digest_id = event.get('actions', {}).get('email_digest')
+            if digest_id:
+                digest_ids.add(digest_id)
+
+        if not digest_ids:
+            return
+
+        print(f"\n{Colors.BOLD}--- Email Digests Setup ---{Colors.RESET}")
+
+        digests = []
+        for digest_id in digest_ids:
+            print(f"\n  Digest: {digest_id}")
+
+            # Get events for this digest
+            digest_events = [e['name'] for e in events if e.get('actions', {}).get('email_digest') == digest_id]
+            print(f"  {Colors.GRAY}Events: {', '.join(digest_events)}{Colors.RESET}")
+
+            # Schedule
+            print("    Schedule type:")
+            print("      1. interval (every N minutes)")
+            print("      2. daily (at specific time)")
+            sched_choice = input("    Choice [1]: ").strip() or '1'
+
+            schedule = {}
+            if sched_choice == '1':
+                interval = input("    Interval in minutes [60]: ").strip() or "60"
+                schedule = {'interval_minutes': int(interval)}
+            else:
+                time_str = input("    Time (HH:MM) [08:00]: ").strip() or "08:00"
+                schedule = {'daily_at': time_str}
+
+            # Include photos?
+            photos = input("    Include photos in digest? (y/N): ").strip().lower()
+
+            digests.append({
+                'id': digest_id,
+                'events': digest_events,
+                'schedule': schedule,
+                'photos': photos == 'y'
+            })
+
+        self.config['digests'] = digests
+
+    def _setup_email(self):
+        """Setup email configuration (SMTP settings)."""
+        events = self.config.get('events', [])
+
+        # Check if any email actions are configured
+        has_email = any(
+            e.get('actions', {}).get('email_immediate') or e.get('actions', {}).get('email_digest')
+            for e in events
+        )
+
+        if not has_email:
+            return
+
+        print(f"\n{Colors.BOLD}--- Email Configuration ---{Colors.RESET}")
+        print(f"{Colors.GRAY}Configure SMTP settings for email notifications{Colors.RESET}")
+
+        smtp_host = input("  SMTP host [smtp.gmail.com]: ").strip() or "smtp.gmail.com"
+        smtp_port = input("  SMTP port [587]: ").strip() or "587"
+        smtp_user = input("  SMTP username (email): ").strip()
+        smtp_pass = input("  SMTP password (app password): ").strip()
+        from_addr = input(f"  From address [{smtp_user}]: ").strip() or smtp_user
+        to_addr = input("  To address(es) (comma-separated): ").strip()
+
+        self.config['email'] = {
+            'smtp_host': smtp_host,
+            'smtp_port': int(smtp_port),
+            'smtp_user': smtp_user,
+            'smtp_pass': smtp_pass,
+            'from_address': from_addr,
+            'to_addresses': [addr.strip() for addr in to_addr.split(',')]
+        }
+
+        print(f"  {Colors.GREEN}Email configured{Colors.RESET}")
+
     def _setup_output(self):
-        """Setup output directories."""
+        """Setup output directories and runtime settings."""
         print(f"\n{Colors.BOLD}--- Output Setup ---{Colors.RESET}")
 
         json_dir = input("JSON data directory [data]: ").strip() or "data"
@@ -487,9 +586,14 @@ class ConfigBuilder:
             'level': 'detailed'
         }
 
-        # Runtime
+        # Runtime settings
+        print(f"\n{Colors.BOLD}--- Runtime Settings ---{Colors.RESET}")
+        duration_str = input("Default duration in hours [0.5]: ").strip() or "0.5"
+        duration = float(duration_str)
+
         self.config['runtime'] = {
-            'queue_size': 500
+            'queue_size': 500,
+            'default_duration_hours': duration
         }
 
     def _save_config(self) -> Optional[str]:

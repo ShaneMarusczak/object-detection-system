@@ -5,6 +5,7 @@ set -e
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
+GRAY='\033[0;90m'
 NC='\033[0m'
 
 # Parse flags
@@ -37,12 +38,21 @@ fi
 # Prompt for config file (or use default in -y mode)
 if [ "$YES_MODE" = true ]; then
     CONFIG_FILE="config.yaml"
-    echo -e "${YELLOW}Using default config: $CONFIG_FILE${NC}"
 else
     read -p "Config file [config.yaml]: " CONFIG_INPUT
     CONFIG_FILE="${CONFIG_INPUT:-config.yaml}"
 fi
 CONFIG_ARGS="-c $CONFIG_FILE"
+
+# Show which config is being used (follow use: pointer if present)
+if [ -f "$CONFIG_FILE" ]; then
+    USE_POINTER=$(grep -E "^use:" "$CONFIG_FILE" 2>/dev/null | sed 's/use:[[:space:]]*//' || true)
+    if [ -n "$USE_POINTER" ]; then
+        echo -e "${YELLOW}Config: $CONFIG_FILE -> $USE_POINTER${NC}"
+    else
+        echo -e "${YELLOW}Config: $CONFIG_FILE${NC}"
+    fi
+fi
 
 echo ""
 echo -e "${GREEN}=== Validating ===${NC}"
@@ -66,7 +76,7 @@ echo ""
 # Prompt for run options (or use defaults in -y mode)
 if [ "$YES_MODE" = true ]; then
     RUN_ARGS=""
-    echo -e "${YELLOW}Using duration from config${NC}"
+    echo -e "${GRAY}Using duration from config${NC}"
 else
     read -p "Duration in hours [from config]: " DURATION
     read -p "Quiet mode? (y/N): " QUIET_INPUT
