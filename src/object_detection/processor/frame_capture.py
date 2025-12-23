@@ -85,13 +85,14 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                     expected_duration = frame_config.get('expected_duration_seconds', default_duration)
                     photo_budgets[event_def] = {
                         'pending_slots': max_photos,
-                        'photos_taken': 0,
                         'in_time_mode': False,
                         'time_mode_start': None,
                         'time_mode_photos': 0,
                         'slot_interval': None,
                         'max_photos': max_photos,
                         'expected_duration': expected_duration,
+                        'saved_frames': [],  # List of saved frame paths
+                        'delete_pointer': None,  # Index for next deletion (starts at end, moves backward)
                     }
                     logger.info(f"Photo budget for '{event_def}': {max_photos} over {expected_duration/3600:.1f}h")
 
@@ -147,21 +148,43 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                     if max_photos and event.get('event_definition') in photo_budgets:
                         budget = photo_budgets[event.get('event_definition')]
                         budget['pending_slots'] -= 1
-                        budget['photos_taken'] += 1
 
+                        # In time mode, delete oldest frame before adding new one
                         if budget['in_time_mode']:
                             budget['time_mode_photos'] += 1
+
+                            # Delete frame at delete_pointer
+                            if budget['saved_frames'] and budget['delete_pointer'] is not None:
+                                to_delete = budget['saved_frames'][budget['delete_pointer']]
+                                try:
+                                    if os.path.exists(to_delete):
+                                        os.remove(to_delete)
+                                        logger.debug(f"Deleted old frame: {os.path.basename(to_delete)}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to delete frame: {e}")
+
+                                # Remove from list
+                                budget['saved_frames'].pop(budget['delete_pointer'])
+
+                                # Move pointer backward, wrap if needed
+                                budget['delete_pointer'] -= 1
+                                if budget['delete_pointer'] < 0:
+                                    budget['delete_pointer'] = len(budget['saved_frames']) - 1
+
+                        # Track saved frame
+                        budget['saved_frames'].append(saved_path)
 
                         # Check if eager phase just ended - switch to time mode
                         if not budget['in_time_mode'] and budget['pending_slots'] == 0:
                             budget['in_time_mode'] = True
                             budget['time_mode_start'] = current_time
+                            budget['delete_pointer'] = len(budget['saved_frames']) - 1  # Start at newest
                             elapsed = current_time - start_time
                             remaining = budget['expected_duration'] - elapsed
                             if remaining > 0:
                                 budget['slot_interval'] = remaining / budget['max_photos']
                                 logger.info(f"'{event.get('event_definition')}' switching to time mode: "
-                                          f"1 photo per {budget['slot_interval']:.0f}s")
+                                          f"1 photo per {budget['slot_interval']:.0f}s (delete from back)")
                             else:
                                 # Past expected duration, use small interval
                                 budget['slot_interval'] = 60
@@ -181,7 +204,8 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     finally:
         # Log photo budget stats
         for event_def, budget in photo_budgets.items():
-            logger.info(f"Photo budget '{event_def}': {budget['photos_taken']}/{budget['max_photos']} captured")
+            on_disk = len(budget['saved_frames'])
+            logger.info(f"Photo budget '{event_def}': {on_disk} frames on disk (max {budget['max_photos']})")
         logger.info("Frame Capture shutdown complete")
 
 
