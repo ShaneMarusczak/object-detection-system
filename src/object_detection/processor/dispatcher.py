@@ -17,7 +17,7 @@ from .coco_classes import COCO_NAME_TO_ID
 from .json_writer import json_writer_consumer
 from .email_notifier import email_notifier_consumer
 from .email_digest import email_digest_consumer
-from .pdf_report import pdf_report_consumer
+from .pdf_report import generate_pdf_reports
 from .frame_capture import frame_capture_consumer
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,10 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
         model_names: Mapping from COCO class ID to class name
     """
     try:
+        # Initialize shutdown service variables
+        pdf_shutdown_config = None
+        start_time = datetime.now(timezone.utc)
+
         # Parse event definitions
         event_defs = _parse_event_definitions(config)
         logger.info(f"Loaded {len(event_defs)} event definition(s)")
@@ -255,25 +259,16 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             consumers.append(digest_process)
             logger.info(f"Started Email Digest consumer with {len(digest_config)} digest(s)")
 
-        # PDF Report - if any event has pdf_report action
+        # PDF Report - stored for synchronous generation at shutdown
         if 'pdf_report' in needed_consumers:
-            pdf_report_config = config.get('pdf_reports', [])
-            json_dir = config.get('output', {}).get('json_dir', 'data')
+            pdf_report_list = config.get('pdf_reports', [])
             frame_storage_config = config.get('frame_storage', {})
 
-            pdf_consumer_config = {
-                'pdf_reports': pdf_report_config,
+            pdf_shutdown_config = {
+                'pdf_reports': pdf_report_list,
                 'frame_service_config': {'storage': frame_storage_config}
             }
-
-            pdf_process = Process(
-                target=pdf_report_consumer,
-                args=(json_dir, pdf_consumer_config),
-                name='PDFReport'
-            )
-            pdf_process.start()
-            consumers.append(pdf_process)
-            logger.info(f"Started PDF Report consumer with {len(pdf_report_config)} report(s)")
+            logger.info(f"PDF report(s) will generate on shutdown: {len(pdf_report_list)}")
 
         # Frame Capture - if any event has frame_capture action
         if 'frame_capture' in needed_consumers:
@@ -298,7 +293,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             consumers.append(frame_process)
             logger.info("Started Frame Capture consumer")
 
-        if not consumers:
+        if not consumers and not pdf_shutdown_config:
             logger.warning("No consumers needed - no events define any actions!")
 
         logger.info(f"Dispatcher initialized with {len(consumers)} consumer(s)")
@@ -350,6 +345,11 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             if consumer.is_alive():
                 logger.warning(f"Consumer {consumer.name} did not shutdown gracefully")
                 consumer.terminate()
+
+        # Generate PDF reports synchronously (blocking) after all consumers finish
+        if pdf_shutdown_config:
+            json_dir = config.get('output', {}).get('json_dir', 'data')
+            generate_pdf_reports(json_dir, pdf_shutdown_config, start_time)
 
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")
 

@@ -1,13 +1,12 @@
 """
-PDF Report Consumer
-Generates PDF reports on shutdown covering the entire run.
+PDF Report Generator
+Generates PDF reports synchronously on shutdown covering the entire run.
 """
 
 import io
 import json
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
@@ -31,21 +30,21 @@ except ImportError:
     logger.warning("reportlab not installed - PDF reports disabled")
 
 
-def pdf_report_consumer(json_dir: str, config: dict) -> None:
+def generate_pdf_reports(json_dir: str, config: dict, start_time: datetime) -> None:
     """
-    Generate PDF reports on shutdown.
-    Waits for shutdown signal, then generates reports covering the entire run.
+    Generate PDF reports synchronously at shutdown.
+
+    This is called directly by the dispatcher after all other consumers have
+    finished, so it can take as long as needed without timeout.
 
     Args:
         json_dir: Directory containing JSON log files
         config: Consumer configuration with 'pdf_reports' list
+        start_time: When the run started (for filtering events)
     """
     if not REPORTLAB_AVAILABLE:
         logger.error("reportlab not installed - cannot generate PDF reports")
         return
-
-    # Store config for later - FrameService created after shutdown when metadata exists
-    frame_service_config = config.get('frame_service_config', {})
 
     # Get PDF report configurations
     pdf_report_configs = config.get('pdf_reports', [])
@@ -54,69 +53,53 @@ def pdf_report_consumer(json_dir: str, config: dict) -> None:
         logger.warning("No PDF report configurations found")
         return
 
-    start_time = datetime.now(timezone.utc)
+    end_time = datetime.now(timezone.utc)
+    logger.info(f"Generating {len(pdf_report_configs)} PDF report(s)...")
+
+    # Create FrameService - metadata should exist after all frames saved
+    frame_service_config = config.get('frame_service_config', {})
+    frame_service = FrameService(frame_service_config) if frame_service_config else None
 
     for report_config in pdf_report_configs:
         report_id = report_config.get('id', 'report')
-        logger.info(f"PDF Report '{report_id}' will be generated on shutdown")
+        event_names = report_config.get('events', [])
 
-    logger.info(f"PDF Report Consumer started ({len(pdf_report_configs)} report(s))")
+        # Aggregate all events from the run
+        stats = _aggregate_from_json(json_dir, start_time, end_time, event_names)
 
-    try:
-        # Just wait for shutdown
-        while True:
-            time.sleep(1)
+        if stats['total_events'] == 0:
+            logger.info(f"No events for report '{report_id}' - skipping")
+            continue
 
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # Generate reports on shutdown
-        end_time = datetime.now(timezone.utc)
-        logger.info("Generating PDF reports...")
+        # Get frame data if photos enabled
+        frame_data_map = {}
+        if report_config.get('photos') and frame_service and stats.get('events'):
+            frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
+            logger.debug(f"Found {len(frame_paths)} frame paths for {len(stats['events'])} events")
+            for event_id, path in frame_paths.items():
+                frame_bytes = frame_service.read_frame_bytes(event_id)
+                if frame_bytes:
+                    frame_data_map[event_id] = frame_bytes
 
-        # Create FrameService NOW - after all frames have been captured and metadata saved
-        frame_service = FrameService(frame_service_config) if frame_service_config else None
+        # Generate PDF
+        output_dir = report_config.get('output_dir', 'reports')
+        title = report_config.get('title', 'Object Detection Report')
 
-        for report_config in pdf_report_configs:
-            report_id = report_config.get('id', 'report')
-            event_names = report_config.get('events', [])
+        pdf_path = _generate_pdf(
+            output_dir=output_dir,
+            title=title,
+            stats=stats,
+            frame_data_map=frame_data_map,
+            start_time=start_time,
+            end_time=end_time
+        )
 
-            # Aggregate all events from the run
-            stats = _aggregate_from_json(json_dir, start_time, end_time, event_names)
+        if pdf_path:
+            logger.info(f"Report '{report_id}' saved: {pdf_path}")
+        else:
+            logger.warning(f"Failed to generate report '{report_id}'")
 
-            if stats['total_events'] == 0:
-                logger.info(f"No events for report '{report_id}' - skipping")
-                continue
-
-            # Get frame data if photos enabled
-            frame_data_map = {}
-            if report_config.get('photos') and frame_service and stats.get('events'):
-                frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
-                logger.debug(f"Found {len(frame_paths)} frame paths for {len(stats['events'])} events")
-                for event_id, path in frame_paths.items():
-                    frame_bytes = frame_service.read_frame_bytes(event_id)
-                    if frame_bytes:
-                        frame_data_map[event_id] = frame_bytes
-
-            # Generate PDF
-            output_dir = report_config.get('output_dir', 'reports')
-            title = report_config.get('title', 'Object Detection Report')
-
-            pdf_path = _generate_pdf(
-                output_dir=output_dir,
-                title=title,
-                stats=stats,
-                frame_data_map=frame_data_map,
-                start_time=start_time,
-                end_time=end_time
-            )
-
-            if pdf_path:
-                logger.info(f"Report '{report_id}' saved: {pdf_path}")
-            else:
-                logger.warning(f"Failed to generate report '{report_id}'")
-
-        logger.info("PDF Report Consumer shutdown complete")
+    logger.info("PDF report generation complete")
 
 
 def _aggregate_from_json(json_dir: str, start_time: datetime, end_time: datetime,
