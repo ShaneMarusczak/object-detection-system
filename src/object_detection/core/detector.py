@@ -435,6 +435,8 @@ def _check_headlight_line_crossings(
             tracked_obj.crossed_lines.add(line.line_id)
             event_count += 1
 
+            logger.info(f"[NIGHT] Headlight #{tracked_obj.track_id} crossed {line.line_id} ({direction})")
+
             # Save frame on-demand
             frame_id = None
             if frame is not None and temp_frame_dir:
@@ -487,6 +489,8 @@ def _check_headlight_zone_events(
             tracked_obj.active_zones[zone.zone_id] = current_time
             event_count += 1
 
+            logger.info(f"[NIGHT] Headlight #{tracked_obj.track_id} entered {zone.zone_id}")
+
             frame_id = None
             if frame is not None and temp_frame_dir:
                 frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
@@ -508,6 +512,8 @@ def _check_headlight_zone_events(
             dwell_time = current_time - entry_time
             del tracked_obj.active_zones[zone.zone_id]
             event_count += 1
+
+            logger.info(f"[NIGHT] Headlight #{tracked_obj.track_id} exited {zone.zone_id} (dwell: {dwell_time:.1f}s)")
 
             frame_id = None
             if frame is not None and temp_frame_dir:
