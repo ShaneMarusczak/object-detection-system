@@ -9,6 +9,7 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import logging
 import time
+import uuid
 from datetime import datetime, timezone
 from multiprocessing import Queue, Event
 from typing import Dict, List, Optional
@@ -178,6 +179,11 @@ def _detection_loop(
             current_time = time.time()
             relative_time = current_time - start_time
 
+            # Save temp frame BEFORE processing (so events can reference it)
+            current_frame_id = None
+            if temp_frame_enabled and frame_count % temp_frame_interval == 0:
+                current_frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+
             # Process detections
             if results[0].boxes is not None and results[0].boxes.id is not None:
                 event_count += _process_detections(
@@ -189,12 +195,9 @@ def _detection_loop(
                     data_queue,
                     current_time,
                     relative_time,
-                    speed_enabled
+                    speed_enabled,
+                    current_frame_id
                 )
-
-            # Save temp frames for event capture (short buffer)
-            if temp_frame_enabled and frame_count % temp_frame_interval == 0:
-                _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
 
             # Save frames if enabled
             if frame_config.get('enabled') and frame_count % frame_config.get('interval', 500) == 0:
@@ -237,7 +240,8 @@ def _process_detections(
     data_queue: Queue,
     current_time: float,
     relative_time: float,
-    speed_enabled: bool
+    speed_enabled: bool,
+    frame_id: Optional[str] = None
 ) -> int:
     """
     Process all detections in current frame.
@@ -278,13 +282,13 @@ def _process_detections(
         if not tracked_obj.is_new():
             event_count += _check_line_crossings(
                 tracked_obj, lines, roi_dims, data_queue,
-                relative_time, speed_enabled, current_time
+                relative_time, speed_enabled, current_time, frame_id
             )
 
         # Check zone entry/exit
         event_count += _check_zone_events(
             tracked_obj, zones, roi_dims, data_queue,
-            relative_time, current_time
+            relative_time, current_time, frame_id
         )
 
     return event_count
@@ -297,7 +301,8 @@ def _check_line_crossings(
     data_queue: Queue,
     relative_time: float,
     speed_enabled: bool,
-    current_time: float
+    current_time: float,
+    frame_id: Optional[str] = None
 ) -> int:
     """Check if object crossed any lines."""
     event_count = 0
@@ -330,6 +335,7 @@ def _check_line_crossings(
                 'track_id': tracked_obj.track_id,
                 'object_class': tracked_obj.object_class,
                 'bbox': tracked_obj.bbox,
+                'frame_id': frame_id,
                 'line_id': line.line_id,
                 'direction': direction,
                 'timestamp_relative': relative_time
@@ -403,7 +409,8 @@ def _check_zone_events(
     roi_dims: tuple,
     data_queue: Queue,
     relative_time: float,
-    current_time: float
+    current_time: float,
+    frame_id: Optional[str] = None
 ) -> int:
     """Check for zone entry/exit events."""
     event_count = 0
@@ -435,6 +442,7 @@ def _check_zone_events(
                 'track_id': tracked_obj.track_id,
                 'object_class': tracked_obj.object_class,
                 'bbox': tracked_obj.bbox,
+                'frame_id': frame_id,
                 'zone_id': zone.zone_id,
                 'timestamp_relative': relative_time
             })
@@ -451,6 +459,7 @@ def _check_zone_events(
                 'track_id': tracked_obj.track_id,
                 'object_class': tracked_obj.object_class,
                 'bbox': tracked_obj.bbox,
+                'frame_id': frame_id,
                 'zone_id': zone.zone_id,
                 'timestamp_relative': relative_time,
                 'dwell_time': dwell_time
@@ -542,41 +551,46 @@ def _parse_roi(config: dict) -> ROIConfig:
     )
 
 
-def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> None:
+def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> Optional[str]:
     """
-    Save temporary frame for event capture with timestamp-based filename.
+    Save temporary frame for event capture with UUID filename.
     Cleans up old frames beyond max_age_seconds.
 
     Args:
         frame: Raw frame to save
         temp_dir: Directory for temp frames
         max_age_seconds: Maximum age of temp frames to retain
+
+    Returns:
+        Frame ID (UUID) if saved successfully, None otherwise
     """
     try:
-        # Generate timestamp-based filename: frame_YYYYMMDD_HHMMSS_ffffff.jpg (UTC)
-        now = datetime.now(timezone.utc)
-        filename = now.strftime("frame_%Y%m%d_%H%M%S_%f.jpg")
+        # Generate UUID-based filename
+        frame_id = str(uuid.uuid4())
+        filename = f"{frame_id}.jpg"
         filepath = os.path.join(temp_dir, filename)
 
         # Save frame
         cv2.imwrite(filepath, frame)
 
-        # Cleanup old frames
+        # Cleanup old frames (UUID-based filenames)
         import glob
-        temp_frames = glob.glob(os.path.join(temp_dir, 'frame_*.jpg'))
+        temp_frames = glob.glob(os.path.join(temp_dir, '*.jpg'))
         current_time = time.time()
 
         for temp_frame_path in temp_frames:
             try:
-                # Get file modification time
                 file_age = current_time - os.path.getmtime(temp_frame_path)
                 if file_age > max_age_seconds:
                     os.remove(temp_frame_path)
             except Exception as e:
                 logger.debug(f"Error cleaning up temp frame {temp_frame_path}: {e}")
 
+        return frame_id
+
     except Exception as e:
         logger.debug(f"Error saving temp frame: {e}")
+        return None
 
 
 def _save_annotated_frame(

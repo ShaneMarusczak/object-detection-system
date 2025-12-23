@@ -4,7 +4,6 @@ Sends immediate emails for events. No filtering - if it's on the queue, send it.
 Cooldown configuration comes from event metadata.
 """
 
-import glob
 import logging
 import os
 from datetime import datetime, timedelta
@@ -90,9 +89,16 @@ def email_notifier_consumer(event_queue, config: dict) -> None:
                 # Get frame data if requested
                 frame_data = None
                 if include_frame:
-                    frame_data = _find_and_read_temp_frame(temp_frame_dir, event.get('timestamp'))
-                    if frame_data:
-                        logger.debug("Including frame in email")
+                    frame_id = event.get('frame_id')
+                    if frame_id:
+                        frame_path = os.path.join(temp_frame_dir, f"{frame_id}.jpg")
+                        if os.path.exists(frame_path):
+                            try:
+                                with open(frame_path, 'rb') as f:
+                                    frame_data = f.read()
+                                logger.debug("Including frame in email")
+                            except Exception as e:
+                                logger.warning(f"Failed to read frame {frame_id}: {e}")
 
                 if email_service.send_event_notification(event, custom_message, frame_data, custom_subject):
                     notifier.mark_notified(identifier)
@@ -108,60 +114,3 @@ def email_notifier_consumer(event_queue, config: dict) -> None:
         logger.error(f"Error in Email Notifier: {e}", exc_info=True)
     finally:
         logger.info("Email Notifier shutdown complete")
-
-
-def _find_and_read_temp_frame(temp_dir: str, event_timestamp: str,
-                               tolerance_seconds: int = 5) -> Optional[bytes]:
-    """
-    Find temp frame closest to event timestamp and read its bytes.
-
-    Args:
-        temp_dir: Directory containing temp frames
-        event_timestamp: ISO timestamp of event
-        tolerance_seconds: Maximum time difference to accept
-
-    Returns:
-        Frame bytes if found, None otherwise
-    """
-    if not event_timestamp or not os.path.exists(temp_dir):
-        return None
-
-    try:
-        # Parse event timestamp
-        event_time = datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
-        event_time = event_time.replace(tzinfo=None)
-    except Exception:
-        logger.warning(f"Could not parse event timestamp: {event_timestamp}")
-        return None
-
-    # Find all temp frames
-    temp_frames = glob.glob(os.path.join(temp_dir, 'frame_*.jpg'))
-    if not temp_frames:
-        return None
-
-    # Find closest frame within tolerance
-    best_frame = None
-    best_diff = float('inf')
-
-    for frame_path in temp_frames:
-        try:
-            # Extract timestamp from filename: frame_YYYYMMDD_HHMMSS_ffffff.jpg
-            filename = os.path.basename(frame_path)
-            timestamp_str = filename.replace('frame_', '').replace('.jpg', '')
-            frame_time = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S_%f')
-
-            diff = abs((frame_time - event_time).total_seconds())
-            if diff < best_diff and diff <= tolerance_seconds:
-                best_diff = diff
-                best_frame = frame_path
-        except Exception:
-            continue
-
-    if best_frame:
-        try:
-            with open(best_frame, 'rb') as f:
-                return f.read()
-        except Exception as e:
-            logger.warning(f"Failed to read temp frame {best_frame}: {e}")
-
-    return None

@@ -4,11 +4,9 @@ Captures and saves frames for events. No filtering - if it's on the queue, captu
 Cooldown configuration comes from event metadata.
 """
 
-import glob
 import logging
 import os
 import time
-from datetime import datetime
 from multiprocessing import Queue
 from typing import Dict, List, Optional, Tuple
 
@@ -71,8 +69,13 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                     logger.debug(f"Skipping frame capture due to cooldown: {cooldown_key}")
                     continue
 
-            # Find matching temp frame
-            temp_frame = _find_temp_frame(temp_frame_dir, event['timestamp'])
+            # Find temp frame by ID (direct lookup)
+            frame_id = event.get('frame_id')
+            temp_frame = None
+            if frame_id:
+                temp_frame_path = os.path.join(temp_frame_dir, f"{frame_id}.jpg")
+                if os.path.exists(temp_frame_path):
+                    temp_frame = temp_frame_path
 
             if temp_frame:
                 # Annotate if requested
@@ -102,7 +105,10 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                 else:
                     logger.warning("Failed to save frame")
             else:
-                logger.warning(f"No temp frame found near {event['timestamp']}")
+                if not frame_id:
+                    logger.debug("Event has no frame_id - no temp frame available")
+                else:
+                    logger.warning(f"Temp frame not found: {frame_id}")
 
     except KeyboardInterrupt:
         logger.info("Frame Capture stopped by user")
@@ -110,62 +116,6 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
         logger.error(f"Error in Frame Capture: {e}", exc_info=True)
     finally:
         logger.info("Frame Capture shutdown complete")
-
-
-def _find_temp_frame(temp_dir: str, event_timestamp: str, tolerance_seconds: int = 5) -> Optional[str]:
-    """
-    Find temp frame closest to event timestamp.
-
-    Args:
-        temp_dir: Directory containing temp frames
-        event_timestamp: ISO timestamp of event
-        tolerance_seconds: Maximum time difference to accept
-
-    Returns:
-        Path to matching frame, or None
-    """
-    if not os.path.exists(temp_dir):
-        return None
-
-    # Parse event timestamp
-    try:
-        event_time = datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
-        event_time = event_time.replace(tzinfo=None)  # Make naive for comparison
-    except Exception:
-        logger.warning(f"Could not parse event timestamp: {event_timestamp}")
-        return None
-
-    # Find all temp frames
-    temp_frames = glob.glob(os.path.join(temp_dir, 'frame_*.jpg'))
-
-    if not temp_frames:
-        return None
-
-    # Find closest frame within tolerance
-    best_frame = None
-    best_diff = float('inf')
-
-    for frame_path in temp_frames:
-        try:
-            # Extract timestamp from filename: frame_YYYYMMDD_HHMMSS_ffffff.jpg
-            filename = os.path.basename(frame_path)
-            timestamp_str = filename.replace('frame_', '').replace('.jpg', '')
-
-            # Parse: YYYYMMDD_HHMMSS_ffffff
-            frame_time = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S_%f')
-
-            # Calculate time difference
-            diff = abs((frame_time - event_time).total_seconds())
-
-            if diff < best_diff and diff <= tolerance_seconds:
-                best_diff = diff
-                best_frame = frame_path
-
-        except Exception as e:
-            logger.debug(f"Error parsing frame timestamp from {frame_path}: {e}")
-            continue
-
-    return best_frame
 
 
 def _annotate_frame(
