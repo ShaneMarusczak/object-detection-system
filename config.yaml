@@ -1,3 +1,3 @@
 # Active configuration pointer
-# Change this to switch configs: configs/traffic.yaml, configs/stress-test.yaml
-use: configs/traffic-annotated.yaml
+# Change this to switch configs, or run: python -m object_detection --build-config
+use: configs/config_traffic_pdf_baseline.yaml
