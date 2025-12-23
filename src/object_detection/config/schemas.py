@@ -5,7 +5,12 @@ Provides type-safe, declarative validation with clear error messages.
 """
 
 from typing import Dict, List, Optional, Union, Literal
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class StrictModel(BaseModel):
+    """Base model that rejects unknown fields."""
+    model_config = ConfigDict(extra='forbid')
 
 
 class DetectionConfig(BaseModel):
@@ -114,7 +119,7 @@ class EventActions(BaseModel):
     frame_capture: Optional[Union[bool, FrameCaptureAction]] = None
 
 
-class EventConfig(BaseModel):
+class EventConfig(StrictModel):
     """Event definition."""
     name: str = Field(..., min_length=1)
     match: EventMatch
@@ -126,7 +131,7 @@ class FrameConfig(BaseModel):
     cooldown_seconds: int = Field(default=300, ge=0)
 
 
-class DigestConfig(BaseModel):
+class DigestConfig(StrictModel):
     """Digest configuration."""
     id: str = Field(..., min_length=1)
     period_minutes: int = Field(..., gt=0, description="Period in minutes between digest emails")
@@ -137,7 +142,7 @@ class DigestConfig(BaseModel):
     frame_config: Optional[FrameConfig] = None
 
 
-class PDFReportConfig(BaseModel):
+class PDFReportConfig(StrictModel):
     """PDF report configuration. Generated on shutdown covering the entire run."""
     id: str = Field(..., min_length=1)
     output_dir: str = Field(default="reports", description="Directory for PDF output")
@@ -203,7 +208,7 @@ class SpeedCalculationConfig(BaseModel):
     enabled: bool = False
 
 
-class Config(BaseModel):
+class Config(StrictModel):
     """Complete configuration schema."""
     detection: DetectionConfig
     roi: ROIConfig = Field(default_factory=ROIConfig)
