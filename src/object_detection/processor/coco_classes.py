@@ -89,7 +89,9 @@ COCO_CLASSES = {
     76: 'scissors',
     77: 'teddy bear',
     78: 'hair drier',
-    79: 'toothbrush'
+    79: 'toothbrush',
+    # Extended classes for nighttime detection
+    1000: 'headlight'
 }
 
 # Reverse mapping: name to ID (for config parsing)

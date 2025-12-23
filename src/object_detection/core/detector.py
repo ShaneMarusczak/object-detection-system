@@ -26,6 +26,7 @@ from ..utils.constants import (
     CAMERA_RECONNECT_DELAY,
 )
 from .models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
+from .nighttime import LightingMonitor, HeadlightDetector, HEADLIGHT_CLASS_ID
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,12 @@ def _detection_loop(
         os.makedirs(temp_frame_dir, exist_ok=True)
         logger.info(f"Temp frames: {temp_frame_dir} (on-demand, {temp_frame_max_age}s retention)")
 
+    # Nighttime detection - checks lighting and detects headlights when dark
+    nighttime_enabled = config.get('nighttime_detection', True)
+    lighting_monitor = LightingMonitor(enabled=nighttime_enabled)
+    headlight_detector = HeadlightDetector() if nighttime_enabled else None
+    is_night_mode = False
+
     logger.info("Detection started")
 
     try:
@@ -166,6 +173,10 @@ def _detection_loop(
             frame_count += 1
             frame_height, frame_width = frame.shape[:2]
 
+            # Check lighting conditions (startup + every 15 minutes)
+            if lighting_monitor.should_check():
+                is_night_mode = lighting_monitor.check_lighting(frame)
+
             # Apply ROI cropping
             roi_frame, roi_dims = _apply_roi_crop(frame, roi_config)
 
@@ -179,8 +190,15 @@ def _detection_loop(
             current_time = time.time()
             relative_time = current_time - start_time
 
-            # Process detections (frame saved on-demand when events occur)
-            if results[0].boxes is not None and results[0].boxes.id is not None:
+            # Check if YOLO found any detections
+            yolo_has_detections = (
+                results[0].boxes is not None and
+                results[0].boxes.id is not None and
+                len(results[0].boxes.id) > 0
+            )
+
+            # Process YOLO detections
+            if yolo_has_detections:
                 event_count += _process_detections(
                     results[0].boxes,
                     tracked_objects,
@@ -196,6 +214,23 @@ def _detection_loop(
                     temp_frame_max_age
                 )
 
+            # In night mode, also check for headlights if YOLO found nothing
+            if is_night_mode and headlight_detector and not yolo_has_detections:
+                event_count += _process_headlight_detections(
+                    headlight_detector,
+                    frame,
+                    tracked_objects,
+                    lines,
+                    zones,
+                    roi_dims,
+                    data_queue,
+                    current_time,
+                    relative_time,
+                    frame if temp_frame_enabled else None,
+                    temp_frame_dir,
+                    temp_frame_max_age
+                )
+
             # Save frames if enabled
             if frame_config.get('enabled') and frame_count % frame_config.get('interval', 500) == 0:
                 _save_annotated_frame(
@@ -206,7 +241,7 @@ def _detection_loop(
 
             # Periodic status update
             if frame_count % FPS_REPORT_INTERVAL == 0:
-                _log_status(frame_count, fps_list, event_count, start_time)
+                _log_status(frame_count, fps_list, event_count, start_time, is_night_mode)
 
     except KeyboardInterrupt:
         logger.info("Detection stopped by user")
@@ -291,6 +326,204 @@ def _process_detections(
             relative_time, current_time,
             frame, temp_frame_dir, temp_frame_max_age
         )
+
+    return event_count
+
+
+def _process_headlight_detections(
+    headlight_detector: 'HeadlightDetector',
+    frame,
+    tracked_objects: Dict[int, TrackedObject],
+    lines: List[LineConfig],
+    zones: List[ZoneConfig],
+    roi_dims: tuple,
+    data_queue: Queue,
+    current_time: float,
+    relative_time: float,
+    save_frame=None,
+    temp_frame_dir: str = None,
+    temp_frame_max_age: int = 30
+) -> int:
+    """
+    Process headlight detections in night mode.
+
+    Detects bright blobs and tracks them through lines/zones
+    using the same logic as YOLO detections.
+
+    Returns:
+        Number of events generated
+    """
+    event_count = 0
+
+    # Detect headlights
+    detections = headlight_detector.detect(frame)
+    if not detections:
+        return 0
+
+    # Associate detections with tracks
+    track_associations = headlight_detector.detections_to_tracks(
+        detections, tracked_objects, current_time
+    )
+
+    for track_id, detection in track_associations:
+        center_x, center_y = detection.center
+        bbox = detection.bbox
+
+        # Get or create tracked object
+        if track_id not in tracked_objects:
+            tracked_objects[track_id] = TrackedObject(
+                track_id=track_id,
+                object_class=HEADLIGHT_CLASS_ID,
+                current_pos=(center_x, center_y),
+                bbox=bbox,
+                first_pos=(center_x, center_y),
+                first_seen_time=current_time
+            )
+        else:
+            tracked_objects[track_id].update_position(center_x, center_y, bbox)
+
+        tracked_obj = tracked_objects[track_id]
+
+        # Check line crossings (headlights are allowed on all lines in night mode)
+        if not tracked_obj.is_new():
+            event_count += _check_headlight_line_crossings(
+                tracked_obj, lines, roi_dims, data_queue,
+                relative_time, current_time,
+                save_frame, temp_frame_dir, temp_frame_max_age
+            )
+
+        # Check zone entry/exit
+        event_count += _check_headlight_zone_events(
+            tracked_obj, zones, roi_dims, data_queue,
+            relative_time, current_time,
+            save_frame, temp_frame_dir, temp_frame_max_age
+        )
+
+    return event_count
+
+
+def _check_headlight_line_crossings(
+    tracked_obj: TrackedObject,
+    lines: List[LineConfig],
+    roi_dims: tuple,
+    data_queue: Queue,
+    relative_time: float,
+    current_time: float,
+    frame=None,
+    temp_frame_dir: str = None,
+    temp_frame_max_age: int = 30
+) -> int:
+    """Check if headlight crossed any lines (no class filtering)."""
+    event_count = 0
+    roi_width, roi_height = roi_dims
+
+    prev_x, prev_y = tracked_obj.previous_pos
+    curr_x, curr_y = tracked_obj.current_pos
+
+    for line in lines:
+        # Skip if already crossed
+        if line.line_id in tracked_obj.crossed_lines:
+            continue
+
+        # Check for crossing
+        crossed, direction = _detect_line_crossing(
+            prev_x, prev_y, curr_x, curr_y,
+            line, roi_width, roi_height
+        )
+
+        if crossed:
+            tracked_obj.crossed_lines.add(line.line_id)
+            event_count += 1
+
+            # Save frame on-demand
+            frame_id = None
+            if frame is not None and temp_frame_dir:
+                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+
+            data_queue.put({
+                'event_type': 'LINE_CROSS',
+                'track_id': tracked_obj.track_id,
+                'object_class': HEADLIGHT_CLASS_ID,
+                'bbox': tracked_obj.bbox,
+                'frame_id': frame_id,
+                'line_id': line.line_id,
+                'direction': direction,
+                'timestamp_relative': relative_time,
+                'detection_mode': 'nighttime'
+            })
+
+    return event_count
+
+
+def _check_headlight_zone_events(
+    tracked_obj: TrackedObject,
+    zones: List[ZoneConfig],
+    roi_dims: tuple,
+    data_queue: Queue,
+    relative_time: float,
+    current_time: float,
+    frame=None,
+    temp_frame_dir: str = None,
+    temp_frame_max_age: int = 30
+) -> int:
+    """Check for headlight zone entry/exit events (no class filtering)."""
+    event_count = 0
+    roi_width, roi_height = roi_dims
+    curr_x, curr_y = tracked_obj.current_pos
+
+    for zone in zones:
+        # Calculate zone boundaries
+        zone_x1 = roi_width * zone.x1_pct / 100
+        zone_x2 = roi_width * zone.x2_pct / 100
+        zone_y1 = roi_height * zone.y1_pct / 100
+        zone_y2 = roi_height * zone.y2_pct / 100
+
+        # Check if inside zone
+        inside = (zone_x1 <= curr_x <= zone_x2 and zone_y1 <= curr_y <= zone_y2)
+        was_inside = zone.zone_id in tracked_obj.active_zones
+
+        if inside and not was_inside:
+            # ZONE_ENTER
+            tracked_obj.active_zones[zone.zone_id] = current_time
+            event_count += 1
+
+            frame_id = None
+            if frame is not None and temp_frame_dir:
+                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+
+            data_queue.put({
+                'event_type': 'ZONE_ENTER',
+                'track_id': tracked_obj.track_id,
+                'object_class': HEADLIGHT_CLASS_ID,
+                'bbox': tracked_obj.bbox,
+                'frame_id': frame_id,
+                'zone_id': zone.zone_id,
+                'timestamp_relative': relative_time,
+                'detection_mode': 'nighttime'
+            })
+
+        elif not inside and was_inside:
+            # ZONE_EXIT
+            entry_time = tracked_obj.active_zones[zone.zone_id]
+            dwell_time = current_time - entry_time
+            del tracked_obj.active_zones[zone.zone_id]
+            event_count += 1
+
+            frame_id = None
+            if frame is not None and temp_frame_dir:
+                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+
+            data_queue.put({
+                'event_type': 'ZONE_EXIT',
+                'track_id': tracked_obj.track_id,
+                'object_class': HEADLIGHT_CLASS_ID,
+                'bbox': tracked_obj.bbox,
+                'frame_id': frame_id,
+                'zone_id': zone.zone_id,
+                'timestamp_relative': relative_time,
+                'dwell_time': dwell_time,
+                'detection_mode': 'nighttime'
+            })
 
     return event_count
 
@@ -711,11 +944,12 @@ def _log_detection_config(
                    f"-> {frame_config.get('output_dir')}/")
 
 
-def _log_status(frame_count: int, fps_list: List[float], event_count: int, start_time: float) -> None:
+def _log_status(frame_count: int, fps_list: List[float], event_count: int, start_time: float, is_night_mode: bool = False) -> None:
     """Log periodic status update."""
     avg_fps = sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE)
     elapsed = time.time() - start_time
-    logger.info(f"[{elapsed/60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}")
+    mode = " [NIGHT]" if is_night_mode else ""
+    logger.info(f"[{elapsed/60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}{mode}")
 
 
 def _log_final_stats(frame_count: int, fps_list: List[float], event_count: int, start_time: float) -> None:
