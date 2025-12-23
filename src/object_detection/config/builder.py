@@ -250,12 +250,22 @@ class ConfigBuilder:
             if add != 'y':
                 break
 
-            # Zone bounds
-            print("  Zone bounds (percentages):")
-            x1 = int(input("    Left edge % [0]: ").strip() or '0')
-            y1 = int(input("    Top edge % [0]: ").strip() or '0')
-            x2 = int(input("    Right edge % [100]: ").strip() or '100')
-            y2 = int(input("    Bottom edge % [100]: ").strip() or '100')
+            # Zone bounds with validation
+            while True:
+                print("  Zone bounds (percentages):")
+                x1 = int(input("    Left edge % [0]: ").strip() or '0')
+                y1 = int(input("    Top edge % [0]: ").strip() or '0')
+                x2 = int(input("    Right edge % [100]: ").strip() or '100')
+                y2 = int(input("    Bottom edge % [100]: ").strip() or '100')
+
+                # Validate bounds
+                if x2 <= x1:
+                    print(f"  {Colors.RED}Error: Right edge ({x2}%) must be greater than left edge ({x1}%){Colors.RESET}")
+                    continue
+                if y2 <= y1:
+                    print(f"  {Colors.RED}Error: Bottom edge ({y2}%) must be greater than top edge ({y1}%){Colors.RESET}")
+                    continue
+                break
 
             # Description
             desc = input("  Description: ").strip() or f"Zone {len(zones) + 1}"
@@ -279,10 +289,18 @@ class ConfigBuilder:
                     self._capture_annotated_preview(lines=lines, zones=zones)
                     print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
                 elif action == 'a':
-                    x1 = int(input(f"    Left edge % [{zones[-1]['x1_pct']}]: ").strip() or str(zones[-1]['x1_pct']))
-                    y1 = int(input(f"    Top edge % [{zones[-1]['y1_pct']}]: ").strip() or str(zones[-1]['y1_pct']))
-                    x2 = int(input(f"    Right edge % [{zones[-1]['x2_pct']}]: ").strip() or str(zones[-1]['x2_pct']))
-                    y2 = int(input(f"    Bottom edge % [{zones[-1]['y2_pct']}]: ").strip() or str(zones[-1]['y2_pct']))
+                    while True:
+                        x1 = int(input(f"    Left edge % [{zones[-1]['x1_pct']}]: ").strip() or str(zones[-1]['x1_pct']))
+                        y1 = int(input(f"    Top edge % [{zones[-1]['y1_pct']}]: ").strip() or str(zones[-1]['y1_pct']))
+                        x2 = int(input(f"    Right edge % [{zones[-1]['x2_pct']}]: ").strip() or str(zones[-1]['x2_pct']))
+                        y2 = int(input(f"    Bottom edge % [{zones[-1]['y2_pct']}]: ").strip() or str(zones[-1]['y2_pct']))
+                        if x2 <= x1:
+                            print(f"  {Colors.RED}Error: Right ({x2}%) must be > left ({x1}%){Colors.RESET}")
+                            continue
+                        if y2 <= y1:
+                            print(f"  {Colors.RED}Error: Bottom ({y2}%) must be > top ({y1}%){Colors.RESET}")
+                            continue
+                        break
                     zones[-1] = {'x1_pct': x1, 'y1_pct': y1, 'x2_pct': x2, 'y2_pct': y2, 'description': desc}
                     self._capture_annotated_preview(lines=lines, zones=zones)
                     print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
