@@ -52,7 +52,7 @@ if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
         # List configs in configs/ folder
         echo ""
         echo "Available configs:"
-        configs=(configs/*.yaml configs/*.yml 2>/dev/null)
+        configs=(configs/*.yaml configs/*.yml)
         # Filter out non-existent globs
         valid_configs=()
         for cfg in "${configs[@]}"; do
