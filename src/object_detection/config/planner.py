@@ -529,16 +529,21 @@ def derive_track_classes(config: dict) -> List[int]:
 
 def prepare_runtime_config(config: dict) -> dict:
     """
-    Prepare config for runtime by deriving track_classes from events.
+    Prepare config for runtime - resolve all implied actions statically.
 
-    This completes the event-driven wiring - you define events,
-    and the system figures out what classes to track.
+    This is the single place where all inference happens:
+    - Derive track_classes from events
+    - Resolve implied actions (json_log, frame_capture, annotate cascade)
+    - Determine which consumers are needed
+
+    After this function, the config is fully resolved and the dispatcher
+    just routes events - no inference at runtime.
 
     Args:
         config: Validated configuration
 
     Returns:
-        Config with track_classes populated from events
+        Config with all implied actions resolved
     """
     # Derive track_classes from events (the only way to specify them)
     derived_classes = derive_track_classes(config)
@@ -549,8 +554,11 @@ def prepare_runtime_config(config: dict) -> dict:
         logger.warning("No events defined - nothing will be tracked!")
         config['detection']['track_classes'] = []
 
-    # Enable temp_frames if frame_capture is needed (implied dependency)
-    consumers = _derive_consumers(config)
+    # Resolve all implied actions and determine consumers
+    consumers = _resolve_implied_actions(config)
+    config['_resolved_consumers'] = consumers
+
+    # Enable temp_frames if frame_capture is needed
     if 'frame_capture' in consumers:
         if not config.get('temp_frames_enabled'):
             config['temp_frames_enabled'] = True
@@ -559,56 +567,101 @@ def prepare_runtime_config(config: dict) -> dict:
     return config
 
 
-def _derive_consumers(config: dict) -> List[str]:
-    """Derive which consumers will be active."""
-    consumers = []
+def _resolve_implied_actions(config: dict) -> List[str]:
+    """
+    Resolve all implied actions and modify event configs in place.
+
+    This applies the cascading rules:
+    - pdf_report with photos=true → frame_capture enabled
+    - pdf_report with annotate=true → frame_capture.annotate=true
+    - email_digest with photos=true → frame_capture enabled
+    - pdf_report/email_digest → json_log=true
+
+    Returns list of needed consumers.
+    """
     events = config.get('events', [])
     digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
     pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
 
-    has_json = False
-    has_email_immediate = False
-    has_email_digest = False
-    has_frame_capture = False
-    has_pdf_report = False
+    needed_consumers = set()
 
     for event in events:
         actions = event.get('actions', {})
 
-        if actions.get('json_log'):
-            has_json = True
-        if actions.get('email_immediate'):
-            has_email_immediate = True
-
+        # --- Handle email_digest implied actions ---
         digest_id = actions.get('email_digest')
         if digest_id:
-            has_json = True  # Implied
-            has_email_digest = True
-            if digests.get(digest_id, {}).get('photos'):
-                has_frame_capture = True  # Implied
+            # email_digest always requires json_log
+            if not actions.get('json_log'):
+                actions['json_log'] = True
+                logger.debug(f"Auto-enabled json_log for '{event.get('name')}' (required by email_digest)")
 
+            # Check if digest wants photos
+            digest = digests.get(digest_id, {})
+            if digest.get('photos'):
+                if not actions.get('frame_capture'):
+                    frame_config = digest.get('frame_config', {})
+                    actions['frame_capture'] = {'enabled': True, **frame_config}
+                    logger.debug(f"Auto-enabled frame_capture for '{event.get('name')}' (required by digest photos)")
+
+        # --- Handle pdf_report implied actions ---
         pdf_report_id = actions.get('pdf_report')
         if pdf_report_id:
-            has_json = True  # Implied
-            has_pdf_report = True
-            if pdf_reports.get(pdf_report_id, {}).get('photos'):
-                has_frame_capture = True  # Implied
+            # pdf_report always requires json_log
+            if not actions.get('json_log'):
+                actions['json_log'] = True
+                logger.debug(f"Auto-enabled json_log for '{event.get('name')}' (required by pdf_report)")
 
-        if actions.get('frame_capture'):
-            has_frame_capture = True
+            # Check if report wants photos
+            report = pdf_reports.get(pdf_report_id, {})
+            if report.get('photos'):
+                if not actions.get('frame_capture'):
+                    # Auto-enable frame_capture with annotate from report
+                    frame_config = report.get('frame_config', {})
+                    actions['frame_capture'] = {
+                        'enabled': True,
+                        'annotate': report.get('annotate', False),
+                        **frame_config
+                    }
+                    logger.debug(f"Auto-enabled frame_capture for '{event.get('name')}' (required by report photos)")
+                elif report.get('annotate') and isinstance(actions['frame_capture'], dict):
+                    # Merge annotate flag into existing frame_capture
+                    actions['frame_capture']['annotate'] = True
+                    logger.debug(f"Auto-enabled annotate for '{event.get('name')}' (from pdf_report)")
 
-    if has_json:
-        consumers.append('json_writer')
-    if has_email_immediate:
-        consumers.append('email_notifier')
-    if has_email_digest:
-        consumers.append('email_digest')
-    if has_pdf_report:
-        consumers.append('pdf_report')
-    if has_frame_capture:
-        consumers.append('frame_capture')
+        # --- Normalize frame_capture config ---
+        frame_capture = actions.get('frame_capture')
+        if frame_capture:
+            if isinstance(frame_capture, bool):
+                actions['frame_capture'] = {'enabled': frame_capture}
+            elif isinstance(frame_capture, dict) and 'enabled' not in frame_capture:
+                actions['frame_capture']['enabled'] = True
 
-    return consumers
+        # --- Determine consumers for this event ---
+        if actions.get('json_log'):
+            needed_consumers.add('json_writer')
+
+        email_immediate = actions.get('email_immediate')
+        if email_immediate:
+            if isinstance(email_immediate, dict) and email_immediate.get('enabled', True):
+                needed_consumers.add('email_notifier')
+            elif email_immediate is True:
+                needed_consumers.add('email_notifier')
+
+        if digest_id:
+            needed_consumers.add('email_digest')
+
+        if pdf_report_id:
+            needed_consumers.add('pdf_report')
+
+        frame_capture = actions.get('frame_capture')
+        if frame_capture:
+            if isinstance(frame_capture, dict) and frame_capture.get('enabled', True):
+                needed_consumers.add('frame_capture')
+            elif frame_capture is True:
+                needed_consumers.add('frame_capture')
+
+    return sorted(needed_consumers)
 
 
 def build_plan(config: dict) -> ConfigPlan:
@@ -646,12 +699,17 @@ def build_plan(config: dict) -> ConfigPlan:
                 implied.append('json_log (required by pdf_report)')
 
             pdf_report = pdf_reports.get(pdf_report_id, {})
-            if pdf_report.get('photos') and not actions.get('frame_capture'):
-                actions['frame_capture'] = {
-                    'enabled': True,
-                    'annotate': pdf_report.get('annotate', False)
-                }
-                implied.append(f"frame_capture (required by {pdf_report_id} with photos=true)")
+            if pdf_report.get('photos'):
+                if not actions.get('frame_capture'):
+                    actions['frame_capture'] = {
+                        'enabled': True,
+                        'annotate': pdf_report.get('annotate', False)
+                    }
+                    implied.append(f"frame_capture (required by {pdf_report_id} with photos=true)")
+                elif pdf_report.get('annotate') and isinstance(actions['frame_capture'], dict):
+                    # Merge annotate flag into existing frame_capture
+                    actions['frame_capture']['annotate'] = True
+                    implied.append(f"annotate (from {pdf_report_id})")
 
         # Determine consumers
         if actions.get('json_log'):
@@ -788,10 +846,25 @@ def print_plan(plan: ConfigPlan) -> None:
             else:
                 print(f"      object_class: {obj}")
 
-        # Actions
-        print(f"    {Colors.GRAY}Actions:{Colors.RESET}")
+        # Actions (resolved)
+        print(f"    {Colors.GRAY}Actions (resolved):{Colors.RESET}")
         for consumer in event.consumers:
             print(f"      {Colors.GREEN}->{Colors.RESET} {consumer}")
+
+        # Show resolved action details
+        if event.actions.get('frame_capture'):
+            fc = event.actions['frame_capture']
+            if isinstance(fc, dict):
+                details = []
+                if fc.get('annotate'):
+                    details.append('annotate=true')
+                if fc.get('max_photos'):
+                    details.append(f"max_photos={fc['max_photos']}")
+                if fc.get('expected_duration_seconds'):
+                    hrs = fc['expected_duration_seconds'] / 3600
+                    details.append(f"duration={hrs:.1f}h")
+                if details:
+                    print(f"         {Colors.GRAY}frame_capture: {', '.join(details)}{Colors.RESET}")
 
         # Implied actions
         if event.implied_actions:

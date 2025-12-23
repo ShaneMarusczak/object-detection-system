@@ -26,13 +26,16 @@ logger = logging.getLogger(__name__)
 class EventDefinition:
     """Declarative event definition - specifies what to match and what actions to take."""
 
-    def __init__(self, name: str, match: Dict[str, Any], actions: Dict[str, Any],
-                 digest_configs: Dict[str, Dict] = None, pdf_report_configs: Dict[str, Dict] = None):
+    def __init__(self, name: str, match: Dict[str, Any], actions: Dict[str, Any]):
+        """
+        Create event definition from pre-resolved config.
+
+        Actions should already be resolved by prepare_runtime_config() -
+        no inference happens here at runtime.
+        """
         self.name = name
         self.match = match
-
-        # Apply implied action rules (AWS-style primitive composition)
-        self.actions = self._apply_implied_actions(actions, digest_configs or {}, pdf_report_configs or {})
+        self.actions = actions  # Already resolved - no inference needed
 
         # Parse match criteria
         self.event_type = match.get('event_type')
@@ -48,66 +51,6 @@ class EventDefinition:
             self.object_classes = {obj_class}
         else:
             self.object_classes = None  # Match any class
-
-    def _apply_implied_actions(self, actions: Dict[str, Any], digest_configs: Dict[str, Dict],
-                               pdf_report_configs: Dict[str, Dict] = None) -> Dict[str, Any]:
-        """
-        Apply implied action dependencies (AWS-style primitive composition).
-
-        Rules:
-        - email_digest requires json_log (digest reads from JSON)
-        - email_digest with photos: true requires frame_capture (digest shows photos)
-        - pdf_report requires json_log (report reads from JSON)
-        - pdf_report with photos: true requires frame_capture (report shows photos)
-        """
-        actions = actions.copy()
-        if pdf_report_configs is None:
-            pdf_report_configs = {}
-
-        # If email_digest is specified, check for dependencies
-        digest_id = actions.get('email_digest')
-        if digest_id:
-            # email_digest always requires json_log
-            if not actions.get('json_log'):
-                actions['json_log'] = True
-                logger.debug(f"Auto-enabled json_log (required by email_digest)")
-
-            # Check if this digest wants photos
-            digest = digest_configs.get(digest_id, {})
-            if digest.get('photos'):
-                if not actions.get('frame_capture'):
-                    # Auto-enable frame capture with digest's frame_config
-                    frame_config = digest.get('frame_config', {})
-                    actions['frame_capture'] = {
-                        'enabled': True,
-                        **frame_config
-                    }
-                    logger.debug(f"Auto-enabled frame_capture (required by photo digest '{digest_id}')")
-
-        # If pdf_report is specified, check for dependencies
-        report_id = actions.get('pdf_report')
-        if report_id:
-            # pdf_report always requires json_log
-            if not actions.get('json_log'):
-                actions['json_log'] = True
-                logger.debug(f"Auto-enabled json_log (required by pdf_report)")
-
-            # Check if this report wants photos
-            report = pdf_report_configs.get(report_id, {})
-            if report.get('photos'):
-                if not actions.get('frame_capture'):
-                    frame_config = report.get('frame_config', {})
-                    actions['frame_capture'] = {
-                        'enabled': True,
-                        'annotate': report.get('annotate', False),
-                        **frame_config
-                    }
-                    logger.debug(f"Auto-enabled frame_capture (required by photo pdf_report '{report_id}')")
-                elif report.get('annotate') and isinstance(actions['frame_capture'], dict):
-                    # Merge annotate flag into existing frame_capture config
-                    actions['frame_capture']['annotate'] = True
-
-        return actions
 
     def matches(self, event: Dict[str, Any]) -> bool:
         """Check if raw event matches this definition."""
@@ -190,9 +133,11 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
         zone_lookup = _build_zone_lookup(config)
         line_lookup = _build_line_lookup(config)
 
-        # Derive which consumers are needed from event actions
-        needed_consumers = _derive_needed_consumers(event_defs, config)
-        logger.info(f"Consumers needed: {needed_consumers}")
+        # Get pre-resolved consumers from config (resolved by prepare_runtime_config)
+        needed_consumers = set(config.get('_resolved_consumers', []))
+        if not needed_consumers:
+            logger.warning("No consumers resolved - config may not have been prepared")
+        logger.info(f"Consumers: {sorted(needed_consumers)}")
 
         # Initialize only the consumers that are needed
         consumers = []
@@ -357,90 +302,21 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")
 
 
-def _derive_needed_consumers(event_defs: List[EventDefinition], config: dict) -> Set[str]:
-    """
-    Derive which consumers are needed based on event actions.
-
-    Events drive everything - if an event has json_log: true, json_writer starts.
-    No separate "consumers" config needed.
-    """
-    needed = set()
-    digests = {d.get('id'): d for d in config.get('digests', []) if d.get('id')}
-    pdf_reports = {r.get('id'): r for r in config.get('pdf_reports', []) if r.get('id')}
-
-    for event_def in event_defs:
-        actions = event_def.actions
-
-        # json_log -> json_writer
-        if actions.get('json_log'):
-            needed.add('json_writer')
-
-        # email_immediate -> email_notifier
-        email_immediate = actions.get('email_immediate')
-        if email_immediate:
-            if isinstance(email_immediate, dict) and email_immediate.get('enabled', True):
-                needed.add('email_notifier')
-            elif email_immediate is True:
-                needed.add('email_notifier')
-
-        # email_digest -> email_digest (and implicitly json_writer)
-        digest_id = actions.get('email_digest')
-        if digest_id:
-            needed.add('email_digest')
-            needed.add('json_writer')  # Digest reads from JSON logs
-
-            # If digest has photos, need frame_capture
-            digest = digests.get(digest_id, {})
-            if digest.get('photos'):
-                needed.add('frame_capture')
-
-        # pdf_report -> pdf_report (and implicitly json_writer)
-        report_id = actions.get('pdf_report')
-        if report_id:
-            needed.add('pdf_report')
-            needed.add('json_writer')  # PDF report reads from JSON logs
-
-            # If report has photos, need frame_capture
-            report = pdf_reports.get(report_id, {})
-            if report.get('photos'):
-                needed.add('frame_capture')
-
-        # frame_capture -> frame_capture
-        frame_capture = actions.get('frame_capture')
-        if frame_capture:
-            if isinstance(frame_capture, dict) and frame_capture.get('enabled', True):
-                needed.add('frame_capture')
-            elif frame_capture is True:
-                needed.add('frame_capture')
-
-    return needed
-
-
 def _parse_event_definitions(config: dict) -> List[EventDefinition]:
-    """Parse event definitions from config."""
+    """
+    Parse event definitions from config.
+
+    Actions should already be resolved by prepare_runtime_config() -
+    this just creates EventDefinition objects for matching.
+    """
     event_defs = []
 
-    # Parse digest configs first (for implied action rules)
-    digest_configs = {}
-    for digest in config.get('digests', []):
-        digest_id = digest.get('id')
-        if digest_id:
-            digest_configs[digest_id] = digest
-
-    # Parse pdf_report configs (for implied action rules)
-    pdf_report_configs = {}
-    for report in config.get('pdf_reports', []):
-        report_id = report.get('id')
-        if report_id:
-            pdf_report_configs[report_id] = report
-
-    # Parse events with digest and pdf_report context
     for event_config in config.get('events', []):
         name = event_config.get('name', 'unnamed')
         match = event_config.get('match', {})
-        actions = event_config.get('actions', {})
+        actions = event_config.get('actions', {})  # Already resolved
 
-        event_defs.append(EventDefinition(name, match, actions, digest_configs, pdf_report_configs))
+        event_defs.append(EventDefinition(name, match, actions))
 
     return event_defs
 
