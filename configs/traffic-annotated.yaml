@@ -2,6 +2,9 @@ detection:
   model_file: "yolo11n.pt"
   confidence_threshold: 0.3
 
+camera:
+  url: "http://192.168.86.33:4747/video"
+
 lines:
   - type: vertical
     position_pct: 30
@@ -16,9 +19,9 @@ events:
     actions:
       pdf_report: "traffic_report"
       frame_capture:
-        enabled: true
         max_photos: 100
-        expected_duration_seconds: 28800  # 8 hours
+        expected_duration_seconds: 1800  # 30 min test
+
   - name: "headlight_crossing"
     match:
       event_type: "LINE_CROSS"
@@ -27,9 +30,8 @@ events:
     actions:
       pdf_report: "traffic_report"
       frame_capture:
-        enabled: true
         max_photos: 50
-        expected_duration_seconds: 28800  # 8 hours
+        expected_duration_seconds: 1800
 
 pdf_reports:
   - id: "traffic_report"
@@ -50,9 +52,5 @@ console_output:
   enabled: true
   level: "detailed"
 
-camera:
-  url: "http://192.168.86.33:4747/video"
-
 runtime:
-  default_duration_hours: 8
   queue_size: 500
