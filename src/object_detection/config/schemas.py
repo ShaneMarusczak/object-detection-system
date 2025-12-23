@@ -96,7 +96,6 @@ class EmailImmediateAction(BaseModel):
     message: Optional[str] = None
     subject: Optional[str] = None
     include_frame: bool = False
-    priority: Optional[str] = None
 
 
 class FrameCaptureAction(BaseModel):

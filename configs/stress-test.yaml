@@ -5,7 +5,7 @@
 detection:
   model_file: "yolo11n.pt"
   confidence_threshold: 0.3
-  track_classes: [0, 1, 2, 3, 5, 7, 15, 16]
+  # track_classes derived automatically from events
 
 roi:
   horizontal:
@@ -109,7 +109,6 @@ events:
         enabled: true
         subject: "ALERT: Person in restricted area"
         include_frame: true
-        priority: "high"
       frame_capture:
         enabled: true
         annotate: true
