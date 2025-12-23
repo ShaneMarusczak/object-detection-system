@@ -597,8 +597,8 @@ class ConfigBuilder:
         }
 
     def _save_config(self) -> Optional[str]:
-        """Save config to YAML file."""
-        print(f"\n{Colors.BOLD}--- Save Config ---{Colors.RESET}")
+        """Save config to YAML file with options for what to do next."""
+        print(f"\n{Colors.BOLD}--- Finish ---{Colors.RESET}")
 
         # Generate default name from timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
@@ -612,10 +612,23 @@ class ConfigBuilder:
         else:
             filename = name
 
-        # Save to configs/ directory
-        os.makedirs('configs', exist_ok=True)
         filepath = os.path.join('configs', filename)
 
+        # Show options
+        print(f"\n{Colors.BOLD}What next?{Colors.RESET}")
+        print("  1. Save and run (auto)   - quick start, no pauses")
+        print("  2. Save and run (verify) - pause between steps to check")
+        print("  3. Save and exit")
+        print("  4. Exit without saving")
+        choice = input("Choice [3]: ").strip() or '3'
+
+        # Handle exit without saving
+        if choice == '4':
+            print(f"{Colors.YELLOW}Exiting without saving{Colors.RESET}")
+            return None
+
+        # Save the config (options 1, 2, 3)
+        os.makedirs('configs', exist_ok=True)
         with open(filepath, 'w') as f:
             yaml.dump(self.config, f, default_flow_style=False, sort_keys=False)
 
@@ -635,13 +648,16 @@ class ConfigBuilder:
         if set_default != 'n':
             self._set_as_default(filepath)
 
-        # Offer to run
-        run_now = input("\nRun now? (Y/n): ").strip().lower()
-        if run_now != 'n':
+        # Handle run options
+        if choice == '1':
             self._cleanup()
-            print(f"\n{Colors.CYAN}Starting run.sh -y...{Colors.RESET}\n")
-            # Use os.execvp to replace this process with run.sh -y (auto mode)
+            print(f"\n{Colors.CYAN}Starting run.sh -y (auto mode)...{Colors.RESET}\n")
             os.execvp('./run.sh', ['./run.sh', '-y'])
+        elif choice == '2':
+            self._cleanup()
+            print(f"\n{Colors.CYAN}Starting run.sh (verify mode)...{Colors.RESET}\n")
+            os.execvp('./run.sh', ['./run.sh'])
+        # choice == '3' falls through to return
 
         return filepath
 
