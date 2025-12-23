@@ -19,6 +19,7 @@ events:
         enabled: true
         max_photos: 100
         expected_duration_seconds: 28800  # 8 hours
+        annotate: true
   - name: "headlight_crossing"
     match:
       event_type: "LINE_CROSS"
@@ -30,6 +31,7 @@ events:
         enabled: true
         max_photos: 50
         expected_duration_seconds: 28800  # 8 hours
+        annotate: true
 
 pdf_reports:
   - id: "traffic_report"
