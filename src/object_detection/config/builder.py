@@ -373,11 +373,22 @@ class ConfigBuilder:
                     zone_choice = int(input(f"    Choice [1]: ").strip() or '1') - 1
                     match['zone'] = zones[zone_choice]['description']
 
-            # Object classes
-            print("    Object classes (comma-separated):")
-            print(f"    Common: {', '.join(COMMON_CLASSES)}")
-            classes_str = input("    Classes [car, truck, bus]: ").strip() or "car, truck, bus"
-            classes = [c.strip() for c in classes_str.split(',')]
+            # Object classes with validation
+            valid_classes = set(COCO_CLASSES.values())
+            while True:
+                print("    Object classes (comma-separated):")
+                print(f"    Common: {', '.join(COMMON_CLASSES)}")
+                classes_str = input("    Classes [car, truck, bus]: ").strip() or "car, truck, bus"
+                classes = [c.strip() for c in classes_str.split(',') if c.strip()]
+
+                # Validate all classes
+                invalid = [c for c in classes if c not in valid_classes]
+                if invalid:
+                    print(f"    {Colors.RED}Invalid class(es): {', '.join(invalid)}{Colors.RESET}")
+                    print(f"    {Colors.GRAY}Valid classes: {', '.join(sorted(valid_classes))}{Colors.RESET}")
+                    continue
+                break
+
             match['object_class'] = classes if len(classes) > 1 else classes[0]
 
             event['match'] = match
