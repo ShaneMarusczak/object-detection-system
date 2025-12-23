@@ -276,6 +276,12 @@ Environment Variables:
         help='Simulate event processing (optionally with JSON events file)'
     )
 
+    parser.add_argument(
+        '--build-config',
+        action='store_true',
+        help='Launch interactive config builder wizard'
+    )
+
     return parser.parse_args()
 
 
@@ -506,6 +512,11 @@ def main() -> None:
         sys.exit(1)
 
     # Handle terraform-like commands
+    if args.build_config:
+        from .config.builder import run_builder
+        run_builder()
+        return
+
     if args.validate:
         run_validate(args.config)
         return

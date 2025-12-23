@@ -4,46 +4,70 @@ set -e
 # Colors
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
 NC='\033[0m'
+
+# Parse flags
+YES_MODE=false
+while getopts "y" opt; do
+    case $opt in
+        y) YES_MODE=true ;;
+    esac
+done
+shift $((OPTIND-1))
 
 source ~/traffic-analysis/venv/bin/activate
 
 echo -e "${CYAN}Object Detection System${NC}"
 echo ""
 
-# Prompt for config file
-read -p "Config file [config.yaml]: " CONFIG_INPUT
-CONFIG_FILE="${CONFIG_INPUT:-config.yaml}"
+# Prompt for config file (or use default in -y mode)
+if [ "$YES_MODE" = true ]; then
+    CONFIG_FILE="config.yaml"
+    echo -e "${YELLOW}Using default config: $CONFIG_FILE${NC}"
+else
+    read -p "Config file [config.yaml]: " CONFIG_INPUT
+    CONFIG_FILE="${CONFIG_INPUT:-config.yaml}"
+fi
 CONFIG_ARGS="-c $CONFIG_FILE"
 
 echo ""
 echo -e "${GREEN}=== Validating ===${NC}"
 python -m object_detection --validate $CONFIG_ARGS
-read -p "Press Enter to continue..."
+if [ "$YES_MODE" = false ]; then
+    read -p "Press Enter to continue..."
+fi
 
 echo ""
 echo -e "${GREEN}=== Planning ===${NC}"
 python -m object_detection --plan $CONFIG_ARGS
-read -p "Press Enter to continue..."
+if [ "$YES_MODE" = false ]; then
+    read -p "Press Enter to continue..."
+fi
 
 echo ""
 echo -e "${GREEN}=== Dry Run ===${NC}"
 python -m object_detection --dry-run $CONFIG_ARGS
 echo ""
 
-# Prompt for run options
-read -p "Duration in hours [from config]: " DURATION
-read -p "Quiet mode? (y/N): " QUIET_INPUT
+# Prompt for run options (or use defaults in -y mode)
+if [ "$YES_MODE" = true ]; then
+    RUN_ARGS=""
+    echo -e "${YELLOW}Using duration from config${NC}"
+else
+    read -p "Duration in hours [from config]: " DURATION
+    read -p "Quiet mode? (y/N): " QUIET_INPUT
 
-RUN_ARGS=""
-if [ -n "$DURATION" ]; then
-    RUN_ARGS="$DURATION"
-fi
-if [[ "$QUIET_INPUT" =~ ^[Yy]$ ]]; then
-    RUN_ARGS="$RUN_ARGS -q"
-fi
+    RUN_ARGS=""
+    if [ -n "$DURATION" ]; then
+        RUN_ARGS="$DURATION"
+    fi
+    if [[ "$QUIET_INPUT" =~ ^[Yy]$ ]]; then
+        RUN_ARGS="$RUN_ARGS -q"
+    fi
 
-read -p "Press Enter to start running..."
+    read -p "Press Enter to start running..."
+fi
 
 echo ""
 echo -e "${GREEN}=== Running ===${NC}"
