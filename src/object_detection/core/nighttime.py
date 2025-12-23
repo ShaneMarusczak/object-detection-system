@@ -134,7 +134,11 @@ class LightingMonitor:
         # Count bright pixels
         bright_pixels = cv2.countNonZero(binary)
 
-        return bright_pixels >= self.MIN_BRIGHT_PIXELS
+        detected = bright_pixels >= self.MIN_BRIGHT_PIXELS
+        logger.info(f"Streetlight check: ROI y={y1}-{y2} x={x1}-{x2}, "
+                    f"bright_pixels={bright_pixels}, threshold={self.MIN_BRIGHT_PIXELS}, detected={detected}")
+
+        return detected
 
     def _get_avg_brightness(self, frame: np.ndarray) -> float:
         """Get average brightness of frame."""
