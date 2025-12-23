@@ -23,11 +23,18 @@ try:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable, PageBreak
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
     logger.warning("reportlab not installed - PDF reports disabled")
+
+# Professional color scheme
+HEADER_COLOR = colors.HexColor('#2C3E50')  # Dark blue-grey
+ACCENT_COLOR = colors.HexColor('#3498DB')  # Blue
+ROW_ALT_COLOR = colors.HexColor('#F8F9FA')  # Light grey
+BORDER_COLOR = colors.HexColor('#DEE2E6')  # Subtle grey
 
 
 def generate_pdf_reports(json_dir: str, config: dict, start_time: datetime) -> None:
@@ -265,8 +272,28 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
                                 topMargin=72, bottomMargin=72)
 
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=18, spaceAfter=20)
-        heading_style = ParagraphStyle('Heading', parent=styles['Heading2'], fontSize=14, spaceAfter=10, spaceBefore=15)
+        title_style = ParagraphStyle(
+            'Title',
+            parent=styles['Title'],
+            fontSize=22,
+            spaceAfter=6,
+            textColor=HEADER_COLOR
+        )
+        subtitle_style = ParagraphStyle(
+            'Subtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.grey,
+            spaceAfter=15
+        )
+        heading_style = ParagraphStyle(
+            'Heading',
+            parent=styles['Heading2'],
+            fontSize=13,
+            spaceAfter=8,
+            spaceBefore=18,
+            textColor=HEADER_COLOR
+        )
         normal_style = styles['Normal']
 
         story = []
@@ -274,75 +301,69 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
         # Title
         story.append(Paragraph(title, title_style))
 
-        # Period
-        period_text = f"Period: {start_time.strftime('%Y-%m-%d %H:%M')} to {end_time.strftime('%Y-%m-%d %H:%M')}"
-        story.append(Paragraph(period_text, normal_style))
-        story.append(Spacer(1, 20))
+        # Period subtitle
+        duration = (end_time - start_time).total_seconds()
+        if duration >= 3600:
+            duration_str = f"{duration/3600:.1f} hours"
+        else:
+            duration_str = f"{duration/60:.0f} minutes"
+        period_text = f"{start_time.strftime('%Y-%m-%d %H:%M')} — {end_time.strftime('%H:%M')} ({duration_str})"
+        story.append(Paragraph(period_text, subtitle_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=BORDER_COLOR, spaceAfter=15))
 
-        # Summary
-        story.append(Paragraph("Summary", heading_style))
-        story.append(Paragraph(f"Total Events: {stats['total_events']}", normal_style))
+        # Summary box
+        summary_data = [[
+            f"Total Events\n{stats['total_events']}",
+            f"Object Types\n{len(stats.get('events_by_class', {}))}",
+            f"Duration\n{duration_str}"
+        ]]
+        summary_table = Table(summary_data, colWidths=[1.8*inch, 1.8*inch, 1.8*inch])
+        summary_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('BACKGROUND', (0, 0), (-1, -1), ROW_ALT_COLOR),
+            ('BOX', (0, 0), (-1, -1), 1, BORDER_COLOR),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(summary_table)
         story.append(Spacer(1, 10))
 
-        # Events by type table
-        by_type = stats.get('events_by_type', {})
-        if by_type:
-            story.append(Paragraph("Events by Type", heading_style))
-            table_data = [['Event Type', 'Count']]
-            for event_type, count in sorted(by_type.items()):
-                table_data.append([event_type, str(count)])
-            table = Table(table_data, colWidths=[3*inch, 1.5*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        # Helper to create professional styled tables
+        def make_table(data, col_widths):
+            table = Table(data, colWidths=col_widths)
+            style_commands = [
+                ('BACKGROUND', (0, 0), (-1, 0), HEADER_COLOR),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),  # Right-align count column
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            story.append(table)
-            story.append(Spacer(1, 10))
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                ('BOX', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+                ('LINEBELOW', (0, 0), (-1, 0), 1, HEADER_COLOR),
+            ]
+            # Alternating row colors
+            for i in range(1, len(data)):
+                if i % 2 == 0:
+                    style_commands.append(('BACKGROUND', (0, i), (-1, i), ROW_ALT_COLOR))
+            table.setStyle(TableStyle(style_commands))
+            return table
 
-        # Events by object class table
+        # Events by object class table (most important - show first)
         by_class = stats.get('events_by_class', {})
         if by_class:
-            story.append(Paragraph("Events by Object", heading_style))
+            story.append(Paragraph("Events by Object Class", heading_style))
             table_data = [['Object Class', 'Count']]
             for obj_class, count in sorted(by_class.items(), key=lambda x: x[1], reverse=True):
-                table_data.append([obj_class, str(count)])
-            table = Table(table_data, colWidths=[3*inch, 1.5*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            story.append(table)
-            story.append(Spacer(1, 10))
-
-        # Zone activity
-        by_zone = stats.get('events_by_zone', {})
-        if by_zone:
-            story.append(Paragraph("Zone Activity", heading_style))
-            table_data = [['Zone', 'Events']]
-            for zone, count in sorted(by_zone.items(), key=lambda x: x[1], reverse=True):
-                table_data.append([zone, str(count)])
-            table = Table(table_data, colWidths=[3*inch, 1.5*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            story.append(table)
-            story.append(Spacer(1, 10))
+                table_data.append([obj_class.capitalize(), str(count)])
+            story.append(make_table(table_data, [3.5*inch, 1.5*inch]))
+            story.append(Spacer(1, 5))
 
         # Line crossings
         by_line = stats.get('events_by_line', {})
@@ -351,34 +372,59 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
             table_data = [['Line', 'Crossings']]
             for line, count in sorted(by_line.items(), key=lambda x: x[1], reverse=True):
                 table_data.append([line, str(count)])
-            table = Table(table_data, colWidths=[3*inch, 1.5*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            story.append(table)
-            story.append(Spacer(1, 10))
+            story.append(make_table(table_data, [3.5*inch, 1.5*inch]))
+            story.append(Spacer(1, 5))
+
+        # Zone activity
+        by_zone = stats.get('events_by_zone', {})
+        if by_zone:
+            story.append(Paragraph("Zone Activity", heading_style))
+            table_data = [['Zone', 'Events']]
+            for zone, count in sorted(by_zone.items(), key=lambda x: x[1], reverse=True):
+                table_data.append([zone, str(count)])
+            story.append(make_table(table_data, [3.5*inch, 1.5*inch]))
+            story.append(Spacer(1, 5))
 
         # Event timeline with inline photos
         events = stats.get('events', [])
         if events:
             total_events = len(events)
-            story.append(Paragraph(f"Event Timeline ({total_events} events)", heading_style))
+            num_photos = len(frame_data_map)
 
-            # Style for events without photos (smaller, more compact)
-            event_style = ParagraphStyle('Event', parent=normal_style, fontSize=9, leading=12)
-            photo_caption_style = ParagraphStyle('PhotoCaption', parent=normal_style, fontSize=10, fontName='Helvetica-Bold')
+            # Page break before timeline if we have photos
+            if num_photos > 0:
+                story.append(PageBreak())
+
+            story.append(Paragraph(f"Event Timeline", heading_style))
+            story.append(Paragraph(
+                f"{total_events} events, {num_photos} photos captured",
+                ParagraphStyle('TimelineSubtitle', parent=normal_style, fontSize=10, textColor=colors.grey, spaceAfter=10)
+            ))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_COLOR, spaceAfter=10))
+
+            # Style for events without photos (compact, grey text)
+            event_style = ParagraphStyle(
+                'Event',
+                parent=normal_style,
+                fontSize=9,
+                leading=13,
+                textColor=colors.HexColor('#666666')
+            )
+            # Style for events with photos (prominent)
+            photo_caption_style = ParagraphStyle(
+                'PhotoCaption',
+                parent=normal_style,
+                fontSize=10,
+                fontName='Helvetica-Bold',
+                textColor=HEADER_COLOR,
+                spaceBefore=8
+            )
 
             for i, event in enumerate(events, 1):
                 location = event.get('zone_description') or event.get('line_description', 'detection')
-                obj_class = event.get('object_class_name', 'unknown')
+                obj_class = event.get('object_class_name', 'unknown').capitalize()
                 direction = event.get('direction', '')
-                direction_str = f" ({direction})" if direction else ""
+                direction_str = f" {direction}" if direction else ""
                 timestamp = event.get('timestamp', '')
                 # Format timestamp more readably
                 try:
@@ -388,26 +434,26 @@ def _generate_pdf(output_dir: str, title: str, stats: Dict,
                     time_str = timestamp
 
                 event_id = f"{event['timestamp']}_{event['track_id']}"
-                event_num = f"#{i}"
 
                 if event_id in frame_data_map:
                     # Event with photo - more prominent
                     frame_bytes = frame_data_map[event_id]
                     if frame_bytes:
-                        caption = f"{event_num} | {time_str} - {obj_class} at {location}{direction_str}"
+                        caption = f"#{i} — {time_str} — {obj_class} at {location}{direction_str}"
                         story.append(Paragraph(caption, photo_caption_style))
 
                         try:
                             img = Image(io.BytesIO(frame_bytes))
-                            img.drawWidth = 4 * inch
-                            img.drawHeight = 3 * inch
+                            # Maintain aspect ratio (assume 16:9 or 4:3)
+                            img.drawWidth = 5 * inch
+                            img.drawHeight = 3.75 * inch
                             story.append(img)
-                            story.append(Spacer(1, 15))
+                            story.append(Spacer(1, 12))
                         except Exception as e:
                             logger.warning(f"Failed to embed image: {e}")
                 else:
                     # Event without photo - compact text line
-                    line = f"{event_num} | {time_str} - {obj_class} at {location}{direction_str}"
+                    line = f"#{i}  {time_str}  {obj_class} at {location}{direction_str}"
                     story.append(Paragraph(line, event_style))
 
         # Build PDF
