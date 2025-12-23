@@ -26,7 +26,6 @@ events:
     match:
       event_type: "LINE_CROSS"
       line: "entrance gate"
-      direction: "LTR"
       object_class: ["car", "motorcycle", "bus", "truck"]
     actions:
       pdf_report: "traffic_report"
@@ -35,7 +34,6 @@ events:
     match:
       event_type: "LINE_CROSS"
       line: "exit gate"
-      direction: "LTR"
       object_class: ["car", "motorcycle", "bus", "truck"]
     actions:
       pdf_report: "traffic_report"

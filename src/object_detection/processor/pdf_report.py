@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -55,7 +55,7 @@ def pdf_report_consumer(json_dir: str, config: dict) -> None:
         logger.warning("No PDF report configurations found")
         return
 
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
 
     for report_config in pdf_report_configs:
         report_id = report_config.get('id', 'report')
@@ -72,7 +72,7 @@ def pdf_report_consumer(json_dir: str, config: dict) -> None:
         pass
     finally:
         # Generate reports on shutdown
-        end_time = datetime.now()
+        end_time = datetime.now(timezone.utc)
         logger.info("Generating PDF reports...")
 
         for report_config in pdf_report_configs:
@@ -168,7 +168,9 @@ def _aggregate_from_json(json_dir: str, start_time: datetime, end_time: datetime
                             continue
 
                         event_time = datetime.fromisoformat(event_time_str.replace('Z', '+00:00'))
-                        event_time = event_time.replace(tzinfo=None)
+                        # Ensure timezone-aware for comparison
+                        if event_time.tzinfo is None:
+                            event_time = event_time.replace(tzinfo=timezone.utc)
 
                         if event_time < start_time or event_time > end_time:
                             continue
