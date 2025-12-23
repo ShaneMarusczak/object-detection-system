@@ -6,6 +6,7 @@ Captures preview frames to data/ folder for visual feedback.
 """
 
 import os
+import readline  # Enables arrow key history for input()
 import signal
 import subprocess
 import sys
