@@ -39,13 +39,13 @@ class LightingMonitor:
     Checks on startup and every 15 minutes thereafter.
     """
 
-    # Streetlight detection region (upper center of frame)
-    STREETLIGHT_Y_PCT = (0, 20)  # Top 20%
-    STREETLIGHT_X_PCT = (25, 75)  # Middle 50%
+    # Streetlight detection region (upper portion of frame)
+    STREETLIGHT_Y_PCT = (0, 25)  # Top 25%
+    STREETLIGHT_X_PCT = (20, 90)  # Wide range to catch edge streetlights
 
     # Thresholds
     BRIGHTNESS_THRESHOLD = 200  # L channel threshold for "bright"
-    MIN_BRIGHT_PIXELS = 500  # Minimum bright pixels to detect streetlight
+    MIN_BRIGHT_PIXELS = 100  # Minimum bright pixels to detect streetlight (small lights ok)
     DAYLIGHT_BRIGHTNESS = 80  # Avg frame brightness for "it's daytime"
 
     # Timing
