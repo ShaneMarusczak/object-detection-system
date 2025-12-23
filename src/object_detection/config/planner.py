@@ -119,7 +119,7 @@ def validate_config_full(config: dict) -> ValidationResult:
     # Derive track_classes from events
     track_classes = _derive_track_classes_from_events(config, result)
     result.derived['track_classes'] = track_classes
-    result.derived['consumers'] = _derive_consumers(config)
+    result.derived['consumers'] = _derive_consumers_for_validation(config)
 
     if result.errors:
         result.valid = False
@@ -476,6 +476,42 @@ def _validate_frame_storage(config: dict, result: ValidationResult) -> None:
 
     # temp_frames is implicitly enabled if any event needs frames
     # No warning needed - the event owns the frame capture decision
+
+
+def _derive_consumers_for_validation(config: dict) -> List[str]:
+    """Derive which consumers will be active (for validation display only)."""
+    consumers = set()
+    events = config.get('events', [])
+    digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
+    pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
+
+    for event in events:
+        actions = event.get('actions', {})
+
+        if actions.get('json_log'):
+            consumers.add('json_writer')
+
+        if actions.get('email_immediate'):
+            consumers.add('email_notifier')
+
+        digest_id = actions.get('email_digest')
+        if digest_id:
+            consumers.add('json_writer')  # Implied
+            consumers.add('email_digest')
+            if digests.get(digest_id, {}).get('photos'):
+                consumers.add('frame_capture')
+
+        pdf_report_id = actions.get('pdf_report')
+        if pdf_report_id:
+            consumers.add('json_writer')  # Implied
+            consumers.add('pdf_report')
+            if pdf_reports.get(pdf_report_id, {}).get('photos'):
+                consumers.add('frame_capture')
+
+        if actions.get('frame_capture'):
+            consumers.add('frame_capture')
+
+    return sorted(consumers)
 
 
 def _derive_track_classes_from_events(config: dict, result: ValidationResult) -> List[Tuple[int, str]]:
