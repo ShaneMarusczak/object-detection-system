@@ -1,0 +1,87 @@
+# ==============================================================================
+# TRAFFIC CONFIG - 5 minute test with annotated PDF reports
+# ==============================================================================
+
+detection:
+  model_file: "yolo11n.pt"
+  confidence_threshold: 0.3
+
+lines:
+  - type: vertical
+    position_pct: 30
+    description: "entrance gate"
+  - type: vertical
+    position_pct: 70
+    description: "exit gate"
+
+zones:
+  - description: "loading dock"
+    x1_pct: 0
+    x2_pct: 25
+    y1_pct: 60
+    y2_pct: 100
+
+events:
+  - name: "vehicle_entering"
+    match:
+      event_type: "LINE_CROSS"
+      line: "entrance gate"
+      direction: "LTR"
+      object_class: ["car", "motorcycle", "bus", "truck"]
+    actions:
+      json_log: true
+      frame_capture:
+        enabled: true
+        annotate: true
+      pdf_report: "traffic_report"
+
+  - name: "vehicle_exiting"
+    match:
+      event_type: "LINE_CROSS"
+      line: "exit gate"
+      direction: "LTR"
+      object_class: ["car", "motorcycle", "bus", "truck"]
+    actions:
+      json_log: true
+      frame_capture:
+        enabled: true
+        annotate: true
+      pdf_report: "traffic_report"
+
+  - name: "loading_dock_arrival"
+    match:
+      event_type: "ZONE_ENTER"
+      zone: "loading dock"
+      object_class: ["truck", "car"]
+    actions:
+      json_log: true
+      frame_capture:
+        enabled: true
+        annotate: true
+      pdf_report: "traffic_report"
+
+pdf_reports:
+  - id: "traffic_report"
+    period_minutes: 5
+    output_dir: "reports/traffic"
+    title: "Traffic Report (Annotated)"
+    events: ["vehicle_entering", "vehicle_exiting", "loading_dock_arrival"]
+    photos: true
+
+frame_storage:
+  type: "local"
+  local_dir: "frames"
+
+output:
+  json_dir: "data"
+
+console_output:
+  enabled: true
+  level: "detailed"
+
+camera:
+  url: "rtsp://192.168.1.100:554/stream1"
+
+runtime:
+  default_duration_hours: 0.0833  # 5 minutes
+  queue_size: 500
