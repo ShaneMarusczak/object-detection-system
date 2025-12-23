@@ -652,30 +652,26 @@ class ConfigBuilder:
 
         print(f"{Colors.GREEN}Saved:{Colors.RESET} {filepath}")
 
-        # Try to copy to clipboard
-        try:
-            subprocess.run(['xclip', '-selection', 'clipboard'],
-                          input=filename.encode(), check=True,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"{Colors.GRAY}Config name copied to clipboard{Colors.RESET}")
-        except:
-            pass  # xclip not available
-
-        # Offer to set as default
-        set_default = input("\nSet as default? (Y/n): ").strip().lower()
-        if set_default != 'n':
+        # Handle based on choice
+        if choice in ('1', '2'):
+            # Running - auto-set as default (no need to ask)
             self._set_as_default(filepath)
+            self._cleanup()
 
-        # Handle run options
-        if choice == '1':
-            self._cleanup()
-            print(f"\n{Colors.CYAN}Starting run.sh -y (auto mode)...{Colors.RESET}\n")
-            os.execvp('./run.sh', ['./run.sh', '-y'])
-        elif choice == '2':
-            self._cleanup()
-            print(f"\n{Colors.CYAN}Starting run.sh (verify mode)...{Colors.RESET}\n")
-            os.execvp('./run.sh', ['./run.sh'])
-        # choice == '3' falls through to return
+            if choice == '1':
+                print(f"\n{Colors.CYAN}Starting detection (auto mode)...{Colors.RESET}\n")
+                os.execvp('./run.sh', ['./run.sh', '-sy'])  # skip menu + auto
+            else:
+                print(f"\n{Colors.CYAN}Starting detection (verify mode)...{Colors.RESET}\n")
+                os.execvp('./run.sh', ['./run.sh', '-s'])   # skip menu only
+
+        else:  # choice == '3' - save and exit
+            # Only ask about default if just saving
+            set_default = input("\nSet as default? (Y/n): ").strip().lower()
+            if set_default != 'n':
+                self._set_as_default(filepath)
+
+            print(f"\n{Colors.GRAY}Run later with: ./run.sh{Colors.RESET}")
 
         return filepath
 

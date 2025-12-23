@@ -9,10 +9,14 @@ GRAY='\033[0;90m'
 NC='\033[0m'
 
 # Parse flags
+# -y = auto mode (skip prompts, use defaults)
+# -s = skip menu (go straight to run, for use after builder)
 YES_MODE=false
-while getopts "y" opt; do
+SKIP_MENU=false
+while getopts "ys" opt; do
     case $opt in
         y) YES_MODE=true ;;
+        s) SKIP_MENU=true ;;
     esac
 done
 shift $((OPTIND-1))
@@ -22,8 +26,8 @@ source ~/traffic-analysis/venv/bin/activate
 echo -e "${CYAN}Object Detection System${NC}"
 echo ""
 
-# Entry point choice (skip in -y mode)
-if [ "$YES_MODE" = false ]; then
+# Entry point choice (skip if -s or -y flag)
+if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
     echo "What would you like to do?"
     echo "  1. Run with existing config"
     echo "  2. Build new config"
@@ -35,8 +39,8 @@ if [ "$YES_MODE" = false ]; then
     fi
 fi
 
-# Prompt for config file (or use default in -y mode)
-if [ "$YES_MODE" = true ]; then
+# Prompt for config file (or use default in auto/skip mode)
+if [ "$YES_MODE" = true ] || [ "$SKIP_MENU" = true ]; then
     CONFIG_FILE="config.yaml"
 else
     read -p "Config file [config.yaml]: " CONFIG_INPUT
