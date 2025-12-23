@@ -224,8 +224,9 @@ def _detection_loop(
                     temp_frame_max_age,
                 )
 
-            # Headlight detection when YOLO found nothing
-            if headlight_detector and not yolo_has_detections:
+            # Always run headlight detection to maintain tracking continuity
+            # Only emit events when YOLO found nothing
+            if headlight_detector:
                 event_count += _process_headlight_detections(
                     headlight_detector,
                     frame,
@@ -239,6 +240,7 @@ def _detection_loop(
                     frame if temp_frame_enabled else None,
                     temp_frame_dir,
                     temp_frame_max_age,
+                    emit_events=not yolo_has_detections,
                 )
 
             # Save frames if enabled
@@ -375,12 +377,17 @@ def _process_headlight_detections(
     save_frame=None,
     temp_frame_dir: str = None,
     temp_frame_max_age: int = 30,
+    emit_events: bool = True,
 ) -> int:
     """
-    Process headlight detections in night mode.
+    Process headlight detections as fallback when YOLO fails.
 
-    Detects bright blobs and tracks them through lines/zones
-    using the same logic as YOLO detections.
+    Always updates tracking state to maintain continuity.
+    Only emits events (line crossings, zone events) when emit_events=True.
+
+    Args:
+        emit_events: If True, generate events for line/zone crossings.
+                    If False, only update tracking state (no events).
 
     Returns:
         Number of events generated
@@ -414,9 +421,13 @@ def _process_headlight_detections(
         else:
             tracked_objects[track_id].update_position(center_x, center_y, bbox)
 
+        # Only check for events if emit_events is True
+        if not emit_events:
+            continue
+
         tracked_obj = tracked_objects[track_id]
 
-        # Check line crossings (headlights are allowed on all lines in night mode)
+        # Check line crossings (headlights are allowed on all lines)
         if not tracked_obj.is_new():
             event_count += _check_headlight_line_crossings(
                 tracked_obj,
