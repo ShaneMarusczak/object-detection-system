@@ -16,7 +16,7 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --no-strict-optional]
+        args: [--ignore-missing-imports, --no-strict-optional, --explicit-package-bases]
         additional_dependencies: []
 
   # Codespell - typo detection
@@ -24,7 +24,7 @@ repos:
     rev: v2.3.0
     hooks:
       - id: codespell
-        args: [--quiet-level=2]
+        args: [--quiet-level=2, --ignore-words-list=assertIn]
 
   # PyUpgrade - modernize Python syntax
   - repo: https://github.com/asottile/pyupgrade

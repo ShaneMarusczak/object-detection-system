@@ -82,7 +82,7 @@ class TestDigestStateManager(unittest.TestCase):
 
     def test_init_creates_directories(self):
         """Test that init creates state directory."""
-        manager = DigestStateManager(
+        _manager = DigestStateManager(
             state_dir=str(self.state_dir),
             frames_dir=str(self.frames_dir)
         )
