@@ -103,6 +103,9 @@ class EventDefinition:
                         **frame_config
                     }
                     logger.debug(f"Auto-enabled frame_capture (required by photo pdf_report '{report_id}')")
+                elif report.get('annotate') and isinstance(actions['frame_capture'], dict):
+                    # Merge annotate flag into existing frame_capture config
+                    actions['frame_capture']['annotate'] = True
 
         return actions
 
