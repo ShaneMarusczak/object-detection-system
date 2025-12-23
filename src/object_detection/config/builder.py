@@ -10,7 +10,7 @@ import readline  # noqa: F401 - Enables arrow key history for input()
 import subprocess
 import sys
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import cv2
 import yaml

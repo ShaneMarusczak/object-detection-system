@@ -12,7 +12,7 @@ import logging
 from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Any, Set
 
 from .coco_classes import COCO_NAME_TO_ID
 from .json_writer import json_writer_consumer
@@ -80,31 +80,6 @@ class EventDefinition:
     def get_object_classes(self) -> Set[str]:
         """Get all object classes this event definition matches."""
         return self.object_classes if self.object_classes else set()
-
-
-def derive_track_classes(event_defs: List[EventDefinition]) -> List[int]:
-    """
-    Derive COCO class IDs from event definitions.
-    Only track classes that appear in at least one event definition.
-    """
-    class_names = set()
-    for event_def in event_defs:
-        class_names.update(event_def.get_object_classes())
-
-    # Convert class names to COCO IDs
-    class_ids = []
-    for name in class_names:
-        name_lower = name.lower()
-        if name_lower in COCO_NAME_TO_ID:
-            class_ids.append(COCO_NAME_TO_ID[name_lower])
-        else:
-            logger.warning(f"Unknown object class '{name}' in event definitions (not in COCO dataset)")
-            logger.warning("Available classes: person, bicycle, car, motorcycle, bus, truck, cat, dog, etc.")
-
-    if not class_ids:
-        logger.warning("No valid object classes found in event definitions - will track nothing!")
-
-    return sorted(class_ids)
 
 
 def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]):
