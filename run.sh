@@ -37,15 +37,11 @@ if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
         python -m object_detection --build-config
         exit 0
     fi
+    # Choice 1 (or Enter) falls through - use default config
 fi
 
-# Prompt for config file (or use default in auto/skip mode)
-if [ "$YES_MODE" = true ] || [ "$SKIP_MENU" = true ]; then
-    CONFIG_FILE="config.yaml"
-else
-    read -p "Config file [config.yaml]: " CONFIG_INPUT
-    CONFIG_FILE="${CONFIG_INPUT:-config.yaml}"
-fi
+# Use default config - no need to ask
+CONFIG_FILE="config.yaml"
 CONFIG_ARGS="-c $CONFIG_FILE"
 
 # Show which config is being used (follow use: pointer if present)
