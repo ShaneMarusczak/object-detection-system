@@ -46,6 +46,31 @@ events:
     actions:
       pdf_report: "traffic_report"
 
+  # Nighttime detection events (headlights detected when dark)
+  - name: "headlight_entering"
+    match:
+      event_type: "LINE_CROSS"
+      line: "entrance gate"
+      object_class: ["headlight"]
+    actions:
+      pdf_report: "traffic_report"
+
+  - name: "headlight_exiting"
+    match:
+      event_type: "LINE_CROSS"
+      line: "exit gate"
+      object_class: ["headlight"]
+    actions:
+      pdf_report: "traffic_report"
+
+  - name: "headlight_at_dock"
+    match:
+      event_type: "ZONE_ENTER"
+      zone: "loading dock"
+      object_class: ["headlight"]
+    actions:
+      pdf_report: "traffic_report"
+
 # Just say what you want - everything else is implied:
 #   photos: true  → frame_capture enabled
 #   annotate: true → frames have lines/zones/bboxes drawn
@@ -55,7 +80,7 @@ pdf_reports:
   - id: "traffic_report"
     output_dir: "reports/traffic"
     title: "Traffic Report"
-    events: ["vehicle_entering", "vehicle_exiting", "loading_dock_arrival"]
+    events: ["vehicle_entering", "vehicle_exiting", "loading_dock_arrival", "headlight_entering", "headlight_exiting", "headlight_at_dock"]
     photos: true
     annotate: true
 
