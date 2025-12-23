@@ -6,8 +6,7 @@ Captures preview frames to data/ folder for visual feedback.
 """
 
 import os
-import readline  # Enables arrow key history for input()
-import signal
+import readline  # noqa: F401 - Enables arrow key history for input()
 import subprocess
 import sys
 from datetime import datetime

@@ -23,7 +23,6 @@ try:
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.lib.enums import TA_CENTER
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable, PageBreak
     REPORTLAB_AVAILABLE = True
 except ImportError:
@@ -32,7 +31,6 @@ except ImportError:
 
 # Professional color scheme
 HEADER_COLOR = colors.HexColor('#2C3E50')  # Dark blue-grey
-ACCENT_COLOR = colors.HexColor('#3498DB')  # Blue
 ROW_ALT_COLOR = colors.HexColor('#F8F9FA')  # Light grey
 BORDER_COLOR = colors.HexColor('#DEE2E6')  # Subtle grey
 
