@@ -44,9 +44,8 @@ def pdf_report_consumer(json_dir: str, config: dict) -> None:
         logger.error("reportlab not installed - cannot generate PDF reports")
         return
 
-    # Initialize frame service (for photo embedding)
+    # Store config for later - FrameService created after shutdown when metadata exists
     frame_service_config = config.get('frame_service_config', {})
-    frame_service = FrameService(frame_service_config) if frame_service_config else None
 
     # Get PDF report configurations
     pdf_report_configs = config.get('pdf_reports', [])
@@ -75,6 +74,9 @@ def pdf_report_consumer(json_dir: str, config: dict) -> None:
         end_time = datetime.now(timezone.utc)
         logger.info("Generating PDF reports...")
 
+        # Create FrameService NOW - after all frames have been captured and metadata saved
+        frame_service = FrameService(frame_service_config) if frame_service_config else None
+
         for report_config in pdf_report_configs:
             report_id = report_config.get('id', 'report')
             event_names = report_config.get('events', [])
@@ -90,6 +92,7 @@ def pdf_report_consumer(json_dir: str, config: dict) -> None:
             frame_data_map = {}
             if report_config.get('photos') and frame_service and stats.get('events'):
                 frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
+                logger.debug(f"Found {len(frame_paths)} frame paths for {len(stats['events'])} events")
                 for event_id, path in frame_paths.items():
                     frame_bytes = frame_service.read_frame_bytes(event_id)
                     if frame_bytes:
