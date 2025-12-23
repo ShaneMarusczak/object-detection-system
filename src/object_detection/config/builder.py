@@ -396,10 +396,9 @@ class ConfigBuilder:
                 capture = input("    Capture photos for report? (Y/n): ").strip().lower()
                 if capture != 'n':
                     max_photos_str = input("    Max photos [100]: ").strip() or "100"
-                    duration_str = input("    Expected duration in minutes [30]: ").strip() or "30"
+                    # Duration comes from runtime settings, applied later
                     actions['frame_capture'] = {
-                        'max_photos': int(max_photos_str),
-                        'expected_duration_seconds': int(duration_str) * 60
+                        'max_photos': int(max_photos_str)
                     }
 
             # Immediate email
@@ -590,11 +589,18 @@ class ConfigBuilder:
         print(f"\n{Colors.BOLD}--- Runtime Settings ---{Colors.RESET}")
         duration_str = input("Default duration in hours [0.5]: ").strip() or "0.5"
         duration = float(duration_str)
+        duration_seconds = int(duration * 3600)
 
         self.config['runtime'] = {
             'queue_size': 500,
             'default_duration_hours': duration
         }
+
+        # Apply duration to all frame_capture configs
+        for event in self.config.get('events', []):
+            frame_capture = event.get('actions', {}).get('frame_capture')
+            if frame_capture:
+                frame_capture['expected_duration_seconds'] = duration_seconds
 
     def _save_config(self) -> Optional[str]:
         """Save config to YAML file with options for what to do next."""
