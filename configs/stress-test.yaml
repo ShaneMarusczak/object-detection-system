@@ -210,6 +210,8 @@ frame_storage:
   local_dir: "frames"
   retention_days: 30
 
+temp_frames_enabled: true
+
 output:
   json_dir: "data"
 

@@ -44,6 +44,7 @@ from .schemas import (
     LineConfig,
     ZoneConfig,
     DigestConfig,
+    PDFReportConfig,
 )
 
 __all__ = [
@@ -64,6 +65,7 @@ __all__ = [
     "LineConfig",
     "ZoneConfig",
     "DigestConfig",
+    "PDFReportConfig",
     # Planning
     "build_plan",
     "ConfigPlan",

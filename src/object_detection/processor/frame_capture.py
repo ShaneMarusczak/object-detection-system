@@ -13,7 +13,6 @@ from multiprocessing import Queue
 from typing import Dict, List, Optional, Tuple
 
 import cv2
-import numpy as np
 
 from .frame_service import FrameService
 
@@ -132,7 +131,7 @@ def _find_temp_frame(temp_dir: str, event_timestamp: str, tolerance_seconds: int
     try:
         event_time = datetime.fromisoformat(event_timestamp.replace('Z', '+00:00'))
         event_time = event_time.replace(tzinfo=None)  # Make naive for comparison
-    except:
+    except Exception:
         logger.warning(f"Could not parse event timestamp: {event_timestamp}")
         return None
 
