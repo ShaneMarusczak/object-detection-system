@@ -189,7 +189,8 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             consumer_queues['email_immediate'] = email_queue
 
             email_consumer_config = {
-                'notification_config': notification_config
+                'notification_config': notification_config,
+                'temp_frame_dir': config.get('temp_frame_dir', '/tmp/frames')
             }
 
             email_process = Process(

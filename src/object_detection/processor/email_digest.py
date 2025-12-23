@@ -54,12 +54,18 @@ def email_digest_consumer(json_dir: str, config: dict) -> None:
     digest_states = {}
     for i, digest_config in enumerate(digest_configs):
         digest_id = digest_config.get('id', f"digest_{i}")
+        # Get period from period_minutes or estimate from cron schedule
+        period_minutes = digest_config.get('period_minutes')
+        if not period_minutes:
+            schedule = digest_config.get('schedule', '')
+            period_minutes = _estimate_period_from_cron(schedule)
         digest_states[digest_id] = {
             'config': digest_config,
+            'period_minutes': period_minutes,
             'last_digest_time': datetime.now()
         }
-        logger.info(f"Digest '{digest_id}': {digest_config.get('period_label', 'N/A')} "
-                   f"({digest_config.get('period_minutes', 60)} min)")
+        logger.info(f"Digest '{digest_id}': {digest_config.get('period_label', digest_id)} "
+                   f"({period_minutes} min)")
 
     logger.info(f"Email Digest Notifier started with {len(digest_configs)} digest(s)")
     logger.info(f"Reading from: {json_dir}")
@@ -79,7 +85,7 @@ def email_digest_consumer(json_dir: str, config: dict) -> None:
             for digest_id, state in digest_states.items():
                 digest_config = state['config']
                 last_digest_time = state['last_digest_time']
-                period_minutes = digest_config.get('period_minutes', 60)
+                period_minutes = state['period_minutes']
                 elapsed = (current_time - last_digest_time).total_seconds() / 60
 
                 if elapsed >= period_minutes:
@@ -100,15 +106,24 @@ def email_digest_consumer(json_dir: str, config: dict) -> None:
                     stats = _aggregate_from_json(json_dir, start_time, end_time, filters, event_names)
 
                     if stats['total_events'] > 0:
-                        # Get frame paths for events (only if photos enabled and frame service available)
-                        frame_urls = {}
+                        # Get frame data for events (only if photos enabled and frame service available)
+                        frame_data_map = {}
                         wants_photos = digest_config.get('photos', False)
                         if wants_photos and frame_service and stats.get('events'):
-                            frame_urls = frame_service.get_frame_paths_for_events(stats['events'])
-                            logger.debug(f"Retrieved {len(frame_urls)} frame paths")
+                            frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
+                            # Read actual bytes for each frame
+                            for event_id, path in frame_paths.items():
+                                frame_bytes = frame_service.read_frame_bytes(event_id)
+                                if frame_bytes:
+                                    frame_data_map[event_id] = frame_bytes
+                            logger.debug(f"Retrieved {len(frame_data_map)} frame images")
+
+                        # Use custom subject if configured, otherwise default
+                        subject_prefix = digest_config.get('subject', '')
+                        email_subject = subject_prefix if subject_prefix else f"Object Detection Digest: {period_label}"
 
                         logger.info(f"Sending digest '{digest_id}' ({stats['total_events']} events)...")
-                        if email_service.send_digest(period_label, stats, frame_urls):
+                        if email_service.send_digest(period_label, stats, frame_data_map, email_subject):
                             logger.info(f"Digest '{digest_id}' sent successfully")
                         else:
                             logger.warning(f"Failed to send digest '{digest_id}'")
@@ -278,3 +293,61 @@ def _empty_stats() -> Dict:
         'end_time': None,
         'events': []
     }
+
+
+def _estimate_period_from_cron(schedule: str) -> int:
+    """
+    Estimate period in minutes from a cron schedule string.
+
+    Supports common patterns:
+    - "* * * * *" = every minute = 1
+    - "*/5 * * * *" = every 5 minutes = 5
+    - "0 * * * *" = hourly = 60
+    - "0 */2 * * *" = every 2 hours = 120
+    - "0 8 * * *" = daily = 1440
+    - "0 0 * * 0" = weekly = 10080
+
+    Args:
+        schedule: Cron schedule string (5 fields)
+
+    Returns:
+        Estimated period in minutes (default: 60)
+    """
+    if not schedule:
+        return 60
+
+    try:
+        parts = schedule.strip().split()
+        if len(parts) != 5:
+            return 60
+
+        minute, hour, day, month, weekday = parts
+
+        # Check for every N minutes pattern: */N * * * *
+        if minute.startswith('*/') and hour == '*':
+            return int(minute[2:])
+
+        # Check for every minute: * * * * *
+        if minute == '*' and hour == '*':
+            return 1
+
+        # Check for hourly: 0 * * * * or specific minute
+        if hour == '*' and day == '*':
+            return 60
+
+        # Check for every N hours: 0 */N * * *
+        if hour.startswith('*/') and day == '*':
+            return int(hour[2:]) * 60
+
+        # Check for daily: 0 N * * *
+        if day == '*' and month == '*' and weekday == '*':
+            return 1440  # 24 hours
+
+        # Check for weekly: 0 0 * * N
+        if weekday != '*':
+            return 10080  # 7 days
+
+        return 60  # Default to hourly
+
+    except Exception:
+        return 60  # Default to hourly on parse error

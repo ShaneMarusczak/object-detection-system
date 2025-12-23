@@ -109,13 +109,14 @@ class EmailService:
         msg.attach(part)
 
     def send_event_notification(self, event: Dict[str, Any], custom_message: str = None,
-                                 frame_data: bytes = None) -> bool:
+                                 frame_data: bytes = None, custom_subject: str = None) -> bool:
         """Send notification for a single event with optional frame attachment.
 
         Args:
             event: Enriched event dictionary
             custom_message: Optional custom message (otherwise auto-generate)
             frame_data: Optional JPEG bytes to attach
+            custom_subject: Optional custom subject line
 
         Returns:
             True if email sent successfully
@@ -161,9 +162,12 @@ class EmailService:
         if frame_data:
             body += "\nSee attached photo.\n"
 
-        # Subject
-        description = event.get('zone_description') or event.get('line_description', 'Detection')
-        subject = f"Object Detection Alert: {description}"
+        # Subject (use custom if provided)
+        if custom_subject:
+            subject = custom_subject
+        else:
+            description = event.get('zone_description') or event.get('line_description', 'Detection')
+            subject = f"Object Detection Alert: {description}"
 
         # Build attachments
         attachments = []
@@ -178,18 +182,21 @@ class EmailService:
         return self.send(subject, body, attachments)
 
     def send_digest(self, period: str, stats: Dict[str, Any],
-                    frame_data_map: Dict[str, bytes] = None) -> bool:
+                    frame_data_map: Dict[str, bytes] = None,
+                    subject: str = None) -> bool:
         """Send a digest email with aggregated statistics and embedded photos.
 
         Args:
             period: Time period description (e.g., "Last Hour", "Last 24 Hours")
             stats: Dictionary with statistics to include
             frame_data_map: Optional dict mapping event_id to JPEG bytes
+            subject: Optional custom subject line
 
         Returns:
             True if email sent successfully
         """
-        subject = f"Object Detection Digest: {period}"
+        if not subject:
+            subject = f"Object Detection Digest: {period}"
 
         # Build digest body
         body = f"Activity Summary - {period}\n"

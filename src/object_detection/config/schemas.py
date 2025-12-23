@@ -93,6 +93,9 @@ class EmailImmediateAction(BaseModel):
     enabled: bool = True
     cooldown_minutes: int = Field(default=30, ge=0)
     message: Optional[str] = None
+    subject: Optional[str] = None
+    include_frame: bool = False
+    priority: Optional[str] = None
 
 
 class FrameCaptureAction(BaseModel):
