@@ -179,12 +179,7 @@ def _detection_loop(
             current_time = time.time()
             relative_time = current_time - start_time
 
-            # Save temp frame BEFORE processing (so events can reference it)
-            current_frame_id = None
-            if temp_frame_enabled and frame_count % temp_frame_interval == 0:
-                current_frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
-            # Process detections
+            # Process detections (frame saved on-demand when events occur)
             if results[0].boxes is not None and results[0].boxes.id is not None:
                 event_count += _process_detections(
                     results[0].boxes,
@@ -196,7 +191,9 @@ def _detection_loop(
                     current_time,
                     relative_time,
                     speed_enabled,
-                    current_frame_id
+                    frame if temp_frame_enabled else None,
+                    temp_frame_dir,
+                    temp_frame_max_age
                 )
 
             # Save frames if enabled
@@ -241,7 +238,9 @@ def _process_detections(
     current_time: float,
     relative_time: float,
     speed_enabled: bool,
-    frame_id: Optional[str] = None
+    frame=None,
+    temp_frame_dir: str = None,
+    temp_frame_max_age: int = 30
 ) -> int:
     """
     Process all detections in current frame.
@@ -282,13 +281,15 @@ def _process_detections(
         if not tracked_obj.is_new():
             event_count += _check_line_crossings(
                 tracked_obj, lines, roi_dims, data_queue,
-                relative_time, speed_enabled, current_time, frame_id
+                relative_time, speed_enabled, current_time,
+                frame, temp_frame_dir, temp_frame_max_age
             )
 
         # Check zone entry/exit
         event_count += _check_zone_events(
             tracked_obj, zones, roi_dims, data_queue,
-            relative_time, current_time, frame_id
+            relative_time, current_time,
+            frame, temp_frame_dir, temp_frame_max_age
         )
 
     return event_count
@@ -302,7 +303,9 @@ def _check_line_crossings(
     relative_time: float,
     speed_enabled: bool,
     current_time: float,
-    frame_id: Optional[str] = None
+    frame=None,
+    temp_frame_dir: str = None,
+    temp_frame_max_age: int = 30
 ) -> int:
     """Check if object crossed any lines."""
     event_count = 0
@@ -329,6 +332,11 @@ def _check_line_crossings(
         if crossed:
             tracked_obj.crossed_lines.add(line.line_id)
             event_count += 1
+
+            # Save frame on-demand for this event
+            frame_id = None
+            if frame is not None and temp_frame_dir:
+                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
 
             event = {
                 'event_type': 'LINE_CROSS',
@@ -410,7 +418,9 @@ def _check_zone_events(
     data_queue: Queue,
     relative_time: float,
     current_time: float,
-    frame_id: Optional[str] = None
+    frame=None,
+    temp_frame_dir: str = None,
+    temp_frame_max_age: int = 30
 ) -> int:
     """Check for zone entry/exit events."""
     event_count = 0
@@ -437,6 +447,11 @@ def _check_zone_events(
             tracked_obj.active_zones[zone.zone_id] = current_time
             event_count += 1
 
+            # Save frame on-demand for this event
+            frame_id = None
+            if frame is not None and temp_frame_dir:
+                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+
             data_queue.put({
                 'event_type': 'ZONE_ENTER',
                 'track_id': tracked_obj.track_id,
@@ -453,6 +468,11 @@ def _check_zone_events(
             dwell_time = current_time - entry_time
             del tracked_obj.active_zones[zone.zone_id]
             event_count += 1
+
+            # Save frame on-demand for this event
+            frame_id = None
+            if frame is not None and temp_frame_dir:
+                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
 
             data_queue.put({
                 'event_type': 'ZONE_EXIT',
