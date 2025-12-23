@@ -22,6 +22,7 @@ class TrackedObject:
         crossed_lines: Set of line IDs this object has crossed
         active_zones: Dict mapping zone_id to entry timestamp
     """
+
     track_id: int
     object_class: int
     current_pos: Tuple[float, float]
@@ -32,7 +33,9 @@ class TrackedObject:
     crossed_lines: Set[str] = field(default_factory=set)
     active_zones: Dict[str, float] = field(default_factory=dict)
 
-    def update_position(self, x: float, y: float, bbox: Optional[Tuple[int, int, int, int]] = None) -> None:
+    def update_position(
+        self, x: float, y: float, bbox: Optional[Tuple[int, int, int, int]] = None
+    ) -> None:
         """Update position and bbox, moving current to previous."""
         self.previous_pos = self.current_pos
         self.current_pos = (x, y)
@@ -47,6 +50,7 @@ class TrackedObject:
 @dataclass
 class LineConfig:
     """Configuration for a counting line."""
+
     line_id: str
     type: str  # 'vertical' or 'horizontal'
     position_pct: float
@@ -57,6 +61,7 @@ class LineConfig:
 @dataclass
 class ZoneConfig:
     """Configuration for a detection zone."""
+
     zone_id: str
     x1_pct: float
     y1_pct: float
@@ -69,6 +74,7 @@ class ZoneConfig:
 @dataclass
 class ROIConfig:
     """Region of Interest configuration."""
+
     enabled: bool
     h_from: float = 0
     h_to: float = 100

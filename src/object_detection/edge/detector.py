@@ -16,7 +16,8 @@ Includes:
 """
 
 import os
-os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import logging
 import time
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TrackedObject:
     """Minimal tracking state for an object."""
+
     track_id: int
     object_class: int
     current_pos: tuple
@@ -79,7 +81,7 @@ class EdgeDetector:
         self.event_count = 0
 
         # Nighttime detection components
-        nighttime_enabled = getattr(config, 'nighttime_detection', True)
+        nighttime_enabled = getattr(config, "nighttime_detection", True)
         self.lighting_monitor = LightingMonitor(enabled=nighttime_enabled)
         self.headlight_detector = HeadlightDetector() if nighttime_enabled else None
         self.is_night_mode = False
@@ -91,13 +93,13 @@ class EdgeDetector:
 
     def _init_model(self) -> None:
         """Initialize YOLO model."""
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = YOLO(self.config.model_file)
         self.model.to(device)
 
         logger.info(f"Model: {self.config.model_file}")
         logger.info(f"Device: {device}")
-        if device == 'cuda':
+        if device == "cuda":
             logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
 
     def _init_camera(self) -> None:
@@ -137,13 +139,17 @@ class EdgeDetector:
                 if self.frame_count % 500 == 0:
                     elapsed = time.time() - start_time
                     mode = "[NIGHT]" if self.is_night_mode else "[DAY]"
-                    logger.info(f"{mode} [{elapsed/60:.1f}min] Frame {self.frame_count} | Events: {self.event_count}")
+                    logger.info(
+                        f"{mode} [{elapsed / 60:.1f}min] Frame {self.frame_count} | Events: {self.event_count}"
+                    )
 
         except KeyboardInterrupt:
             logger.info("Detection stopped")
         finally:
             self.cap.release()
-            logger.info(f"Complete: {self.frame_count} frames, {self.event_count} events")
+            logger.info(
+                f"Complete: {self.frame_count} frames, {self.event_count} events"
+            )
 
     def _process_frame(self, frame, relative_time: float) -> None:
         """Process a single frame."""
@@ -157,19 +163,19 @@ class EdgeDetector:
         # Run inference
         results = self.model.track(
             source=roi_frame,
-            tracker='bytetrack.yaml',
+            tracker="bytetrack.yaml",
             conf=self.config.confidence_threshold,
             classes=self.config.track_classes,
-            device='cuda' if torch.cuda.is_available() else 'cpu',
+            device="cuda" if torch.cuda.is_available() else "cpu",
             persist=True,
-            verbose=False
+            verbose=False,
         )
 
         # Process YOLO detections
         yolo_has_detections = (
-            results[0].boxes is not None and
-            results[0].boxes.id is not None and
-            len(results[0].boxes.id) > 0
+            results[0].boxes is not None
+            and results[0].boxes.id is not None
+            and len(results[0].boxes.id) > 0
         )
 
         if yolo_has_detections:
@@ -225,7 +231,9 @@ class EdgeDetector:
             # Check zone events
             self._check_zones(obj, roi_dims, relative_time, current_time)
 
-    def _check_lines(self, obj: TrackedObject, roi_dims: tuple, relative_time: float) -> None:
+    def _check_lines(
+        self, obj: TrackedObject, roi_dims: tuple, relative_time: float
+    ) -> None:
         """Check for line crossing events."""
         roi_w, roi_h = roi_dims
         prev_x, prev_y = obj.previous_pos
@@ -238,47 +246,57 @@ class EdgeDetector:
                 continue
 
             crossed, direction = self._detect_crossing(
-                prev_x, prev_y, curr_x, curr_y,
-                line, roi_w, roi_h
+                prev_x, prev_y, curr_x, curr_y, line, roi_w, roi_h
             )
 
             if crossed:
                 obj.crossed_lines.add(line.line_id)
                 self.event_count += 1
 
-                self.publisher({
-                    'event_type': 'LINE_CROSS',
-                    'device_id': self.config.device_id,
-                    'track_id': obj.track_id,
-                    'object_class': obj.object_class,  # ID only, no name
-                    'line_id': line.line_id,
-                    'direction': direction,
-                    'timestamp_relative': relative_time,
-                })
+                self.publisher(
+                    {
+                        "event_type": "LINE_CROSS",
+                        "device_id": self.config.device_id,
+                        "track_id": obj.track_id,
+                        "object_class": obj.object_class,  # ID only, no name
+                        "line_id": line.line_id,
+                        "direction": direction,
+                        "timestamp_relative": relative_time,
+                    }
+                )
 
     def _detect_crossing(
-        self, prev_x: float, prev_y: float, curr_x: float, curr_y: float,
-        line: LineConfig, roi_w: int, roi_h: int
+        self,
+        prev_x: float,
+        prev_y: float,
+        curr_x: float,
+        curr_y: float,
+        line: LineConfig,
+        roi_w: int,
+        roi_h: int,
     ) -> tuple:
         """Detect if movement crossed a line."""
-        if line.type == 'vertical':
+        if line.type == "vertical":
             pos = roi_w * line.position_pct / 100
             if prev_x < pos <= curr_x:
-                return True, 'LTR'
+                return True, "LTR"
             elif prev_x > pos >= curr_x:
-                return True, 'RTL'
+                return True, "RTL"
         else:
             pos = roi_h * line.position_pct / 100
             if prev_y < pos <= curr_y:
-                return True, 'TTB'
+                return True, "TTB"
             elif prev_y > pos >= curr_y:
-                return True, 'BTT'
+                return True, "BTT"
 
         return False, None
 
     def _check_zones(
-        self, obj: TrackedObject, roi_dims: tuple,
-        relative_time: float, current_time: float
+        self,
+        obj: TrackedObject,
+        roi_dims: tuple,
+        relative_time: float,
+        current_time: float,
     ) -> None:
         """Check for zone entry/exit events."""
         roi_w, roi_h = roi_dims
@@ -301,14 +319,16 @@ class EdgeDetector:
                 obj.active_zones[zone.zone_id] = current_time
                 self.event_count += 1
 
-                self.publisher({
-                    'event_type': 'ZONE_ENTER',
-                    'device_id': self.config.device_id,
-                    'track_id': obj.track_id,
-                    'object_class': obj.object_class,
-                    'zone_id': zone.zone_id,
-                    'timestamp_relative': relative_time,
-                })
+                self.publisher(
+                    {
+                        "event_type": "ZONE_ENTER",
+                        "device_id": self.config.device_id,
+                        "track_id": obj.track_id,
+                        "object_class": obj.object_class,
+                        "zone_id": zone.zone_id,
+                        "timestamp_relative": relative_time,
+                    }
+                )
 
             elif not inside and was_inside:
                 entry_time = obj.active_zones[zone.zone_id]
@@ -316,15 +336,17 @@ class EdgeDetector:
                 del obj.active_zones[zone.zone_id]
                 self.event_count += 1
 
-                self.publisher({
-                    'event_type': 'ZONE_EXIT',
-                    'device_id': self.config.device_id,
-                    'track_id': obj.track_id,
-                    'object_class': obj.object_class,
-                    'zone_id': zone.zone_id,
-                    'timestamp_relative': relative_time,
-                    'dwell_time': dwell_time,
-                })
+                self.publisher(
+                    {
+                        "event_type": "ZONE_EXIT",
+                        "device_id": self.config.device_id,
+                        "track_id": obj.track_id,
+                        "object_class": obj.object_class,
+                        "zone_id": zone.zone_id,
+                        "timestamp_relative": relative_time,
+                        "dwell_time": dwell_time,
+                    }
+                )
 
     def _process_headlight_detections(
         self, frame, roi_dims: tuple, relative_time: float
@@ -339,7 +361,8 @@ class EdgeDetector:
 
         # Get headlight tracks from existing tracked objects
         headlight_tracks = {
-            tid: obj for tid, obj in self.tracked_objects.items()
+            tid: obj
+            for tid, obj in self.tracked_objects.items()
             if obj.object_class == HEADLIGHT_CLASS_ID
         }
 
@@ -386,28 +409,32 @@ class EdgeDetector:
                 continue
 
             crossed, direction = self._detect_crossing(
-                prev_x, prev_y, curr_x, curr_y,
-                line, roi_w, roi_h
+                prev_x, prev_y, curr_x, curr_y, line, roi_w, roi_h
             )
 
             if crossed:
                 obj.crossed_lines.add(line.line_id)
                 self.event_count += 1
 
-                self.publisher({
-                    'event_type': 'LINE_CROSS',
-                    'device_id': self.config.device_id,
-                    'track_id': obj.track_id,
-                    'object_class': HEADLIGHT_CLASS_ID,
-                    'line_id': line.line_id,
-                    'direction': direction,
-                    'timestamp_relative': relative_time,
-                    'detection_mode': 'nighttime',
-                })
+                self.publisher(
+                    {
+                        "event_type": "LINE_CROSS",
+                        "device_id": self.config.device_id,
+                        "track_id": obj.track_id,
+                        "object_class": HEADLIGHT_CLASS_ID,
+                        "line_id": line.line_id,
+                        "direction": direction,
+                        "timestamp_relative": relative_time,
+                        "detection_mode": "nighttime",
+                    }
+                )
 
     def _check_headlight_zones(
-        self, obj: TrackedObject, roi_dims: tuple,
-        relative_time: float, current_time: float
+        self,
+        obj: TrackedObject,
+        roi_dims: tuple,
+        relative_time: float,
+        current_time: float,
     ) -> None:
         """Check for headlight zone entry/exit events."""
         roi_w, roi_h = roi_dims
@@ -431,15 +458,17 @@ class EdgeDetector:
                 obj.active_zones[zone.zone_id] = current_time
                 self.event_count += 1
 
-                self.publisher({
-                    'event_type': 'ZONE_ENTER',
-                    'device_id': self.config.device_id,
-                    'track_id': obj.track_id,
-                    'object_class': HEADLIGHT_CLASS_ID,
-                    'zone_id': zone.zone_id,
-                    'timestamp_relative': relative_time,
-                    'detection_mode': 'nighttime',
-                })
+                self.publisher(
+                    {
+                        "event_type": "ZONE_ENTER",
+                        "device_id": self.config.device_id,
+                        "track_id": obj.track_id,
+                        "object_class": HEADLIGHT_CLASS_ID,
+                        "zone_id": zone.zone_id,
+                        "timestamp_relative": relative_time,
+                        "detection_mode": "nighttime",
+                    }
+                )
 
             elif not inside and was_inside:
                 entry_time = obj.active_zones[zone.zone_id]
@@ -447,13 +476,15 @@ class EdgeDetector:
                 del obj.active_zones[zone.zone_id]
                 self.event_count += 1
 
-                self.publisher({
-                    'event_type': 'ZONE_EXIT',
-                    'device_id': self.config.device_id,
-                    'track_id': obj.track_id,
-                    'object_class': HEADLIGHT_CLASS_ID,
-                    'zone_id': zone.zone_id,
-                    'timestamp_relative': relative_time,
-                    'dwell_time': dwell_time,
-                    'detection_mode': 'nighttime',
-                })
+                self.publisher(
+                    {
+                        "event_type": "ZONE_EXIT",
+                        "device_id": self.config.device_id,
+                        "track_id": obj.track_id,
+                        "object_class": HEADLIGHT_CLASS_ID,
+                        "zone_id": zone.zone_id,
+                        "timestamp_relative": relative_time,
+                        "dwell_time": dwell_time,
+                        "detection_mode": "nighttime",
+                    }
+                )

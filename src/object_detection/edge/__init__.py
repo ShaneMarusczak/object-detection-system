@@ -15,4 +15,4 @@ Does NOT include:
 from .detector import EdgeDetector
 from .config import EdgeConfig
 
-__all__ = ['EdgeDetector', 'EdgeConfig']
+__all__ = ["EdgeDetector", "EdgeConfig"]

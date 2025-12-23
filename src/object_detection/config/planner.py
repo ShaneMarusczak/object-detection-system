@@ -28,20 +28,20 @@ class ConfigValidationError(Exception):
 
 # ANSI color codes for terminal output
 class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GRAY = '\033[90m'
-    BOLD = '\033[1m'
-    RESET = '\033[0m'
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GRAY = "\033[90m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
 
     @classmethod
     def disable(cls):
         """Disable colors for non-TTY output."""
-        cls.GREEN = cls.RED = cls.YELLOW = cls.BLUE = ''
-        cls.CYAN = cls.GRAY = cls.BOLD = cls.RESET = ''
+        cls.GREEN = cls.RED = cls.YELLOW = cls.BLUE = ""
+        cls.CYAN = cls.GRAY = cls.BOLD = cls.RESET = ""
 
 
 # Disable colors if not a TTY
@@ -52,6 +52,7 @@ if not sys.stdout.isatty():
 @dataclass
 class ValidationResult:
     """Result of config validation."""
+
     valid: bool
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -61,6 +62,7 @@ class ValidationResult:
 @dataclass
 class EventPlan:
     """Plan for a single event definition."""
+
     name: str
     match_criteria: Dict[str, Any]
     actions: Dict[str, Any]
@@ -73,6 +75,7 @@ class EventPlan:
 @dataclass
 class ConfigPlan:
     """Complete configuration plan."""
+
     events: List[EventPlan]
     digests: Dict[str, Dict]
     pdf_reports: Dict[str, Dict]
@@ -117,8 +120,8 @@ def validate_config_full(config: dict) -> ValidationResult:
 
     # Derive track_classes from events
     track_classes = _derive_track_classes_from_events(config, result)
-    result.derived['track_classes'] = track_classes
-    result.derived['consumers'] = _derive_consumers_for_validation(config)
+    result.derived["track_classes"] = track_classes
+    result.derived["consumers"] = _derive_consumers_for_validation(config)
 
     if result.errors:
         result.valid = False
@@ -140,22 +143,22 @@ def load_config_with_env(config: dict) -> dict:
     if ENV_CAMERA_URL in os.environ:
         camera_url = os.environ[ENV_CAMERA_URL]
         logger.info(f"Using camera URL from environment: {ENV_CAMERA_URL}")
-        if 'camera' not in config:
-            config['camera'] = {}
-        config['camera']['url'] = camera_url
+        if "camera" not in config:
+            config["camera"] = {}
+        config["camera"]["url"] = camera_url
 
     # Set default queue size if not specified
-    if 'runtime' not in config:
-        config['runtime'] = {}
-    if 'queue_size' not in config['runtime']:
-        config['runtime']['queue_size'] = DEFAULT_QUEUE_SIZE
+    if "runtime" not in config:
+        config["runtime"] = {}
+    if "queue_size" not in config["runtime"]:
+        config["runtime"]["queue_size"] = DEFAULT_QUEUE_SIZE
 
     return config
 
 
 def _validate_required_sections(config: dict, result: ValidationResult) -> None:
     """Validate required top-level sections exist."""
-    required = ['detection', 'output', 'camera', 'runtime']
+    required = ["detection", "output", "camera", "runtime"]
     for section in required:
         if section not in config:
             result.errors.append(f"Missing required section: '{section}'")
@@ -163,57 +166,67 @@ def _validate_required_sections(config: dict, result: ValidationResult) -> None:
 
 def _validate_detection_settings(config: dict, result: ValidationResult) -> None:
     """Validate detection configuration."""
-    detection = config.get('detection', {})
+    detection = config.get("detection", {})
 
     # Model file
-    model_file = detection.get('model_file')
+    model_file = detection.get("model_file")
     if not model_file:
         result.errors.append("detection.model_file is required")
     else:
         model_path = Path(model_file)
         if not model_path.exists():
-            result.warnings.append(f"Model file not found: {model_file} (will be downloaded if valid)")
-        elif not str(model_path).endswith('.pt'):
+            result.warnings.append(
+                f"Model file not found: {model_file} (will be downloaded if valid)"
+            )
+        elif not str(model_path).endswith(".pt"):
             result.errors.append(f"Model file must be .pt format: {model_file}")
 
     # Confidence threshold
-    conf = detection.get('confidence_threshold')
+    conf = detection.get("confidence_threshold")
     if conf is None:
         result.errors.append("detection.confidence_threshold is required")
     elif not isinstance(conf, (int, float)) or not 0.0 <= conf <= 1.0:
-        result.errors.append("detection.confidence_threshold must be between 0.0 and 1.0")
+        result.errors.append(
+            "detection.confidence_threshold must be between 0.0 and 1.0"
+        )
 
 
 def _validate_roi(config: dict, result: ValidationResult) -> None:
     """Validate ROI (region of interest) settings."""
-    roi = config.get('roi')
+    roi = config.get("roi")
     if not roi:
         return  # ROI is optional
 
     # Validate horizontal ROI
-    h_roi = roi.get('horizontal', {})
-    if h_roi.get('enabled'):
-        left = h_roi.get('crop_from_left_pct')
-        right = h_roi.get('crop_to_right_pct')
+    h_roi = roi.get("horizontal", {})
+    if h_roi.get("enabled"):
+        left = h_roi.get("crop_from_left_pct")
+        right = h_roi.get("crop_to_right_pct")
 
         if left is None:
-            result.errors.append("roi.horizontal.crop_from_left_pct required when enabled")
+            result.errors.append(
+                "roi.horizontal.crop_from_left_pct required when enabled"
+            )
         elif not isinstance(left, (int, float)) or not 0 <= left <= 100:
             result.errors.append("roi.horizontal.crop_from_left_pct must be 0-100")
 
         if right is None:
-            result.errors.append("roi.horizontal.crop_to_right_pct required when enabled")
+            result.errors.append(
+                "roi.horizontal.crop_to_right_pct required when enabled"
+            )
         elif not isinstance(right, (int, float)) or not 0 <= right <= 100:
             result.errors.append("roi.horizontal.crop_to_right_pct must be 0-100")
 
         if left is not None and right is not None and left >= right:
-            result.errors.append("roi.horizontal: crop_to_right_pct must be > crop_from_left_pct")
+            result.errors.append(
+                "roi.horizontal: crop_to_right_pct must be > crop_from_left_pct"
+            )
 
     # Validate vertical ROI
-    v_roi = roi.get('vertical', {})
-    if v_roi.get('enabled'):
-        top = v_roi.get('crop_from_top_pct')
-        bottom = v_roi.get('crop_to_bottom_pct')
+    v_roi = roi.get("vertical", {})
+    if v_roi.get("enabled"):
+        top = v_roi.get("crop_from_top_pct")
+        bottom = v_roi.get("crop_to_bottom_pct")
 
         if top is None:
             result.errors.append("roi.vertical.crop_from_top_pct required when enabled")
@@ -221,18 +234,22 @@ def _validate_roi(config: dict, result: ValidationResult) -> None:
             result.errors.append("roi.vertical.crop_from_top_pct must be 0-100")
 
         if bottom is None:
-            result.errors.append("roi.vertical.crop_to_bottom_pct required when enabled")
+            result.errors.append(
+                "roi.vertical.crop_to_bottom_pct required when enabled"
+            )
         elif not isinstance(bottom, (int, float)) or not 0 <= bottom <= 100:
             result.errors.append("roi.vertical.crop_to_bottom_pct must be 0-100")
 
         if top is not None and bottom is not None and top >= bottom:
-            result.errors.append("roi.vertical: crop_to_bottom_pct must be > crop_from_top_pct")
+            result.errors.append(
+                "roi.vertical: crop_to_bottom_pct must be > crop_from_top_pct"
+            )
 
 
 def _validate_zones(config: dict, result: ValidationResult) -> Set[str]:
     """Validate zone definitions. Returns set of zone descriptions."""
     descriptions = set()
-    zones = config.get('zones', [])
+    zones = config.get("zones", [])
 
     if not isinstance(zones, list):
         result.errors.append("'zones' must be a list")
@@ -242,7 +259,7 @@ def _validate_zones(config: dict, result: ValidationResult) -> Set[str]:
         zone_ref = f"zones[{i}]"
 
         # Required coordinates
-        for coord in ['x1_pct', 'y1_pct', 'x2_pct', 'y2_pct']:
+        for coord in ["x1_pct", "y1_pct", "x2_pct", "y2_pct"]:
             val = zone.get(coord)
             if val is None:
                 result.errors.append(f"{zone_ref}.{coord} is required")
@@ -250,16 +267,20 @@ def _validate_zones(config: dict, result: ValidationResult) -> Set[str]:
                 result.errors.append(f"{zone_ref}.{coord} must be 0-100")
 
         # Coordinate ordering
-        if all(zone.get(c) is not None for c in ['x1_pct', 'x2_pct', 'y1_pct', 'y2_pct']):
-            if zone['x2_pct'] <= zone['x1_pct']:
+        if all(
+            zone.get(c) is not None for c in ["x1_pct", "x2_pct", "y1_pct", "y2_pct"]
+        ):
+            if zone["x2_pct"] <= zone["x1_pct"]:
                 result.errors.append(f"{zone_ref}: x2_pct must be > x1_pct")
-            if zone['y2_pct'] <= zone['y1_pct']:
+            if zone["y2_pct"] <= zone["y1_pct"]:
                 result.errors.append(f"{zone_ref}: y2_pct must be > y1_pct")
 
         # Description
-        desc = zone.get('description')
+        desc = zone.get("description")
         if not desc or not isinstance(desc, str):
-            result.errors.append(f"{zone_ref}.description is required and must be a string")
+            result.errors.append(
+                f"{zone_ref}.description is required and must be a string"
+            )
         else:
             if desc in descriptions:
                 result.errors.append(f"{zone_ref}: duplicate description '{desc}'")
@@ -271,7 +292,7 @@ def _validate_zones(config: dict, result: ValidationResult) -> Set[str]:
 def _validate_lines(config: dict, result: ValidationResult) -> Set[str]:
     """Validate line definitions. Returns set of line descriptions."""
     descriptions = set()
-    lines = config.get('lines', [])
+    lines = config.get("lines", [])
 
     if not isinstance(lines, list):
         result.errors.append("'lines' must be a list")
@@ -281,21 +302,23 @@ def _validate_lines(config: dict, result: ValidationResult) -> Set[str]:
         line_ref = f"lines[{i}]"
 
         # Type
-        line_type = line.get('type')
-        if line_type not in ['vertical', 'horizontal']:
+        line_type = line.get("type")
+        if line_type not in ["vertical", "horizontal"]:
             result.errors.append(f"{line_ref}.type must be 'vertical' or 'horizontal'")
 
         # Position
-        pos = line.get('position_pct')
+        pos = line.get("position_pct")
         if pos is None:
             result.errors.append(f"{line_ref}.position_pct is required")
         elif not isinstance(pos, (int, float)) or not 0 <= pos <= 100:
             result.errors.append(f"{line_ref}.position_pct must be 0-100")
 
         # Description
-        desc = line.get('description')
+        desc = line.get("description")
         if not desc or not isinstance(desc, str):
-            result.errors.append(f"{line_ref}.description is required and must be a string")
+            result.errors.append(
+                f"{line_ref}.description is required and must be a string"
+            )
         else:
             if desc in descriptions:
                 result.errors.append(f"{line_ref}: duplicate description '{desc}'")
@@ -307,7 +330,7 @@ def _validate_lines(config: dict, result: ValidationResult) -> Set[str]:
 def _validate_digests(config: dict, result: ValidationResult) -> Set[str]:
     """Validate digest definitions. Returns set of digest IDs."""
     digest_ids = set()
-    digests = config.get('digests', [])
+    digests = config.get("digests", [])
 
     if not isinstance(digests, list):
         result.errors.append("'digests' must be a list")
@@ -317,7 +340,7 @@ def _validate_digests(config: dict, result: ValidationResult) -> Set[str]:
         digest_ref = f"digests[{i}]"
 
         # ID
-        digest_id = digest.get('id')
+        digest_id = digest.get("id")
         if not digest_id or not isinstance(digest_id, str):
             result.errors.append(f"{digest_ref}.id is required and must be a string")
         else:
@@ -326,26 +349,34 @@ def _validate_digests(config: dict, result: ValidationResult) -> Set[str]:
             digest_ids.add(digest_id)
 
         # Period - either period_minutes or schedule (cron) required
-        period = digest.get('period_minutes')
-        schedule = digest.get('schedule')
+        period = digest.get("period_minutes")
+        schedule = digest.get("schedule")
         if period is None and schedule is None:
-            result.errors.append(f"{digest_ref}: either period_minutes or schedule is required")
-        elif period is not None and (not isinstance(period, (int, float)) or period <= 0):
+            result.errors.append(
+                f"{digest_ref}: either period_minutes or schedule is required"
+            )
+        elif period is not None and (
+            not isinstance(period, (int, float)) or period <= 0
+        ):
             result.errors.append(f"{digest_ref}.period_minutes must be positive")
 
         # Photos flag
-        photos = digest.get('photos')
+        photos = digest.get("photos")
         if photos is not None and not isinstance(photos, bool):
             result.errors.append(f"{digest_ref}.photos must be a boolean")
 
     return digest_ids
 
 
-def _validate_events(config: dict, result: ValidationResult,
-                     zone_descriptions: Set[str], line_descriptions: Set[str],
-                     digest_ids: Set[str]) -> None:
+def _validate_events(
+    config: dict,
+    result: ValidationResult,
+    zone_descriptions: Set[str],
+    line_descriptions: Set[str],
+    digest_ids: Set[str],
+) -> None:
     """Validate event definitions."""
-    events = config.get('events', [])
+    events = config.get("events", [])
 
     if not isinstance(events, list):
         result.errors.append("'events' must be a list")
@@ -360,7 +391,7 @@ def _validate_events(config: dict, result: ValidationResult,
         event_ref = f"events[{i}]"
 
         # Name
-        name = event.get('name')
+        name = event.get("name")
         if not name or not isinstance(name, str):
             result.errors.append(f"{event_ref}.name is required and must be a string")
         else:
@@ -369,29 +400,31 @@ def _validate_events(config: dict, result: ValidationResult,
             event_names.add(name)
 
         # Match criteria
-        match = event.get('match', {})
+        match = event.get("match", {})
         if not match:
             result.errors.append(f"{event_ref}.match is required")
             continue
 
         # Event type
-        event_type = match.get('event_type')
-        valid_types = ['LINE_CROSS', 'ZONE_ENTER', 'ZONE_EXIT', 'ZONE_DWELL']
+        event_type = match.get("event_type")
+        valid_types = ["LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL"]
         if event_type and event_type not in valid_types:
-            result.errors.append(f"{event_ref}.match.event_type must be one of: {valid_types}")
+            result.errors.append(
+                f"{event_ref}.match.event_type must be one of: {valid_types}"
+            )
 
         # Zone reference
-        zone = match.get('zone')
+        zone = match.get("zone")
         if zone and zone not in zone_descriptions:
             result.errors.append(f"{event_ref}.match.zone '{zone}' does not exist")
 
         # Line reference
-        line = match.get('line')
+        line = match.get("line")
         if line and line not in line_descriptions:
             result.errors.append(f"{event_ref}.match.line '{line}' does not exist")
 
         # Object classes
-        obj_class = match.get('object_class')
+        obj_class = match.get("object_class")
         if obj_class:
             classes = [obj_class] if isinstance(obj_class, str) else obj_class
             for cls in classes:
@@ -402,71 +435,90 @@ def _validate_events(config: dict, result: ValidationResult,
                     )
 
         # Actions
-        actions = event.get('actions', {})
+        actions = event.get("actions", {})
         if not actions:
             result.errors.append(f"{event_ref}.actions is required")
             continue
 
         # Validate digest reference
-        digest_ref = actions.get('email_digest')
+        digest_ref = actions.get("email_digest")
         if digest_ref and digest_ref not in digest_ids:
-            result.errors.append(f"{event_ref}.actions.email_digest '{digest_ref}' does not exist")
+            result.errors.append(
+                f"{event_ref}.actions.email_digest '{digest_ref}' does not exist"
+            )
 
         # Validate email_immediate
-        email_immediate = actions.get('email_immediate')
+        email_immediate = actions.get("email_immediate")
         if email_immediate and isinstance(email_immediate, dict):
-            cooldown = email_immediate.get('cooldown_minutes')
-            if cooldown is not None and (not isinstance(cooldown, (int, float)) or cooldown < 0):
-                result.errors.append(f"{event_ref}.actions.email_immediate.cooldown_minutes must be non-negative")
+            cooldown = email_immediate.get("cooldown_minutes")
+            if cooldown is not None and (
+                not isinstance(cooldown, (int, float)) or cooldown < 0
+            ):
+                result.errors.append(
+                    f"{event_ref}.actions.email_immediate.cooldown_minutes must be non-negative"
+                )
 
 
 def _validate_notifications(config: dict, result: ValidationResult) -> None:
     """Validate notification settings if email actions are used."""
-    events = config.get('events', [])
+    events = config.get("events", [])
 
     # Check if any event uses email
     uses_email = False
     for event in events:
-        actions = event.get('actions', {})
-        if actions.get('email_digest') or actions.get('email_immediate'):
+        actions = event.get("actions", {})
+        if actions.get("email_digest") or actions.get("email_immediate"):
             uses_email = True
             break
 
     if not uses_email:
         return
 
-    notifications = config.get('notifications', {})
-    if not notifications.get('enabled'):
-        result.errors.append("Events use email actions but notifications.enabled is false")
+    notifications = config.get("notifications", {})
+    if not notifications.get("enabled"):
+        result.errors.append(
+            "Events use email actions but notifications.enabled is false"
+        )
         return
 
-    email = notifications.get('email', {})
+    email = notifications.get("email", {})
     # Email is implicitly enabled if smtp_server is configured
-    if not email.get('enabled') and not email.get('smtp_server'):
-        result.errors.append("Events use email actions but notifications.email is not configured")
+    if not email.get("enabled") and not email.get("smtp_server"):
+        result.errors.append(
+            "Events use email actions but notifications.email is not configured"
+        )
         return
 
     # Required email fields
-    required_fields = ['smtp_server', 'smtp_port', 'username', 'password', 'from_address', 'to_addresses']
+    required_fields = [
+        "smtp_server",
+        "smtp_port",
+        "username",
+        "password",
+        "from_address",
+        "to_addresses",
+    ]
     for field_name in required_fields:
         if not email.get(field_name):
-            result.errors.append(f"notifications.email.{field_name} is required for email actions")
+            result.errors.append(
+                f"notifications.email.{field_name} is required for email actions"
+            )
 
 
 def _validate_frame_storage(config: dict, result: ValidationResult) -> None:
     """Validate frame storage if frame capture is needed."""
-    events = config.get('events', [])
-    digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
+    events = config.get("events", [])
+    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
 
     # Check if any event needs frame capture
     needs_frames = False
     for event in events:
-        actions = event.get('actions', {})
-        if actions.get('frame_capture'):
+        actions = event.get("actions", {})
+        if actions.get("frame_capture"):
             needs_frames = True
             break
-        digest_id = actions.get('email_digest')
-        if digest_id and digests.get(digest_id, {}).get('photos'):
+        digest_id = actions.get("email_digest")
+        if digest_id and digests.get(digest_id, {}).get("photos"):
             needs_frames = True
             break
 
@@ -480,45 +532,47 @@ def _validate_frame_storage(config: dict, result: ValidationResult) -> None:
 def _derive_consumers_for_validation(config: dict) -> List[str]:
     """Derive which consumers will be active (for validation display only)."""
     consumers = set()
-    events = config.get('events', [])
-    digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
-    pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
+    events = config.get("events", [])
+    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
+    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
 
     for event in events:
-        actions = event.get('actions', {})
+        actions = event.get("actions", {})
 
-        if actions.get('json_log'):
-            consumers.add('json_writer')
+        if actions.get("json_log"):
+            consumers.add("json_writer")
 
-        if actions.get('email_immediate'):
-            consumers.add('email_notifier')
+        if actions.get("email_immediate"):
+            consumers.add("email_notifier")
 
-        digest_id = actions.get('email_digest')
+        digest_id = actions.get("email_digest")
         if digest_id:
-            consumers.add('json_writer')  # Implied
-            consumers.add('email_digest')
-            if digests.get(digest_id, {}).get('photos'):
-                consumers.add('frame_capture')
+            consumers.add("json_writer")  # Implied
+            consumers.add("email_digest")
+            if digests.get(digest_id, {}).get("photos"):
+                consumers.add("frame_capture")
 
-        pdf_report_id = actions.get('pdf_report')
+        pdf_report_id = actions.get("pdf_report")
         if pdf_report_id:
-            consumers.add('json_writer')  # Implied
-            consumers.add('pdf_report')
-            if pdf_reports.get(pdf_report_id, {}).get('photos'):
-                consumers.add('frame_capture')
+            consumers.add("json_writer")  # Implied
+            consumers.add("pdf_report")
+            if pdf_reports.get(pdf_report_id, {}).get("photos"):
+                consumers.add("frame_capture")
 
-        if actions.get('frame_capture'):
-            consumers.add('frame_capture')
+        if actions.get("frame_capture"):
+            consumers.add("frame_capture")
 
     return sorted(consumers)
 
 
-def _derive_track_classes_from_events(config: dict, result: ValidationResult) -> List[Tuple[int, str]]:
+def _derive_track_classes_from_events(
+    config: dict, result: ValidationResult
+) -> List[Tuple[int, str]]:
     """Derive COCO class IDs from event definitions."""
     class_names = set()
 
-    for event in config.get('events', []):
-        obj_class = event.get('match', {}).get('object_class')
+    for event in config.get("events", []):
+        obj_class = event.get("match", {}).get("object_class")
         if obj_class:
             if isinstance(obj_class, list):
                 class_names.update(c.lower() for c in obj_class)
@@ -543,8 +597,8 @@ def derive_track_classes(config: dict) -> List[int]:
     """
     class_names = set()
 
-    for event in config.get('events', []):
-        obj_class = event.get('match', {}).get('object_class')
+    for event in config.get("events", []):
+        obj_class = event.get("match", {}).get("object_class")
         if obj_class:
             if isinstance(obj_class, list):
                 class_names.update(c.lower() for c in obj_class)
@@ -584,19 +638,19 @@ def prepare_runtime_config(config: dict) -> dict:
     derived_classes = derive_track_classes(config)
 
     if derived_classes:
-        config['detection']['track_classes'] = derived_classes
+        config["detection"]["track_classes"] = derived_classes
     else:
         logger.warning("No events defined - nothing will be tracked!")
-        config['detection']['track_classes'] = []
+        config["detection"]["track_classes"] = []
 
     # Resolve all implied actions and determine consumers
     consumers = _resolve_implied_actions(config)
-    config['_resolved_consumers'] = consumers
+    config["_resolved_consumers"] = consumers
 
     # Enable temp_frames if frame_capture is needed
-    if 'frame_capture' in consumers:
-        if not config.get('temp_frames_enabled'):
-            config['temp_frames_enabled'] = True
+    if "frame_capture" in consumers:
+        if not config.get("temp_frames_enabled"):
+            config["temp_frames_enabled"] = True
             logger.debug("Auto-enabled temp_frames (required by frame_capture)")
 
     return config
@@ -614,87 +668,101 @@ def _resolve_implied_actions(config: dict) -> List[str]:
 
     Returns list of needed consumers.
     """
-    events = config.get('events', [])
-    digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
-    pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
+    events = config.get("events", [])
+    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
+    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
 
     needed_consumers = set()
 
     for event in events:
-        actions = event.get('actions', {})
+        actions = event.get("actions", {})
 
         # --- Handle email_digest implied actions ---
-        digest_id = actions.get('email_digest')
+        digest_id = actions.get("email_digest")
         if digest_id:
             # email_digest always requires json_log
-            if not actions.get('json_log'):
-                actions['json_log'] = True
-                logger.debug(f"Auto-enabled json_log for '{event.get('name')}' (required by email_digest)")
+            if not actions.get("json_log"):
+                actions["json_log"] = True
+                logger.debug(
+                    f"Auto-enabled json_log for '{event.get('name')}' (required by email_digest)"
+                )
 
             # Check if digest wants photos
             digest = digests.get(digest_id, {})
-            if digest.get('photos'):
-                if not actions.get('frame_capture'):
-                    frame_config = digest.get('frame_config', {})
-                    actions['frame_capture'] = {'enabled': True, **frame_config}
-                    logger.debug(f"Auto-enabled frame_capture for '{event.get('name')}' (required by digest photos)")
+            if digest.get("photos"):
+                if not actions.get("frame_capture"):
+                    frame_config = digest.get("frame_config", {})
+                    actions["frame_capture"] = {"enabled": True, **frame_config}
+                    logger.debug(
+                        f"Auto-enabled frame_capture for '{event.get('name')}' (required by digest photos)"
+                    )
 
         # --- Handle pdf_report implied actions ---
-        pdf_report_id = actions.get('pdf_report')
+        pdf_report_id = actions.get("pdf_report")
         if pdf_report_id:
             # pdf_report always requires json_log
-            if not actions.get('json_log'):
-                actions['json_log'] = True
-                logger.debug(f"Auto-enabled json_log for '{event.get('name')}' (required by pdf_report)")
+            if not actions.get("json_log"):
+                actions["json_log"] = True
+                logger.debug(
+                    f"Auto-enabled json_log for '{event.get('name')}' (required by pdf_report)"
+                )
 
             # Check if report wants photos
             report = pdf_reports.get(pdf_report_id, {})
-            if report.get('photos'):
-                if not actions.get('frame_capture'):
+            if report.get("photos"):
+                if not actions.get("frame_capture"):
                     # Auto-enable frame_capture with annotate from report
-                    frame_config = report.get('frame_config', {})
-                    actions['frame_capture'] = {
-                        'enabled': True,
-                        'annotate': report.get('annotate', False),
-                        **frame_config
+                    frame_config = report.get("frame_config", {})
+                    actions["frame_capture"] = {
+                        "enabled": True,
+                        "annotate": report.get("annotate", False),
+                        **frame_config,
                     }
-                    logger.debug(f"Auto-enabled frame_capture for '{event.get('name')}' (required by report photos)")
-                elif report.get('annotate') and isinstance(actions['frame_capture'], dict):
+                    logger.debug(
+                        f"Auto-enabled frame_capture for '{event.get('name')}' (required by report photos)"
+                    )
+                elif report.get("annotate") and isinstance(
+                    actions["frame_capture"], dict
+                ):
                     # Merge annotate flag into existing frame_capture
-                    actions['frame_capture']['annotate'] = True
-                    logger.debug(f"Auto-enabled annotate for '{event.get('name')}' (from pdf_report)")
+                    actions["frame_capture"]["annotate"] = True
+                    logger.debug(
+                        f"Auto-enabled annotate for '{event.get('name')}' (from pdf_report)"
+                    )
 
         # --- Normalize frame_capture config ---
-        frame_capture = actions.get('frame_capture')
+        frame_capture = actions.get("frame_capture")
         if frame_capture:
             if isinstance(frame_capture, bool):
-                actions['frame_capture'] = {'enabled': frame_capture}
-            elif isinstance(frame_capture, dict) and 'enabled' not in frame_capture:
-                actions['frame_capture']['enabled'] = True
+                actions["frame_capture"] = {"enabled": frame_capture}
+            elif isinstance(frame_capture, dict) and "enabled" not in frame_capture:
+                actions["frame_capture"]["enabled"] = True
 
         # --- Determine consumers for this event ---
-        if actions.get('json_log'):
-            needed_consumers.add('json_writer')
+        if actions.get("json_log"):
+            needed_consumers.add("json_writer")
 
-        email_immediate = actions.get('email_immediate')
+        email_immediate = actions.get("email_immediate")
         if email_immediate:
-            if isinstance(email_immediate, dict) and email_immediate.get('enabled', True):
-                needed_consumers.add('email_notifier')
+            if isinstance(email_immediate, dict) and email_immediate.get(
+                "enabled", True
+            ):
+                needed_consumers.add("email_notifier")
             elif email_immediate is True:
-                needed_consumers.add('email_notifier')
+                needed_consumers.add("email_notifier")
 
         if digest_id:
-            needed_consumers.add('email_digest')
+            needed_consumers.add("email_digest")
 
         if pdf_report_id:
-            needed_consumers.add('pdf_report')
+            needed_consumers.add("pdf_report")
 
-        frame_capture = actions.get('frame_capture')
+        frame_capture = actions.get("frame_capture")
         if frame_capture:
-            if isinstance(frame_capture, dict) and frame_capture.get('enabled', True):
-                needed_consumers.add('frame_capture')
+            if isinstance(frame_capture, dict) and frame_capture.get("enabled", True):
+                needed_consumers.add("frame_capture")
             elif frame_capture is True:
-                needed_consumers.add('frame_capture')
+                needed_consumers.add("frame_capture")
 
     return sorted(needed_consumers)
 
@@ -702,76 +770,86 @@ def _resolve_implied_actions(config: dict) -> List[str]:
 def build_plan(config: dict) -> ConfigPlan:
     """Build a complete configuration plan from config."""
     events = []
-    digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
-    pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
+    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
+    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
 
-    for event_config in config.get('events', []):
-        name = event_config.get('name', 'unnamed')
-        match = event_config.get('match', {})
-        actions = event_config.get('actions', {}).copy()
+    for event_config in config.get("events", []):
+        name = event_config.get("name", "unnamed")
+        match = event_config.get("match", {})
+        actions = event_config.get("actions", {}).copy()
 
         # Track implied actions
         implied = []
         consumers = []
-        digest_id = actions.get('email_digest')
-        pdf_report_id = actions.get('pdf_report')
+        digest_id = actions.get("email_digest")
+        pdf_report_id = actions.get("pdf_report")
 
         # Apply implied action rules for email_digest
         if digest_id:
-            if not actions.get('json_log'):
-                actions['json_log'] = True
-                implied.append('json_log (required by email_digest)')
+            if not actions.get("json_log"):
+                actions["json_log"] = True
+                implied.append("json_log (required by email_digest)")
 
             digest = digests.get(digest_id, {})
-            if digest.get('photos') and not actions.get('frame_capture'):
-                actions['frame_capture'] = {'enabled': True}
-                implied.append(f"frame_capture (required by {digest_id} with photos=true)")
+            if digest.get("photos") and not actions.get("frame_capture"):
+                actions["frame_capture"] = {"enabled": True}
+                implied.append(
+                    f"frame_capture (required by {digest_id} with photos=true)"
+                )
 
         # Apply implied action rules for pdf_report
         if pdf_report_id:
-            if not actions.get('json_log'):
-                actions['json_log'] = True
-                implied.append('json_log (required by pdf_report)')
+            if not actions.get("json_log"):
+                actions["json_log"] = True
+                implied.append("json_log (required by pdf_report)")
 
             pdf_report = pdf_reports.get(pdf_report_id, {})
-            if pdf_report.get('photos'):
-                if not actions.get('frame_capture'):
-                    actions['frame_capture'] = {
-                        'enabled': True,
-                        'annotate': pdf_report.get('annotate', False)
+            if pdf_report.get("photos"):
+                if not actions.get("frame_capture"):
+                    actions["frame_capture"] = {
+                        "enabled": True,
+                        "annotate": pdf_report.get("annotate", False),
                     }
-                    implied.append(f"frame_capture (required by {pdf_report_id} with photos=true)")
-                elif pdf_report.get('annotate') and isinstance(actions['frame_capture'], dict):
+                    implied.append(
+                        f"frame_capture (required by {pdf_report_id} with photos=true)"
+                    )
+                elif pdf_report.get("annotate") and isinstance(
+                    actions["frame_capture"], dict
+                ):
                     # Merge annotate flag into existing frame_capture
-                    actions['frame_capture']['annotate'] = True
+                    actions["frame_capture"]["annotate"] = True
                     implied.append(f"annotate (from {pdf_report_id})")
 
         # Determine consumers
-        if actions.get('json_log'):
-            consumers.append('json_writer')
-        if actions.get('email_immediate', {}).get('enabled'):
-            consumers.append('email_notifier')
+        if actions.get("json_log"):
+            consumers.append("json_writer")
+        if actions.get("email_immediate", {}).get("enabled"):
+            consumers.append("email_notifier")
         if digest_id:
-            consumers.append(f'email_digest ({digest_id})')
+            consumers.append(f"email_digest ({digest_id})")
         if pdf_report_id:
-            consumers.append(f'pdf_report ({pdf_report_id})')
-        if actions.get('frame_capture', {}).get('enabled', actions.get('frame_capture') is True):
-            consumers.append('frame_capture')
+            consumers.append(f"pdf_report ({pdf_report_id})")
+        if actions.get("frame_capture", {}).get(
+            "enabled", actions.get("frame_capture") is True
+        ):
+            consumers.append("frame_capture")
 
-        events.append(EventPlan(
-            name=name,
-            match_criteria=match,
-            actions=actions,
-            implied_actions=implied,
-            consumers=consumers,
-            digest_id=digest_id,
-            pdf_report_id=pdf_report_id
-        ))
+        events.append(
+            EventPlan(
+                name=name,
+                match_criteria=match,
+                actions=actions,
+                implied_actions=implied,
+                consumers=consumers,
+                digest_id=digest_id,
+                pdf_report_id=pdf_report_id,
+            )
+        )
 
     # Derive track classes
     track_classes = []
     for event in events:
-        obj_class = event.match_criteria.get('object_class')
+        obj_class = event.match_criteria.get("object_class")
         if obj_class:
             classes = [obj_class] if isinstance(obj_class, str) else obj_class
             for cls in classes:
@@ -783,14 +861,20 @@ def build_plan(config: dict) -> ConfigPlan:
 
     # Geometry summary
     geometry = {
-        'zones': [z.get('description', f"zone_{i}") for i, z in enumerate(config.get('zones', []))],
-        'lines': [ln.get('description', f"line_{i}") for i, ln in enumerate(config.get('lines', []))]
+        "zones": [
+            z.get("description", f"zone_{i}")
+            for i, z in enumerate(config.get("zones", []))
+        ],
+        "lines": [
+            ln.get("description", f"line_{i}")
+            for i, ln in enumerate(config.get("lines", []))
+        ],
     }
 
     # Active consumers
     all_consumers = set()
     for e in events:
-        all_consumers.update(c.split(' ')[0] for c in e.consumers)
+        all_consumers.update(c.split(" ")[0] for c in e.consumers)
 
     return ConfigPlan(
         events=events,
@@ -798,7 +882,7 @@ def build_plan(config: dict) -> ConfigPlan:
         pdf_reports=pdf_reports,
         track_classes=sorted(track_classes),
         consumers=sorted(all_consumers),
-        geometry=geometry
+        geometry=geometry,
     )
 
 
@@ -829,12 +913,12 @@ def print_validation_result(result: ValidationResult) -> None:
     if result.valid and result.derived:
         print(f"\n{Colors.CYAN}Derived Configuration:{Colors.RESET}")
 
-        track_classes = result.derived.get('track_classes', [])
+        track_classes = result.derived.get("track_classes", [])
         if track_classes:
-            class_str = ', '.join(f"{name} ({id})" for id, name in track_classes)
+            class_str = ", ".join(f"{name} ({id})" for id, name in track_classes)
             print(f"  Track classes: {class_str}")
 
-        consumers = result.derived.get('consumers', [])
+        consumers = result.derived.get("consumers", [])
         if consumers:
             print(f"  Active consumers: {', '.join(consumers)}")
 
@@ -848,11 +932,11 @@ def print_plan(plan: ConfigPlan) -> None:
     print("=" * 60)
 
     # Geometry summary
-    if plan.geometry['zones'] or plan.geometry['lines']:
+    if plan.geometry["zones"] or plan.geometry["lines"]:
         print(f"\n{Colors.CYAN}Geometry:{Colors.RESET}")
-        if plan.geometry['zones']:
+        if plan.geometry["zones"]:
             print(f"  Zones: {', '.join(plan.geometry['zones'])}")
-        if plan.geometry['lines']:
+        if plan.geometry["lines"]:
             print(f"  Lines: {', '.join(plan.geometry['lines'])}")
 
     # Track classes
@@ -868,14 +952,14 @@ def print_plan(plan: ConfigPlan) -> None:
 
         # Match criteria
         print(f"    {Colors.GRAY}Match:{Colors.RESET}")
-        if event.match_criteria.get('event_type'):
+        if event.match_criteria.get("event_type"):
             print(f"      event_type: {event.match_criteria['event_type']}")
-        if event.match_criteria.get('zone'):
-            print(f"      zone: \"{event.match_criteria['zone']}\"")
-        if event.match_criteria.get('line'):
-            print(f"      line: \"{event.match_criteria['line']}\"")
-        if event.match_criteria.get('object_class'):
-            obj = event.match_criteria['object_class']
+        if event.match_criteria.get("zone"):
+            print(f'      zone: "{event.match_criteria["zone"]}"')
+        if event.match_criteria.get("line"):
+            print(f'      line: "{event.match_criteria["line"]}"')
+        if event.match_criteria.get("object_class"):
+            obj = event.match_criteria["object_class"]
             if isinstance(obj, list):
                 print(f"      object_class: [{', '.join(obj)}]")
             else:
@@ -887,19 +971,21 @@ def print_plan(plan: ConfigPlan) -> None:
             print(f"      {Colors.GREEN}->{Colors.RESET} {consumer}")
 
         # Show resolved action details
-        if event.actions.get('frame_capture'):
-            fc = event.actions['frame_capture']
+        if event.actions.get("frame_capture"):
+            fc = event.actions["frame_capture"]
             if isinstance(fc, dict):
                 details = []
-                if fc.get('annotate'):
-                    details.append('annotate=true')
-                if fc.get('max_photos'):
+                if fc.get("annotate"):
+                    details.append("annotate=true")
+                if fc.get("max_photos"):
                     details.append(f"max_photos={fc['max_photos']}")
-                if fc.get('expected_duration_seconds'):
-                    hrs = fc['expected_duration_seconds'] / 3600
+                if fc.get("expected_duration_seconds"):
+                    hrs = fc["expected_duration_seconds"] / 3600
                     details.append(f"duration={hrs:.1f}h")
                 if details:
-                    print(f"         {Colors.GRAY}frame_capture: {', '.join(details)}{Colors.RESET}")
+                    print(
+                        f"         {Colors.GRAY}frame_capture: {', '.join(details)}{Colors.RESET}"
+                    )
 
         # Implied actions
         if event.implied_actions:
@@ -911,10 +997,10 @@ def print_plan(plan: ConfigPlan) -> None:
     if plan.digests:
         print(f"\n{Colors.CYAN}Digest Schedule:{Colors.RESET}")
         for digest_id, digest in plan.digests.items():
-            period = digest.get('period_minutes', 0)
-            schedule = digest.get('schedule')
-            label = digest.get('period_label', digest_id)
-            photos = "with photos" if digest.get('photos') else "counts only"
+            period = digest.get("period_minutes", 0)
+            schedule = digest.get("schedule")
+            label = digest.get("period_label", digest_id)
+            photos = "with photos" if digest.get("photos") else "counts only"
 
             if schedule:
                 period_str = f"cron: {schedule}"
@@ -925,8 +1011,10 @@ def print_plan(plan: ConfigPlan) -> None:
             else:
                 period_str = f"{period} minute(s)"
 
-            print(f"  {Colors.BOLD}{digest_id}{Colors.RESET}: every {period_str} ({photos})")
-            print(f"    Label: \"{label}\"")
+            print(
+                f"  {Colors.BOLD}{digest_id}{Colors.RESET}: every {period_str} ({photos})"
+            )
+            print(f'    Label: "{label}"')
 
     # Consumer summary
     print(f"\n{Colors.CYAN}Active Consumers:{Colors.RESET}")
@@ -946,28 +1034,32 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
     plan = build_plan(config)
 
     # Build lookup tables
-    digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
+    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
 
-    print(f"\n{Colors.CYAN}Processing {len(sample_events)} sample event(s):{Colors.RESET}\n")
+    print(
+        f"\n{Colors.CYAN}Processing {len(sample_events)} sample event(s):{Colors.RESET}\n"
+    )
 
     matched_count = 0
     unmatched_count = 0
     actions_taken = {
-        'json_log': 0,
-        'email_immediate': 0,
-        'email_digest': 0,
-        'pdf_report': 0,
-        'frame_capture': 0
+        "json_log": 0,
+        "email_immediate": 0,
+        "email_digest": 0,
+        "pdf_report": 0,
+        "frame_capture": 0,
     }
     digest_counts = {}
     pdf_report_counts = {}
 
     for i, sample_event in enumerate(sample_events, 1):
-        event_type = sample_event.get('event_type', 'UNKNOWN')
-        obj_class = sample_event.get('object_class_name', sample_event.get('object_class', 'unknown'))
-        zone = sample_event.get('zone_description', sample_event.get('zone'))
-        line = sample_event.get('line_description', sample_event.get('line'))
-        location = zone or line or 'unknown'
+        event_type = sample_event.get("event_type", "UNKNOWN")
+        obj_class = sample_event.get(
+            "object_class_name", sample_event.get("object_class", "unknown")
+        )
+        zone = sample_event.get("zone_description", sample_event.get("zone"))
+        line = sample_event.get("line_description", sample_event.get("line"))
+        location = zone or line or "unknown"
 
         print(f"  [{i}] {event_type}: {obj_class} @ {location}")
 
@@ -984,24 +1076,32 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
 
             # Track actions
             for consumer in matched_event.consumers:
-                if 'json_writer' in consumer:
-                    actions_taken['json_log'] += 1
+                if "json_writer" in consumer:
+                    actions_taken["json_log"] += 1
                     print(f"         {Colors.GRAY}-> Write to JSON log{Colors.RESET}")
-                elif 'email_notifier' in consumer:
-                    actions_taken['email_immediate'] += 1
-                    print(f"         {Colors.GRAY}-> Send immediate email{Colors.RESET}")
-                elif 'email_digest' in consumer:
-                    actions_taken['email_digest'] += 1
+                elif "email_notifier" in consumer:
+                    actions_taken["email_immediate"] += 1
+                    print(
+                        f"         {Colors.GRAY}-> Send immediate email{Colors.RESET}"
+                    )
+                elif "email_digest" in consumer:
+                    actions_taken["email_digest"] += 1
                     digest_id = matched_event.digest_id
                     digest_counts[digest_id] = digest_counts.get(digest_id, 0) + 1
-                    print(f"         {Colors.GRAY}-> Queue for digest: {digest_id}{Colors.RESET}")
-                elif 'pdf_report' in consumer:
-                    actions_taken['pdf_report'] += 1
+                    print(
+                        f"         {Colors.GRAY}-> Queue for digest: {digest_id}{Colors.RESET}"
+                    )
+                elif "pdf_report" in consumer:
+                    actions_taken["pdf_report"] += 1
                     report_id = matched_event.pdf_report_id
-                    pdf_report_counts[report_id] = pdf_report_counts.get(report_id, 0) + 1
-                    print(f"         {Colors.GRAY}-> Queue for PDF report: {report_id}{Colors.RESET}")
-                elif 'frame_capture' in consumer:
-                    actions_taken['frame_capture'] += 1
+                    pdf_report_counts[report_id] = (
+                        pdf_report_counts.get(report_id, 0) + 1
+                    )
+                    print(
+                        f"         {Colors.GRAY}-> Queue for PDF report: {report_id}{Colors.RESET}"
+                    )
+                elif "frame_capture" in consumer:
+                    actions_taken["frame_capture"] += 1
                     print(f"         {Colors.GRAY}-> Capture frame{Colors.RESET}")
         else:
             unmatched_count += 1
@@ -1024,15 +1124,17 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
         print(f"\n{Colors.CYAN}Digest contents (what would be sent):{Colors.RESET}")
         for digest_id, count in digest_counts.items():
             digest = digests.get(digest_id, {})
-            photos = " + photos" if digest.get('photos') else ""
+            photos = " + photos" if digest.get("photos") else ""
             print(f"  {digest_id}: {count} event(s){photos}")
 
     if pdf_report_counts:
-        pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
-        print(f"\n{Colors.CYAN}PDF report contents (what would be generated):{Colors.RESET}")
+        pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+        print(
+            f"\n{Colors.CYAN}PDF report contents (what would be generated):{Colors.RESET}"
+        )
         for report_id, count in pdf_report_counts.items():
             report = pdf_reports.get(report_id, {})
-            photos = " + photos" if report.get('photos') else ""
+            photos = " + photos" if report.get("photos") else ""
             print(f"  {report_id}: {count} event(s){photos}")
 
     print()
@@ -1043,27 +1145,28 @@ def _matches_event(sample: Dict, event_plan: EventPlan) -> bool:
     match = event_plan.match_criteria
 
     # Check event type
-    if match.get('event_type'):
-        if sample.get('event_type') != match['event_type']:
+    if match.get("event_type"):
+        if sample.get("event_type") != match["event_type"]:
             return False
 
     # Check zone
-    if match.get('zone'):
-        sample_zone = sample.get('zone_description') or sample.get('zone')
-        if sample_zone != match['zone']:
+    if match.get("zone"):
+        sample_zone = sample.get("zone_description") or sample.get("zone")
+        if sample_zone != match["zone"]:
             return False
 
     # Check line
-    if match.get('line'):
-        sample_line = sample.get('line_description') or sample.get('line')
-        if sample_line != match['line']:
+    if match.get("line"):
+        sample_line = sample.get("line_description") or sample.get("line")
+        if sample_line != match["line"]:
             return False
 
     # Check object class
-    if match.get('object_class'):
-        sample_class = (sample.get('object_class_name') or
-                        sample.get('object_class', '')).lower()
-        match_classes = match['object_class']
+    if match.get("object_class"):
+        sample_class = (
+            sample.get("object_class_name") or sample.get("object_class", "")
+        ).lower()
+        match_classes = match["object_class"]
         if isinstance(match_classes, str):
             match_classes = [match_classes]
         if sample_class not in [c.lower() for c in match_classes]:
@@ -1076,53 +1179,57 @@ def generate_sample_events(config: dict) -> List[Dict]:
     """Generate sample events based on config for dry-run testing."""
     samples = []
 
-    events = config.get('events', [])
+    events = config.get("events", [])
 
     # Generate samples based on event definitions
     for event in events:
-        match = event.get('match', {})
-        event_type = match.get('event_type', 'LINE_CROSS')
+        match = event.get("match", {})
+        event_type = match.get("event_type", "LINE_CROSS")
 
-        obj_classes = match.get('object_class', [])
+        obj_classes = match.get("object_class", [])
         if isinstance(obj_classes, str):
             obj_classes = [obj_classes]
         if not obj_classes:
-            obj_classes = ['unknown']
+            obj_classes = ["unknown"]
 
         for obj_class in obj_classes[:2]:  # Limit to 2 per class
             sample = {
-                'event_type': event_type,
-                'object_class_name': obj_class,
-                'track_id': len(samples) + 1
+                "event_type": event_type,
+                "object_class_name": obj_class,
+                "track_id": len(samples) + 1,
             }
 
-            if match.get('zone'):
-                sample['zone_description'] = match['zone']
-            elif match.get('line'):
-                sample['line_description'] = match['line']
+            if match.get("zone"):
+                sample["zone_description"] = match["zone"]
+            elif match.get("line"):
+                sample["line_description"] = match["line"]
 
             samples.append(sample)
 
     # Add some unmatched events for realism
-    samples.append({
-        'event_type': 'LINE_CROSS',
-        'object_class_name': 'person',
-        'line_description': 'unknown line',
-        'track_id': 999
-    })
+    samples.append(
+        {
+            "event_type": "LINE_CROSS",
+            "object_class_name": "person",
+            "line_description": "unknown line",
+            "track_id": 999,
+        }
+    )
 
     return samples
 
 
 def load_sample_events(path: str) -> List[Dict]:
     """Load sample events from JSON file."""
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Handle both array and object with 'events' key
     if isinstance(data, list):
         return data
-    elif isinstance(data, dict) and 'events' in data:
-        return data['events']
+    elif isinstance(data, dict) and "events" in data:
+        return data["events"]
     else:
-        raise ValueError("Sample events file must contain an array or object with 'events' key")
+        raise ValueError(
+            "Sample events file must contain an array or object with 'events' key"
+        )

@@ -23,6 +23,7 @@ HEADLIGHT_CLASS_NAME = "headlight"
 @dataclass
 class BlobDetection:
     """A detected bright blob (potential headlight)."""
+
     center: Tuple[float, float]  # (x, y) center position
     size: float  # blob size/radius
     bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2) bounding box
@@ -45,7 +46,9 @@ class LightingMonitor:
 
     # Thresholds
     BRIGHTNESS_THRESHOLD = 200  # L channel threshold for "bright"
-    MIN_BRIGHT_PIXELS = 100  # Minimum bright pixels to detect streetlight (small lights ok)
+    MIN_BRIGHT_PIXELS = (
+        100  # Minimum bright pixels to detect streetlight (small lights ok)
+    )
     DAYLIGHT_BRIGHTNESS = 80  # Avg frame brightness for "it's daytime"
 
     # Timing
@@ -65,7 +68,9 @@ class LightingMonitor:
 
         if enabled:
             logger.info("Nighttime detection enabled")
-            logger.info(f"  Streetlight ROI: Y {self.STREETLIGHT_Y_PCT}, X {self.STREETLIGHT_X_PCT}")
+            logger.info(
+                f"  Streetlight ROI: Y {self.STREETLIGHT_Y_PCT}, X {self.STREETLIGHT_X_PCT}"
+            )
             logger.info(f"  Check interval: {self.CHECK_INTERVAL_SECONDS}s")
 
     def should_check(self) -> bool:
@@ -105,7 +110,9 @@ class LightingMonitor:
             # Currently night mode - check if it's getting bright (dawn)
             avg_brightness = self._get_avg_brightness(frame)
             if avg_brightness > self.DAYLIGHT_BRIGHTNESS:
-                logger.info(f"Daylight detected (brightness: {avg_brightness:.0f}) - switching to day mode")
+                logger.info(
+                    f"Daylight detected (brightness: {avg_brightness:.0f}) - switching to day mode"
+                )
                 self.is_dark = False
         else:
             # Currently day mode - check for streetlight
@@ -129,14 +136,18 @@ class LightingMonitor:
         # Convert to LAB and threshold L channel
         lab = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB)
         l_channel = lab[:, :, 0]
-        _, binary = cv2.threshold(l_channel, self.BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY)
+        _, binary = cv2.threshold(
+            l_channel, self.BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY
+        )
 
         # Count bright pixels
         bright_pixels = cv2.countNonZero(binary)
 
         detected = bright_pixels >= self.MIN_BRIGHT_PIXELS
-        logger.debug(f"Streetlight check: ROI y={y1}-{y2} x={x1}-{x2}, "
-                     f"bright_pixels={bright_pixels}, threshold={self.MIN_BRIGHT_PIXELS}, detected={detected}")
+        logger.debug(
+            f"Streetlight check: ROI y={y1}-{y2} x={x1}-{x2}, "
+            f"bright_pixels={bright_pixels}, threshold={self.MIN_BRIGHT_PIXELS}, detected={detected}"
+        )
 
         return detected
 
@@ -210,7 +221,9 @@ class HeadlightDetector:
         # Convert to LAB and threshold L channel
         lab = cv2.cvtColor(detection_region, cv2.COLOR_BGR2LAB)
         l_channel = lab[:, :, 0]
-        _, binary = cv2.threshold(l_channel, self.BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY)
+        _, binary = cv2.threshold(
+            l_channel, self.BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY
+        )
 
         # Detect blobs
         keypoints = self.blob_detector.detect(binary)
@@ -235,11 +248,9 @@ class HeadlightDetector:
             x2 = min(w, x2)
             y2 = min(h, y2)
 
-            detections.append(BlobDetection(
-                center=(cx, cy),
-                size=kp.size,
-                bbox=(x1, y1, x2, y2)
-            ))
+            detections.append(
+                BlobDetection(center=(cx, cy), size=kp.size, bbox=(x1, y1, x2, y2))
+            )
 
         return detections
 
@@ -248,7 +259,7 @@ class HeadlightDetector:
         detections: List[BlobDetection],
         existing_tracks: dict,
         current_time: float,
-        max_distance: float = 50.0
+        max_distance: float = 50.0,
     ) -> List[Tuple[int, BlobDetection]]:
         """
         Associate blob detections with track IDs.
@@ -266,7 +277,7 @@ class HeadlightDetector:
             List of (track_id, detection) tuples
         """
         # Track IDs for headlights start at 10000 to avoid collision with YOLO
-        if not hasattr(self, '_next_track_id'):
+        if not hasattr(self, "_next_track_id"):
             self._next_track_id = 10000
 
         results = []

@@ -29,12 +29,12 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     frame_service = FrameService(config)
 
     # Temp frame directory
-    temp_frame_dir = config.get('temp_frame_dir', '/tmp/frames')
+    temp_frame_dir = config.get("temp_frame_dir", "/tmp/frames")
 
     # Lines/zones/ROI config for annotation
-    lines_config = config.get('lines', [])
-    zones_config = config.get('zones', [])
-    roi_config = config.get('roi', {})
+    lines_config = config.get("lines", [])
+    zones_config = config.get("zones", [])
+    roi_config = config.get("roi", {})
 
     # Track cooldowns per (track_id, zone/line)
     cooldowns: Dict[Tuple[int, str], float] = {}
@@ -42,7 +42,7 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     # Per-event photo budgets - each event definition can have its own max_photos
     # Budget state tracked separately per event_definition name
     start_time = time.time()
-    default_duration = config.get('expected_duration_seconds', 3600)  # Default 1 hour
+    default_duration = config.get("expected_duration_seconds", 3600)  # Default 1 hour
     photo_budgets: Dict[str, dict] = {}  # event_def -> budget state
 
     logger.info("Frame Capture consumer started")
@@ -58,13 +58,13 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                 break
 
             # Extract frame config from event metadata
-            frame_config = event.get('_frame_capture_config', {})
-            cooldown_seconds = frame_config.get('cooldown_seconds', 180)
+            frame_config = event.get("_frame_capture_config", {})
+            cooldown_seconds = frame_config.get("cooldown_seconds", 180)
 
             # Build cooldown key
-            track_id = event.get('track_id')
-            zone = event.get('zone_description', '')
-            line = event.get('line_description', '')
+            track_id = event.get("track_id")
+            zone = event.get("zone_description", "")
+            line = event.get("line_description", "")
             location = zone or line
             cooldown_key = (track_id, location)
 
@@ -72,46 +72,54 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
             current_time = time.time()
             if cooldown_key in cooldowns:
                 if current_time - cooldowns[cooldown_key] < cooldown_seconds:
-                    logger.debug(f"Skipping frame capture due to cooldown: {cooldown_key}")
+                    logger.debug(
+                        f"Skipping frame capture due to cooldown: {cooldown_key}"
+                    )
                     continue
 
             # Check photo budget (per event definition)
-            max_photos = frame_config.get('max_photos')
+            max_photos = frame_config.get("max_photos")
             if max_photos:
-                event_def = event.get('event_definition', 'default')
+                event_def = event.get("event_definition", "default")
 
                 # Initialize budget state for this event definition if needed
                 if event_def not in photo_budgets:
-                    expected_duration = frame_config.get('expected_duration_seconds', default_duration)
+                    expected_duration = frame_config.get(
+                        "expected_duration_seconds", default_duration
+                    )
                     photo_budgets[event_def] = {
-                        'pending_slots': max_photos,
-                        'in_time_mode': False,
-                        'time_mode_start': None,
-                        'time_mode_photos': 0,
-                        'slot_interval': None,
-                        'max_photos': max_photos,
-                        'expected_duration': expected_duration,
-                        'saved_frames': [],  # List of saved frame paths
-                        'delete_pointer': None,  # Index for next deletion (starts at end, moves backward)
+                        "pending_slots": max_photos,
+                        "in_time_mode": False,
+                        "time_mode_start": None,
+                        "time_mode_photos": 0,
+                        "slot_interval": None,
+                        "max_photos": max_photos,
+                        "expected_duration": expected_duration,
+                        "saved_frames": [],  # List of saved frame paths
+                        "delete_pointer": None,  # Index for next deletion (starts at end, moves backward)
                     }
-                    logger.info(f"Photo budget for '{event_def}': {max_photos} over {expected_duration/3600:.1f}h")
+                    logger.info(
+                        f"Photo budget for '{event_def}': {max_photos} over {expected_duration / 3600:.1f}h"
+                    )
 
                 budget = photo_budgets[event_def]
 
                 # If in time mode, calculate earned slots
-                if budget['in_time_mode']:
-                    elapsed = current_time - budget['time_mode_start']
-                    slots_earned = int(elapsed / budget['slot_interval'])
-                    budget['pending_slots'] = max(0, slots_earned - budget['time_mode_photos'])
+                if budget["in_time_mode"]:
+                    elapsed = current_time - budget["time_mode_start"]
+                    slots_earned = int(elapsed / budget["slot_interval"])
+                    budget["pending_slots"] = max(
+                        0, slots_earned - budget["time_mode_photos"]
+                    )
 
                 # Check if we have a slot available
-                if budget['pending_slots'] <= 0:
+                if budget["pending_slots"] <= 0:
                     continue  # No slot available, skip this event
 
                 # We'll consume a slot after successful save (below)
 
             # Find temp frame by ID (direct lookup)
-            frame_id = event.get('frame_id')
+            frame_id = event.get("frame_id")
             temp_frame = None
             if frame_id:
                 temp_frame_path = os.path.join(temp_frame_dir, f"{frame_id}.jpg")
@@ -120,7 +128,7 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
 
             if temp_frame:
                 # Annotate if requested
-                should_annotate = frame_config.get('annotate', False)
+                should_annotate = frame_config.get("annotate", False)
                 frame_to_save = temp_frame
 
                 if should_annotate:
@@ -145,50 +153,65 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                     cooldowns[cooldown_key] = current_time
 
                     # Update photo budget if applicable
-                    if max_photos and event.get('event_definition') in photo_budgets:
-                        budget = photo_budgets[event.get('event_definition')]
-                        budget['pending_slots'] -= 1
+                    if max_photos and event.get("event_definition") in photo_budgets:
+                        budget = photo_budgets[event.get("event_definition")]
+                        budget["pending_slots"] -= 1
 
                         # In time mode, delete oldest frame before adding new one
-                        if budget['in_time_mode']:
-                            budget['time_mode_photos'] += 1
+                        if budget["in_time_mode"]:
+                            budget["time_mode_photos"] += 1
 
                             # Delete frame at delete_pointer
-                            if budget['saved_frames'] and budget['delete_pointer'] is not None:
-                                to_delete = budget['saved_frames'][budget['delete_pointer']]
+                            if (
+                                budget["saved_frames"]
+                                and budget["delete_pointer"] is not None
+                            ):
+                                to_delete = budget["saved_frames"][
+                                    budget["delete_pointer"]
+                                ]
                                 try:
                                     if os.path.exists(to_delete):
                                         os.remove(to_delete)
-                                        logger.debug(f"Deleted old frame: {os.path.basename(to_delete)}")
+                                        logger.debug(
+                                            f"Deleted old frame: {os.path.basename(to_delete)}"
+                                        )
                                 except Exception as e:
                                     logger.warning(f"Failed to delete frame: {e}")
 
                                 # Remove from list
-                                budget['saved_frames'].pop(budget['delete_pointer'])
+                                budget["saved_frames"].pop(budget["delete_pointer"])
 
                                 # Move pointer backward, wrap if needed
-                                budget['delete_pointer'] -= 1
-                                if budget['delete_pointer'] < 0:
-                                    budget['delete_pointer'] = len(budget['saved_frames']) - 1
+                                budget["delete_pointer"] -= 1
+                                if budget["delete_pointer"] < 0:
+                                    budget["delete_pointer"] = (
+                                        len(budget["saved_frames"]) - 1
+                                    )
 
                         # Track saved frame
-                        budget['saved_frames'].append(saved_path)
+                        budget["saved_frames"].append(saved_path)
 
                         # Check if eager phase just ended - switch to time mode
-                        if not budget['in_time_mode'] and budget['pending_slots'] == 0:
-                            budget['in_time_mode'] = True
-                            budget['time_mode_start'] = current_time
-                            budget['delete_pointer'] = len(budget['saved_frames']) - 1  # Start at newest
+                        if not budget["in_time_mode"] and budget["pending_slots"] == 0:
+                            budget["in_time_mode"] = True
+                            budget["time_mode_start"] = current_time
+                            budget["delete_pointer"] = (
+                                len(budget["saved_frames"]) - 1
+                            )  # Start at newest
                             elapsed = current_time - start_time
-                            remaining = budget['expected_duration'] - elapsed
+                            remaining = budget["expected_duration"] - elapsed
                             if remaining > 0:
-                                budget['slot_interval'] = remaining / budget['max_photos']
-                                logger.info(f"'{event.get('event_definition')}' switching to time mode: "
-                                          f"1 photo per {budget['slot_interval']:.0f}s (delete from back)")
+                                budget["slot_interval"] = (
+                                    remaining / budget["max_photos"]
+                                )
+                                logger.info(
+                                    f"'{event.get('event_definition')}' switching to time mode: "
+                                    f"1 photo per {budget['slot_interval']:.0f}s (delete from back)"
+                                )
                             else:
                                 # Past expected duration, use small interval
-                                budget['slot_interval'] = 60
-                            budget['time_mode_photos'] = 0
+                                budget["slot_interval"] = 60
+                            budget["time_mode_photos"] = 0
                 else:
                     logger.warning("Failed to save frame")
             else:
@@ -204,8 +227,10 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     finally:
         # Log photo budget stats
         for event_def, budget in photo_budgets.items():
-            on_disk = len(budget['saved_frames'])
-            logger.info(f"Photo budget '{event_def}': {on_disk} frames on disk (max {budget['max_photos']})")
+            on_disk = len(budget["saved_frames"])
+            logger.info(
+                f"Photo budget '{event_def}': {on_disk} frames on disk (max {budget['max_photos']})"
+            )
         logger.info("Frame Capture shutdown complete")
 
 
@@ -214,7 +239,7 @@ def _annotate_frame(
     event: dict,
     lines_config: List[dict],
     zones_config: List[dict],
-    roi_config: dict
+    roi_config: dict,
 ) -> Optional[str]:
     """
     Annotate frame with bounding box, lines, and zones.
@@ -238,42 +263,65 @@ def _annotate_frame(
         height, width = frame.shape[:2]
 
         # Calculate ROI offset for coordinate mapping
-        roi_h = roi_config.get('horizontal', {})
-        roi_v = roi_config.get('vertical', {})
-        h_from = roi_h.get('crop_from_left_pct', 0) if roi_h.get('enabled', False) else 0
-        v_from = roi_v.get('crop_from_top_pct', 0) if roi_v.get('enabled', False) else 0
+        roi_h = roi_config.get("horizontal", {})
+        roi_v = roi_config.get("vertical", {})
+        h_from = (
+            roi_h.get("crop_from_left_pct", 0) if roi_h.get("enabled", False) else 0
+        )
+        v_from = roi_v.get("crop_from_top_pct", 0) if roi_v.get("enabled", False) else 0
 
         # Draw all configured lines (yellow)
         for line in lines_config:
-            line_type = line.get('type', 'vertical')
-            position_pct = line.get('position_pct', 50)
-            description = line.get('description', '')
+            line_type = line.get("type", "vertical")
+            position_pct = line.get("position_pct", 50)
+            description = line.get("description", "")
 
-            if line_type == 'vertical':
+            if line_type == "vertical":
                 x = int(width * position_pct / 100)
                 cv2.line(frame, (x, 0), (x, height), (0, 255, 255), 2)
-                cv2.putText(frame, description, (x + 5, 25),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                cv2.putText(
+                    frame,
+                    description,
+                    (x + 5, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 255),
+                    1,
+                )
             else:  # horizontal
                 y = int(height * position_pct / 100)
                 cv2.line(frame, (0, y), (width, y), (0, 255, 255), 2)
-                cv2.putText(frame, description, (5, y - 5),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                cv2.putText(
+                    frame,
+                    description,
+                    (5, y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 255),
+                    1,
+                )
 
         # Draw all configured zones (cyan rectangles)
         for zone in zones_config:
-            x1 = int(width * zone.get('x1_pct', 0) / 100)
-            y1 = int(height * zone.get('y1_pct', 0) / 100)
-            x2 = int(width * zone.get('x2_pct', 100) / 100)
-            y2 = int(height * zone.get('y2_pct', 100) / 100)
-            description = zone.get('description', '')
+            x1 = int(width * zone.get("x1_pct", 0) / 100)
+            y1 = int(height * zone.get("y1_pct", 0) / 100)
+            x2 = int(width * zone.get("x2_pct", 100) / 100)
+            y2 = int(height * zone.get("y2_pct", 100) / 100)
+            description = zone.get("description", "")
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
-            cv2.putText(frame, description, (x1 + 5, y1 + 20),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            cv2.putText(
+                frame,
+                description,
+                (x1 + 5, y1 + 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 0),
+                1,
+            )
 
         # Draw triggering object's bounding box (green with label)
-        bbox = event.get('bbox')
+        bbox = event.get("bbox")
         if bbox:
             x1, y1, x2, y2 = bbox
 
@@ -290,14 +338,21 @@ def _annotate_frame(
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
 
             # Add label
-            obj_name = event.get('object_class_name', 'object')
-            track_id = event.get('track_id', '')
+            obj_name = event.get("object_class_name", "object")
+            track_id = event.get("track_id", "")
             label = f"{obj_name} #{track_id}"
-            cv2.putText(frame, label, (x1, y1 - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                label,
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 0),
+                2,
+            )
 
         # Save annotated frame to temp location
-        annotated_path = frame_path.replace('.jpg', '_annotated.jpg')
+        annotated_path = frame_path.replace(".jpg", "_annotated.jpg")
         cv2.imwrite(annotated_path, frame)
 
         return annotated_path

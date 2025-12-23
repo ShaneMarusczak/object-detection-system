@@ -27,21 +27,21 @@ from .frame_service import FrameService
 
 __all__ = [
     # Dispatcher
-    'dispatch_events',
-    'EventDefinition',
+    "dispatch_events",
+    "EventDefinition",
     # Enrichment
-    'COCO_CLASSES',
-    'COCO_NAME_TO_ID',
-    'get_class_name',
+    "COCO_CLASSES",
+    "COCO_NAME_TO_ID",
+    "get_class_name",
     # State
-    'DigestStateManager',
-    'DigestPeriodState',
+    "DigestStateManager",
+    "DigestPeriodState",
     # Consumers
-    'json_writer_consumer',
-    'email_notifier_consumer',
-    'email_digest_consumer',
-    'frame_capture_consumer',
+    "json_writer_consumer",
+    "email_notifier_consumer",
+    "email_digest_consumer",
+    "frame_capture_consumer",
     # Services
-    'EmailService',
-    'FrameService',
+    "EmailService",
+    "FrameService",
 ]

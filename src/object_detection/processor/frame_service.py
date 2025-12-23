@@ -22,11 +22,11 @@ class FrameService:
         Args:
             config: Configuration with storage settings
         """
-        storage_config = config.get('storage', {})
-        self.local_dir = storage_config.get('local_dir', 'frames')
-        self.storage_type = storage_config.get('type', 'local')
-        self.retention_days = storage_config.get('retention_days', 7)
-        self.metadata_file = os.path.join(self.local_dir, 'metadata.json')
+        storage_config = config.get("storage", {})
+        self.local_dir = storage_config.get("local_dir", "frames")
+        self.storage_type = storage_config.get("type", "local")
+        self.retention_days = storage_config.get("retention_days", 7)
+        self.metadata_file = os.path.join(self.local_dir, "metadata.json")
         self._last_cleanup = datetime.now()
 
         # Ensure local directory exists
@@ -42,7 +42,7 @@ class FrameService:
         """Load frame metadata from disk."""
         if os.path.exists(self.metadata_file):
             try:
-                with open(self.metadata_file, 'r') as f:
+                with open(self.metadata_file, "r") as f:
                     return json.load(f)
             except Exception:
                 logger.warning("Failed to load metadata, starting fresh")
@@ -51,7 +51,7 @@ class FrameService:
     def _save_metadata(self):
         """Save frame metadata to disk."""
         try:
-            with open(self.metadata_file, 'w') as f:
+            with open(self.metadata_file, "w") as f:
                 json.dump(self.metadata, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save metadata: {e}")
@@ -78,11 +78,11 @@ class FrameService:
 
         # Generate permanent filename
         event_id = f"{event['timestamp']}_{event['track_id']}"
-        event_type = event['event_type']
-        obj_class = event.get('object_class_name', 'unknown')
+        event_type = event["event_type"]
+        obj_class = event.get("object_class_name", "unknown")
 
         # Clean filename
-        safe_timestamp = event['timestamp'].replace(':', '-').replace('.', '-')
+        safe_timestamp = event["timestamp"].replace(":", "-").replace(".", "-")
         filename = f"{safe_timestamp}_{event_type}_{obj_class}_{event['track_id']}.jpg"
 
         try:
@@ -93,9 +93,9 @@ class FrameService:
 
             # Store metadata
             self.metadata[event_id] = {
-                'event': event,
-                'local_path': local_path,
-                'timestamp': event['timestamp']
+                "event": event,
+                "local_path": local_path,
+                "timestamp": event["timestamp"],
             }
             self._save_metadata()
 
@@ -110,7 +110,7 @@ class FrameService:
         """Get local path for a frame by event ID."""
         frame_data = self.metadata.get(event_id)
         if frame_data:
-            return frame_data.get('local_path')
+            return frame_data.get("local_path")
         return None
 
     def get_frame_paths_for_events(self, events: List[Dict]) -> Dict[str, str]:
@@ -132,7 +132,7 @@ class FrameService:
                 continue
 
             frame_data = self.metadata[event_id]
-            local_path = frame_data.get('local_path')
+            local_path = frame_data.get("local_path")
 
             # Verify file exists
             if local_path and os.path.exists(local_path):
@@ -153,7 +153,7 @@ class FrameService:
         local_path = self.get_frame_path(event_id)
         if local_path and os.path.exists(local_path):
             try:
-                with open(local_path, 'rb') as f:
+                with open(local_path, "rb") as f:
                     return f.read()
             except Exception as e:
                 logger.error(f"Failed to read frame {local_path}: {e}")
@@ -175,12 +175,14 @@ class FrameService:
         to_remove = []
         for event_id, data in self.metadata.items():
             try:
-                timestamp = datetime.fromisoformat(data['timestamp'].replace('Z', '+00:00'))
+                timestamp = datetime.fromisoformat(
+                    data["timestamp"].replace("Z", "+00:00")
+                )
                 timestamp = timestamp.replace(tzinfo=None)
 
                 if timestamp < cutoff:
                     # Delete the file
-                    local_path = data.get('local_path')
+                    local_path = data.get("local_path")
                     if local_path and os.path.exists(local_path):
                         os.unlink(local_path)
                         removed += 1

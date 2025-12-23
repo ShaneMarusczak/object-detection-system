@@ -43,12 +43,12 @@ def email_notifier_consumer(event_queue, config: dict) -> None:
         config: Consumer configuration with notification settings
     """
     # Initialize email service
-    notification_config = config.get('notification_config', {})
-    email_config = notification_config.get('email', {})
+    notification_config = config.get("notification_config", {})
+    email_config = notification_config.get("email", {})
     email_service = EmailService(email_config)
 
     # Temp frame directory for include_frame feature
-    temp_frame_dir = config.get('temp_frame_dir', '/tmp/frames')
+    temp_frame_dir = config.get("temp_frame_dir", "/tmp/frames")
 
     # Initialize cooldown tracker
     notifier = EventNotifier()
@@ -58,7 +58,9 @@ def email_notifier_consumer(event_queue, config: dict) -> None:
     if email_service.enabled:
         logger.info("Immediate email notifications: Enabled")
     else:
-        logger.info("Immediate email notifications: Disabled (will process but not send)")
+        logger.info(
+            "Immediate email notifications: Disabled (will process but not send)"
+        )
 
     try:
         while True:
@@ -69,16 +71,16 @@ def email_notifier_consumer(event_queue, config: dict) -> None:
                 break
 
             # Extract email config from event metadata
-            email_action_config = event.get('_email_immediate_config', {})
-            cooldown_minutes = email_action_config.get('cooldown_minutes', 60)
-            custom_message = email_action_config.get('message')
-            custom_subject = email_action_config.get('subject')
-            include_frame = email_action_config.get('include_frame', False)
+            email_action_config = event.get("_email_immediate_config", {})
+            cooldown_minutes = email_action_config.get("cooldown_minutes", 60)
+            custom_message = email_action_config.get("message")
+            custom_subject = email_action_config.get("subject")
+            include_frame = email_action_config.get("include_frame", False)
 
             # Build cooldown identifier from (track_id, zone/line)
-            track_id = event.get('track_id')
-            zone = event.get('zone_description', '')
-            line = event.get('line_description', '')
+            track_id = event.get("track_id")
+            zone = event.get("zone_description", "")
+            line = event.get("line_description", "")
             location = zone or line
             identifier = f"{track_id}:{location}"
 
@@ -89,18 +91,20 @@ def email_notifier_consumer(event_queue, config: dict) -> None:
                 # Get frame data if requested
                 frame_data = None
                 if include_frame:
-                    frame_id = event.get('frame_id')
+                    frame_id = event.get("frame_id")
                     if frame_id:
                         frame_path = os.path.join(temp_frame_dir, f"{frame_id}.jpg")
                         if os.path.exists(frame_path):
                             try:
-                                with open(frame_path, 'rb') as f:
+                                with open(frame_path, "rb") as f:
                                     frame_data = f.read()
                                 logger.debug("Including frame in email")
                             except Exception as e:
                                 logger.warning(f"Failed to read frame {frame_id}: {e}")
 
-                if email_service.send_event_notification(event, custom_message, frame_data, custom_subject):
+                if email_service.send_event_notification(
+                    event, custom_message, frame_data, custom_subject
+                ):
                     notifier.mark_notified(identifier)
                     logger.debug(f"Email sent (cooldown: {cooldown_minutes} min)")
                 else:

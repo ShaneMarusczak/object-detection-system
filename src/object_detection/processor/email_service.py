@@ -25,16 +25,18 @@ class EmailService:
         Args:
             config: Email configuration dictionary
         """
-        self.enabled = config.get('enabled', False)
-        self.smtp_server = config.get('smtp_server', '')
-        self.smtp_port = config.get('smtp_port', 587)
-        self.username = config.get('username', '')
-        self.password = config.get('password', '')
-        self.from_address = config.get('from_address', self.username)
-        self.to_addresses = config.get('to_addresses', [])
-        self.use_tls = config.get('use_tls', True)
+        self.enabled = config.get("enabled", False)
+        self.smtp_server = config.get("smtp_server", "")
+        self.smtp_port = config.get("smtp_port", 587)
+        self.username = config.get("username", "")
+        self.password = config.get("password", "")
+        self.from_address = config.get("from_address", self.username)
+        self.to_addresses = config.get("to_addresses", [])
+        self.use_tls = config.get("use_tls", True)
 
-    def send(self, subject: str, body: str, attachments: Optional[List[Dict]] = None) -> bool:
+    def send(
+        self, subject: str, body: str, attachments: Optional[List[Dict]] = None
+    ) -> bool:
         """Send an email with optional attachments.
 
         Args:
@@ -59,11 +61,11 @@ class EmailService:
         try:
             # Create message
             msg = MIMEMultipart()
-            msg['From'] = self.from_address
-            msg['To'] = ', '.join(self.to_addresses)
-            msg['Subject'] = subject
+            msg["From"] = self.from_address
+            msg["To"] = ", ".join(self.to_addresses)
+            msg["Subject"] = subject
 
-            msg.attach(MIMEText(body, 'plain'))
+            msg.attach(MIMEText(body, "plain"))
 
             # Add attachments
             if attachments:
@@ -88,27 +90,36 @@ class EmailService:
 
     def _add_attachment(self, msg: MIMEMultipart, attachment: Dict) -> None:
         """Add an attachment to the email message."""
-        data = attachment.get('data')
-        filename = attachment.get('filename', 'attachment')
-        content_type = attachment.get('content_type', 'application/octet-stream')
+        data = attachment.get("data")
+        filename = attachment.get("filename", "attachment")
+        content_type = attachment.get("content_type", "application/octet-stream")
 
         if not data:
             return
 
-        maintype, subtype = content_type.split('/', 1) if '/' in content_type else ('application', 'octet-stream')
+        maintype, subtype = (
+            content_type.split("/", 1)
+            if "/" in content_type
+            else ("application", "octet-stream")
+        )
 
-        if maintype == 'image':
+        if maintype == "image":
             part = MIMEImage(data, _subtype=subtype, name=filename)
         else:
             part = MIMEBase(maintype, subtype)
             part.set_payload(data)
             encoders.encode_base64(part)
 
-        part.add_header('Content-Disposition', 'attachment', filename=filename)
+        part.add_header("Content-Disposition", "attachment", filename=filename)
         msg.attach(part)
 
-    def send_event_notification(self, event: Dict[str, Any], custom_message: Optional[str] = None,
-                                 frame_data: Optional[bytes] = None, custom_subject: Optional[str] = None) -> bool:
+    def send_event_notification(
+        self,
+        event: Dict[str, Any],
+        custom_message: Optional[str] = None,
+        frame_data: Optional[bytes] = None,
+        custom_subject: Optional[str] = None,
+    ) -> bool:
         """Send notification for a single event with optional frame attachment.
 
         Args:
@@ -120,24 +131,24 @@ class EmailService:
         Returns:
             True if email sent successfully
         """
-        event_type = event.get('event_type', '')
-        obj_name = event.get('object_class_name', 'object')
+        event_type = event.get("event_type", "")
+        obj_name = event.get("object_class_name", "object")
 
         # Generate message
         if custom_message:
             message = custom_message
         else:
             # Auto-generate based on event type
-            if event_type == 'ZONE_ENTER':
-                zone_desc = event.get('zone_description', 'zone')
+            if event_type == "ZONE_ENTER":
+                zone_desc = event.get("zone_description", "zone")
                 message = f"A {obj_name} entered {zone_desc}"
-            elif event_type == 'ZONE_EXIT':
-                zone_desc = event.get('zone_description', 'zone')
-                dwell = event.get('dwell_time', 0)
+            elif event_type == "ZONE_EXIT":
+                zone_desc = event.get("zone_description", "zone")
+                dwell = event.get("dwell_time", 0)
                 message = f"A {obj_name} exited {zone_desc} (dwell: {dwell:.1f}s)"
-            elif event_type == 'LINE_CROSS':
-                line_desc = event.get('line_description', 'line')
-                direction = event.get('direction', '')
+            elif event_type == "LINE_CROSS":
+                line_desc = event.get("line_description", "line")
+                direction = event.get("direction", "")
                 message = f"A {obj_name} crossed {line_desc} ({direction})"
             else:
                 message = f"Event detected: {obj_name}"
@@ -150,12 +161,12 @@ class EmailService:
         body += f"Object: {event.get('object_class_name', 'N/A')}\n"
 
         # Add type-specific details
-        if event_type == 'LINE_CROSS':
+        if event_type == "LINE_CROSS":
             body += f"Line: {event.get('line_description', 'N/A')}\n"
             body += f"Direction: {event.get('direction', 'N/A')}\n"
-        elif event_type in ['ZONE_ENTER', 'ZONE_EXIT']:
+        elif event_type in ["ZONE_ENTER", "ZONE_EXIT"]:
             body += f"Zone: {event.get('zone_description', 'N/A')}\n"
-            if 'dwell_time' in event:
+            if "dwell_time" in event:
                 body += f"Dwell Time: {event['dwell_time']:.1f}s\n"
 
         if frame_data:
@@ -165,24 +176,34 @@ class EmailService:
         if custom_subject:
             subject = custom_subject
         else:
-            description = event.get('zone_description') or event.get('line_description', 'Detection')
+            description = event.get("zone_description") or event.get(
+                "line_description", "Detection"
+            )
             subject = f"Object Detection Alert: {description}"
 
         # Build attachments
         attachments = []
         if frame_data:
-            timestamp = event.get('timestamp', 'frame').replace(':', '-').replace('.', '-')
-            attachments.append({
-                'data': frame_data,
-                'filename': f"{timestamp}_{obj_name}.jpg",
-                'content_type': 'image/jpeg'
-            })
+            timestamp = (
+                event.get("timestamp", "frame").replace(":", "-").replace(".", "-")
+            )
+            attachments.append(
+                {
+                    "data": frame_data,
+                    "filename": f"{timestamp}_{obj_name}.jpg",
+                    "content_type": "image/jpeg",
+                }
+            )
 
         return self.send(subject, body, attachments)
 
-    def send_digest(self, period: str, stats: Dict[str, Any],
-                    frame_data_map: Optional[Dict[str, bytes]] = None,
-                    subject: Optional[str] = None) -> bool:
+    def send_digest(
+        self,
+        period: str,
+        stats: Dict[str, Any],
+        frame_data_map: Optional[Dict[str, bytes]] = None,
+        subject: Optional[str] = None,
+    ) -> bool:
         """Send a digest email with aggregated statistics and embedded photos.
 
         Args:
@@ -202,11 +223,11 @@ class EmailService:
         body += "=" * 50 + "\n\n"
 
         # Total events
-        total = stats.get('total_events', 0)
+        total = stats.get("total_events", 0)
         body += f"Total Events: {total}\n\n"
 
         # Events by type
-        by_type = stats.get('events_by_type', {})
+        by_type = stats.get("events_by_type", {})
         if by_type:
             body += "Events by Type:\n"
             for event_type, count in sorted(by_type.items()):
@@ -214,31 +235,37 @@ class EmailService:
             body += "\n"
 
         # Events by object class
-        by_class = stats.get('events_by_class', {})
+        by_class = stats.get("events_by_class", {})
         if by_class:
             body += "Events by Object:\n"
-            for obj_class, count in sorted(by_class.items(), key=lambda x: x[1], reverse=True):
+            for obj_class, count in sorted(
+                by_class.items(), key=lambda x: x[1], reverse=True
+            ):
                 body += f"  {obj_class}: {count}\n"
             body += "\n"
 
         # Events by zone
-        by_zone = stats.get('events_by_zone', {})
+        by_zone = stats.get("events_by_zone", {})
         if by_zone:
             body += "Zone Activity:\n"
-            for zone, count in sorted(by_zone.items(), key=lambda x: x[1], reverse=True):
+            for zone, count in sorted(
+                by_zone.items(), key=lambda x: x[1], reverse=True
+            ):
                 body += f"  {zone}: {count} events\n"
             body += "\n"
 
         # Events by line
-        by_line = stats.get('events_by_line', {})
+        by_line = stats.get("events_by_line", {})
         if by_line:
             body += "Line Crossings:\n"
-            for line, count in sorted(by_line.items(), key=lambda x: x[1], reverse=True):
+            for line, count in sorted(
+                by_line.items(), key=lambda x: x[1], reverse=True
+            ):
                 body += f"  {line}: {count} crossings\n"
             body += "\n"
 
         # Top tracks (most active objects)
-        top_tracks = stats.get('top_tracks', [])
+        top_tracks = stats.get("top_tracks", [])
         if top_tracks:
             body += "Most Active Objects:\n"
             for track_id, obj_class, count in top_tracks[:5]:
@@ -251,7 +278,7 @@ class EmailService:
             body += f"\nAttached Photos: {len(frame_data_map)}\n"
             body += "=" * 50 + "\n"
 
-            events = stats.get('events', [])
+            events = stats.get("events", [])
 
             # Create attachment list with context
             for event in events:
@@ -259,22 +286,28 @@ class EmailService:
                 if event_id in frame_data_map:
                     frame_bytes = frame_data_map[event_id]
                     if frame_bytes:
-                        location = event.get('zone_description') or event.get('line_description', 'detection')
-                        obj_class = event.get('object_class_name', 'unknown')
-                        timestamp = event['timestamp'].replace(':', '-').replace('.', '-')
+                        location = event.get("zone_description") or event.get(
+                            "line_description", "detection"
+                        )
+                        obj_class = event.get("object_class_name", "unknown")
+                        timestamp = (
+                            event["timestamp"].replace(":", "-").replace(".", "-")
+                        )
 
                         # Add to body
                         body += f"\n{event['timestamp']} - {obj_class} at {location}\n"
 
-                        attachments.append({
-                            'data': frame_bytes,
-                            'filename': f"{timestamp}_{obj_class}_{location}.jpg",
-                            'content_type': 'image/jpeg'
-                        })
+                        attachments.append(
+                            {
+                                "data": frame_bytes,
+                                "filename": f"{timestamp}_{obj_class}_{location}.jpg",
+                                "content_type": "image/jpeg",
+                            }
+                        )
 
         # Time range
-        start_time = stats.get('start_time')
-        end_time = stats.get('end_time')
+        start_time = stats.get("start_time")
+        end_time = stats.get("end_time")
         if start_time and end_time:
             body += f"\nPeriod: {start_time} to {end_time}\n"
 
