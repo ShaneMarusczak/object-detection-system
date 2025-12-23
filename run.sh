@@ -21,6 +21,19 @@ source ~/traffic-analysis/venv/bin/activate
 echo -e "${CYAN}Object Detection System${NC}"
 echo ""
 
+# Entry point choice (skip in -y mode)
+if [ "$YES_MODE" = false ]; then
+    echo "What would you like to do?"
+    echo "  1. Run with existing config"
+    echo "  2. Build new config"
+    read -p "Choice [1]: " ENTRY_CHOICE
+
+    if [ "$ENTRY_CHOICE" = "2" ]; then
+        python -m object_detection --build-config
+        exit 0
+    fi
+fi
+
 # Prompt for config file (or use default in -y mode)
 if [ "$YES_MODE" = true ]; then
     CONFIG_FILE="config.yaml"
