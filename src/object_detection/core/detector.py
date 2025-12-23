@@ -147,7 +147,7 @@ def _detection_loop(
 
     if temp_frame_enabled:
         os.makedirs(temp_frame_dir, exist_ok=True)
-        logger.info(f"Temp frames: {temp_frame_dir} (every {temp_frame_interval} frames, {temp_frame_max_age}s retention)")
+        logger.info(f"Temp frames: {temp_frame_dir} (on-demand, {temp_frame_max_age}s retention)")
 
     logger.info("Detection started")
 
