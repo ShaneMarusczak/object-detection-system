@@ -3,7 +3,7 @@ Data models for object detection
 """
 
 from dataclasses import dataclass, field
-from typing import Tuple, Set, Dict
+from typing import Tuple, Set, Dict, Optional
 
 
 @dataclass
@@ -32,7 +32,7 @@ class TrackedObject:
     crossed_lines: Set[str] = field(default_factory=set)
     active_zones: Dict[str, float] = field(default_factory=dict)
 
-    def update_position(self, x: float, y: float, bbox: Tuple[int, int, int, int] = None) -> None:
+    def update_position(self, x: float, y: float, bbox: Optional[Tuple[int, int, int, int]] = None) -> None:
         """Update position and bbox, moving current to previous."""
         self.previous_pos = self.current_pos
         self.current_pos = (x, y)

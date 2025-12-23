@@ -698,7 +698,7 @@ use: {config_path}
         preview_path = os.path.join(self.preview_dir, 'preview.jpg')
         cv2.imwrite(preview_path, frame)
 
-    def _capture_annotated_preview(self, lines: List[dict] = None, zones: List[dict] = None):
+    def _capture_annotated_preview(self, lines: Optional[List[dict]] = None, zones: Optional[List[dict]] = None):
         """Capture preview with annotations."""
         if self.cap is None:
             return

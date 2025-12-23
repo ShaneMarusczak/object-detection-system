@@ -11,7 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from email.mime.base import MIMEBase
 from email import encoders
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class EmailService:
         self.to_addresses = config.get('to_addresses', [])
         self.use_tls = config.get('use_tls', True)
 
-    def send(self, subject: str, body: str, attachments: List[Dict] = None) -> bool:
+    def send(self, subject: str, body: str, attachments: Optional[List[Dict]] = None) -> bool:
         """Send an email with optional attachments.
 
         Args:
@@ -107,8 +107,8 @@ class EmailService:
         part.add_header('Content-Disposition', 'attachment', filename=filename)
         msg.attach(part)
 
-    def send_event_notification(self, event: Dict[str, Any], custom_message: str = None,
-                                 frame_data: bytes = None, custom_subject: str = None) -> bool:
+    def send_event_notification(self, event: Dict[str, Any], custom_message: Optional[str] = None,
+                                 frame_data: Optional[bytes] = None, custom_subject: Optional[str] = None) -> bool:
         """Send notification for a single event with optional frame attachment.
 
         Args:
@@ -181,8 +181,8 @@ class EmailService:
         return self.send(subject, body, attachments)
 
     def send_digest(self, period: str, stats: Dict[str, Any],
-                    frame_data_map: Dict[str, bytes] = None,
-                    subject: str = None) -> bool:
+                    frame_data_map: Optional[Dict[str, bytes]] = None,
+                    subject: Optional[str] = None) -> bool:
         """Send a digest email with aggregated statistics and embedded photos.
 
         Args:

@@ -9,7 +9,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from collections import Counter
 
@@ -116,7 +116,7 @@ def generate_pdf_reports(json_dir: str, config: dict, start_time: datetime) -> N
 
 
 def _aggregate_from_json(json_dir: str, start_time: datetime, end_time: datetime,
-                         event_names: List[str] = None) -> Dict:
+                         event_names: Optional[List[str]] = None) -> Dict:
     """
     Aggregate statistics from JSON log files within time window.
 
