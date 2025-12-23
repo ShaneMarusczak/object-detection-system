@@ -9,7 +9,7 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from multiprocessing import Queue, Event
 from typing import Dict, List, Optional
 
@@ -553,8 +553,8 @@ def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> None:
         max_age_seconds: Maximum age of temp frames to retain
     """
     try:
-        # Generate timestamp-based filename: frame_YYYYMMDD_HHMMSS_ffffff.jpg
-        now = datetime.now()
+        # Generate timestamp-based filename: frame_YYYYMMDD_HHMMSS_ffffff.jpg (UTC)
+        now = datetime.now(timezone.utc)
         filename = now.strftime("frame_%Y%m%d_%H%M%S_%f.jpg")
         filepath = os.path.join(temp_dir, filename)
 
