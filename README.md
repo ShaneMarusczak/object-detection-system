@@ -15,7 +15,35 @@ GPU-accelerated object detection for tracking movement across lines and through 
 
 ```bash
 pip install -r requirements.txt
+./run.sh
+```
 
+The run script is the preferred entry point. It offers two options:
+
+1. **Run with existing config** - Validates, plans, dry-runs, then executes
+2. **Build new config** - Interactive wizard that guides you through setup
+
+### Config Builder
+
+The config builder is a TUI wizard for first-time setup or creating new configurations:
+
+```bash
+./run.sh        # Choose option 2
+# or directly:
+python -m object_detection --build-config
+```
+
+Features:
+- Connects to camera and serves preview frames via HTTP (for visual feedback)
+- Guides through lines, zones, events, reports, and email setup
+- Validates inputs (zone bounds, COCO classes)
+- Saves to `configs/` and optionally runs immediately
+
+### Manual Commands
+
+For scripting or advanced use:
+
+```bash
 python -m object_detection --validate   # Check config
 python -m object_detection --plan       # Preview routing
 python -m object_detection --dry-run    # Simulate events
@@ -23,6 +51,16 @@ python -m object_detection 1            # Run for 1 hour
 ```
 
 ## Configuration
+
+The main `config.yaml` uses a pointer to the active config:
+
+```yaml
+use: configs/traffic.yaml
+```
+
+Switch configs by changing the `use:` path, or let the builder set it for you.
+
+### Config Format
 
 ```yaml
 lines:
