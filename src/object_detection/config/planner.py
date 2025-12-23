@@ -68,6 +68,7 @@ class EventPlan:
     implied_actions: List[str]
     consumers: List[str]
     digest_id: Optional[str] = None
+    pdf_report_id: Optional[str] = None
 
 
 @dataclass
@@ -75,6 +76,7 @@ class ConfigPlan:
     """Complete configuration plan."""
     events: List[EventPlan]
     digests: Dict[str, Dict]
+    pdf_reports: Dict[str, Dict]
     track_classes: List[Tuple[int, str]]  # (id, name) pairs
     consumers: List[str]
     geometry: Dict[str, List[str]]  # lines/zones descriptions
@@ -555,11 +557,13 @@ def _derive_consumers(config: dict) -> List[str]:
     consumers = []
     events = config.get('events', [])
     digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
+    pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
 
     has_json = False
     has_email_immediate = False
     has_email_digest = False
     has_frame_capture = False
+    has_pdf_report = False
 
     for event in events:
         actions = event.get('actions', {})
@@ -576,6 +580,13 @@ def _derive_consumers(config: dict) -> List[str]:
             if digests.get(digest_id, {}).get('photos'):
                 has_frame_capture = True  # Implied
 
+        pdf_report_id = actions.get('pdf_report')
+        if pdf_report_id:
+            has_json = True  # Implied
+            has_pdf_report = True
+            if pdf_reports.get(pdf_report_id, {}).get('photos'):
+                has_frame_capture = True  # Implied
+
         if actions.get('frame_capture'):
             has_frame_capture = True
 
@@ -585,6 +596,8 @@ def _derive_consumers(config: dict) -> List[str]:
         consumers.append('email_notifier')
     if has_email_digest:
         consumers.append('email_digest')
+    if has_pdf_report:
+        consumers.append('pdf_report')
     if has_frame_capture:
         consumers.append('frame_capture')
 
@@ -595,6 +608,7 @@ def build_plan(config: dict) -> ConfigPlan:
     """Build a complete configuration plan from config."""
     events = []
     digests = {d['id']: d for d in config.get('digests', []) if d.get('id')}
+    pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
 
     for event_config in config.get('events', []):
         name = event_config.get('name', 'unnamed')
@@ -605,8 +619,9 @@ def build_plan(config: dict) -> ConfigPlan:
         implied = []
         consumers = []
         digest_id = actions.get('email_digest')
+        pdf_report_id = actions.get('pdf_report')
 
-        # Apply implied action rules
+        # Apply implied action rules for email_digest
         if digest_id:
             if not actions.get('json_log'):
                 actions['json_log'] = True
@@ -617,6 +632,17 @@ def build_plan(config: dict) -> ConfigPlan:
                 actions['frame_capture'] = {'enabled': True}
                 implied.append(f"frame_capture (required by {digest_id} with photos=true)")
 
+        # Apply implied action rules for pdf_report
+        if pdf_report_id:
+            if not actions.get('json_log'):
+                actions['json_log'] = True
+                implied.append('json_log (required by pdf_report)')
+
+            pdf_report = pdf_reports.get(pdf_report_id, {})
+            if pdf_report.get('photos') and not actions.get('frame_capture'):
+                actions['frame_capture'] = {'enabled': True}
+                implied.append(f"frame_capture (required by {pdf_report_id} with photos=true)")
+
         # Determine consumers
         if actions.get('json_log'):
             consumers.append('json_writer')
@@ -624,6 +650,8 @@ def build_plan(config: dict) -> ConfigPlan:
             consumers.append('email_notifier')
         if digest_id:
             consumers.append(f'email_digest ({digest_id})')
+        if pdf_report_id:
+            consumers.append(f'pdf_report ({pdf_report_id})')
         if actions.get('frame_capture', {}).get('enabled', actions.get('frame_capture') == True):
             consumers.append('frame_capture')
 
@@ -633,7 +661,8 @@ def build_plan(config: dict) -> ConfigPlan:
             actions=actions,
             implied_actions=implied,
             consumers=consumers,
-            digest_id=digest_id
+            digest_id=digest_id,
+            pdf_report_id=pdf_report_id
         ))
 
     # Derive track classes
@@ -663,6 +692,7 @@ def build_plan(config: dict) -> ConfigPlan:
     return ConfigPlan(
         events=events,
         digests=digests,
+        pdf_reports=pdf_reports,
         track_classes=sorted(track_classes),
         consumers=sorted(all_consumers),
         geometry=geometry
@@ -808,9 +838,11 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
         'json_log': 0,
         'email_immediate': 0,
         'email_digest': 0,
+        'pdf_report': 0,
         'frame_capture': 0
     }
     digest_counts = {}
+    pdf_report_counts = {}
 
     for i, sample_event in enumerate(sample_events, 1):
         event_type = sample_event.get('event_type', 'UNKNOWN')
@@ -845,6 +877,11 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
                     digest_id = matched_event.digest_id
                     digest_counts[digest_id] = digest_counts.get(digest_id, 0) + 1
                     print(f"         {Colors.GRAY}-> Queue for digest: {digest_id}{Colors.RESET}")
+                elif 'pdf_report' in consumer:
+                    actions_taken['pdf_report'] += 1
+                    report_id = matched_event.pdf_report_id
+                    pdf_report_counts[report_id] = pdf_report_counts.get(report_id, 0) + 1
+                    print(f"         {Colors.GRAY}-> Queue for PDF report: {report_id}{Colors.RESET}")
                 elif 'frame_capture' in consumer:
                     actions_taken['frame_capture'] += 1
                     print(f"         {Colors.GRAY}-> Capture frame{Colors.RESET}")
@@ -862,6 +899,7 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
     print(f"  JSON log writes: {actions_taken['json_log']}")
     print(f"  Immediate emails: {actions_taken['email_immediate']}")
     print(f"  Digest queue adds: {actions_taken['email_digest']}")
+    print(f"  PDF report queue adds: {actions_taken['pdf_report']}")
     print(f"  Frame captures: {actions_taken['frame_capture']}")
 
     if digest_counts:
@@ -870,6 +908,14 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
             digest = digests.get(digest_id, {})
             photos = " + photos" if digest.get('photos') else ""
             print(f"  {digest_id}: {count} event(s){photos}")
+
+    if pdf_report_counts:
+        pdf_reports = {r['id']: r for r in config.get('pdf_reports', []) if r.get('id')}
+        print(f"\n{Colors.CYAN}PDF report contents (what would be generated):{Colors.RESET}")
+        for report_id, count in pdf_report_counts.items():
+            report = pdf_reports.get(report_id, {})
+            photos = " + photos" if report.get('photos') else ""
+            print(f"  {report_id}: {count} event(s){photos}")
 
     print()
 
