@@ -79,9 +79,26 @@ class ConfigBuilder:
         print(f"{Colors.GRAY}Interactive wizard for creating detection configs{Colors.RESET}")
         print()
 
+    def _get_local_ip(self) -> str:
+        """Get local IP address for remote access."""
+        import socket
+        try:
+            # Connect to external address to determine local IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            return 'localhost'
+
     def _start_preview_server(self):
         """Start HTTP server in data/ folder for preview images."""
         os.makedirs(self.preview_dir, exist_ok=True)
+
+        # Get local IP for remote access
+        local_ip = self._get_local_ip()
+        preview_url = f"http://{local_ip}:8000/preview.jpg"
 
         # Check if something is already running on port 8000
         try:
@@ -90,20 +107,20 @@ class ConfigBuilder:
             result = sock.connect_ex(('localhost', 8000))
             sock.close()
             if result == 0:
-                print(f"{Colors.GREEN}Preview server already running:{Colors.RESET} http://localhost:8000/preview.jpg")
+                print(f"{Colors.GREEN}Preview server already running:{Colors.RESET} {preview_url}")
                 return
         except:
             pass
 
-        # Start server
+        # Start server (bind to all interfaces for remote access)
         try:
             self.http_server = subprocess.Popen(
-                [sys.executable, '-m', 'http.server', '8000'],
+                [sys.executable, '-m', 'http.server', '8000', '--bind', '0.0.0.0'],
                 cwd=self.preview_dir,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            print(f"{Colors.GREEN}Preview server started:{Colors.RESET} http://localhost:8000/preview.jpg")
+            print(f"{Colors.GREEN}Preview server started:{Colors.RESET} {preview_url}")
             print(f"{Colors.GRAY}(Open in browser to see captured frames){Colors.RESET}")
         except Exception as e:
             print(f"{Colors.YELLOW}Could not start preview server: {e}{Colors.RESET}")
