@@ -210,7 +210,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
             digest_consumer_config = {
                 'digests': digest_config,
                 'notification_config': notification_config,
-                'frame_service_config': frame_storage_config
+                'frame_service_config': {'storage': frame_storage_config}
             }
 
             digest_process = Process(

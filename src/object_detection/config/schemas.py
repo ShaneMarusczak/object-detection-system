@@ -124,10 +124,19 @@ class FrameConfig(BaseModel):
 class DigestConfig(BaseModel):
     """Digest configuration."""
     id: str = Field(..., min_length=1)
-    period_minutes: int = Field(..., gt=0)
+    period_minutes: Optional[int] = Field(default=None, gt=0, description="Period in minutes (alternative to schedule)")
+    schedule: Optional[str] = Field(default=None, description="Cron schedule (e.g., '0 * * * *')")
     period_label: str = Field(default="")
+    subject: str = Field(default="", description="Email subject line")
+    events: List[str] = Field(default_factory=list, description="Event definition names to include")
     photos: bool = False
     frame_config: Optional[FrameConfig] = None
+
+    @model_validator(mode='after')
+    def validate_schedule_or_period(self):
+        if not self.period_minutes and not self.schedule:
+            raise ValueError("Either period_minutes or schedule must be specified")
+        return self
 
 
 class EmailConfig(BaseModel):

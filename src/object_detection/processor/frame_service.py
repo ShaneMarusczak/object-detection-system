@@ -23,7 +23,9 @@ class FrameService:
         Args:
             config: Configuration with storage settings
         """
-        self.local_dir = config.get('storage', {}).get('local_dir', 'frames')
+        storage_config = config.get('storage', {})
+        self.local_dir = storage_config.get('local_dir', 'frames')
+        self.storage_type = storage_config.get('type', 'local')
         self.metadata_file = os.path.join(self.local_dir, 'metadata.json')
 
         # Ensure local directory exists

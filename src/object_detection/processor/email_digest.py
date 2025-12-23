@@ -93,15 +93,19 @@ def email_digest_consumer(json_dir: str, config: dict) -> None:
                     start_time = last_digest_time
                     end_time = current_time
 
+                    # Get event definition names to filter by (from digest config)
+                    event_names = digest_config.get('events', [])
+
                     # Read and aggregate events from JSON logs with filters
-                    stats = _aggregate_from_json(json_dir, start_time, end_time, filters)
+                    stats = _aggregate_from_json(json_dir, start_time, end_time, filters, event_names)
 
                     if stats['total_events'] > 0:
-                        # Get frame URLs for events (if frame service available)
+                        # Get frame paths for events (only if photos enabled and frame service available)
                         frame_urls = {}
-                        if frame_service and stats.get('events'):
-                            frame_urls = frame_service.get_frames_for_events(stats['events'])
-                            logger.debug(f"Retrieved {len(frame_urls)} frame URLs")
+                        wants_photos = digest_config.get('photos', False)
+                        if wants_photos and frame_service and stats.get('events'):
+                            frame_urls = frame_service.get_frame_paths_for_events(stats['events'])
+                            logger.debug(f"Retrieved {len(frame_urls)} frame paths")
 
                         logger.info(f"Sending digest '{digest_id}' ({stats['total_events']} events)...")
                         if email_service.send_digest(period_label, stats, frame_urls):
@@ -122,7 +126,8 @@ def email_digest_consumer(json_dir: str, config: dict) -> None:
         logger.info("Email Digest Notifier shutdown complete")
 
 
-def _aggregate_from_json(json_dir: str, start_time: datetime, end_time: datetime, filters: Dict = None) -> Dict:
+def _aggregate_from_json(json_dir: str, start_time: datetime, end_time: datetime,
+                         filters: Dict = None, event_names: List[str] = None) -> Dict:
     """
     Aggregate statistics from JSON log files within time window.
 
@@ -131,12 +136,15 @@ def _aggregate_from_json(json_dir: str, start_time: datetime, end_time: datetime
         start_time: Start of time window
         end_time: End of time window
         filters: Optional filters (event_types, zone_descriptions, line_descriptions, object_classes)
+        event_names: Optional list of event definition names to include (primary filter)
 
     Returns:
         Dictionary with aggregated statistics and events list
     """
     if filters is None:
         filters = {}
+    if event_names is None:
+        event_names = []
 
     filter_event_types = filters.get('event_types', [])
     filter_zones = filters.get('zone_descriptions', [])
@@ -190,7 +198,11 @@ def _aggregate_from_json(json_dir: str, start_time: datetime, end_time: datetime
                         if event_time < start_time or event_time > end_time:
                             continue
 
-                        # Apply filters
+                        # Primary filter: event definition names (set by dispatcher)
+                        if event_names and event.get('event_definition') not in event_names:
+                            continue
+
+                        # Apply additional filters
                         if filter_event_types and event.get('event_type') not in filter_event_types:
                             continue
                         if filter_zones and event.get('zone_description') not in filter_zones:
