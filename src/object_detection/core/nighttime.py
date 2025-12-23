@@ -135,8 +135,8 @@ class LightingMonitor:
         bright_pixels = cv2.countNonZero(binary)
 
         detected = bright_pixels >= self.MIN_BRIGHT_PIXELS
-        logger.info(f"Streetlight check: ROI y={y1}-{y2} x={x1}-{x2}, "
-                    f"bright_pixels={bright_pixels}, threshold={self.MIN_BRIGHT_PIXELS}, detected={detected}")
+        logger.debug(f"Streetlight check: ROI y={y1}-{y2} x={x1}-{x2}, "
+                     f"bright_pixels={bright_pixels}, threshold={self.MIN_BRIGHT_PIXELS}, detected={detected}")
 
         return detected
 
