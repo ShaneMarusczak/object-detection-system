@@ -39,7 +39,13 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     # Track cooldowns per (track_id, zone/line)
     cooldowns: Dict[Tuple[int, str], float] = {}
 
+    # Sample rate - capture every Nth event (1 = all, 10 = every 10th)
+    sample_rate = config.get('sample_rate', 1)
+    event_counter = 0
+
     logger.info("Frame Capture consumer started")
+    if sample_rate > 1:
+        logger.info(f"Sample rate: 1 in {sample_rate} events")
     logger.info(f"Temp frame dir: {temp_frame_dir}")
     logger.info(f"Storage: {frame_service.storage_type}")
 
@@ -50,6 +56,11 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
             if event is None:
                 logger.info("Frame Capture received shutdown signal")
                 break
+
+            # Check sample rate - skip events that don't match the sample
+            event_counter += 1
+            if sample_rate > 1 and event_counter % sample_rate != 0:
+                continue
 
             # Extract frame config from event metadata
             frame_config = event.get('_frame_capture_config', {})
