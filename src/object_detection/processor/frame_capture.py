@@ -39,13 +39,13 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     # Track cooldowns per (track_id, zone/line)
     cooldowns: Dict[Tuple[int, str], float] = {}
 
-    # Sample rate - capture every Nth event (1 = all, 10 = every 10th)
-    sample_rate = config.get('sample_rate', 1)
-    event_counter = 0
+    # Per-event photo budgets - each event definition can have its own max_photos
+    # Budget state tracked separately per event_definition name
+    start_time = time.time()
+    default_duration = config.get('expected_duration_seconds', 3600)  # Default 1 hour
+    photo_budgets: Dict[str, dict] = {}  # event_def -> budget state
 
     logger.info("Frame Capture consumer started")
-    if sample_rate > 1:
-        logger.info(f"Sample rate: 1 in {sample_rate} events")
     logger.info(f"Temp frame dir: {temp_frame_dir}")
     logger.info(f"Storage: {frame_service.storage_type}")
 
@@ -56,11 +56,6 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
             if event is None:
                 logger.info("Frame Capture received shutdown signal")
                 break
-
-            # Check sample rate - skip events that don't match the sample
-            event_counter += 1
-            if sample_rate > 1 and event_counter % sample_rate != 0:
-                continue
 
             # Extract frame config from event metadata
             frame_config = event.get('_frame_capture_config', {})
@@ -79,6 +74,40 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                 if current_time - cooldowns[cooldown_key] < cooldown_seconds:
                     logger.debug(f"Skipping frame capture due to cooldown: {cooldown_key}")
                     continue
+
+            # Check photo budget (per event definition)
+            max_photos = frame_config.get('max_photos')
+            if max_photos:
+                event_def = event.get('event_definition', 'default')
+
+                # Initialize budget state for this event definition if needed
+                if event_def not in photo_budgets:
+                    expected_duration = frame_config.get('expected_duration_seconds', default_duration)
+                    photo_budgets[event_def] = {
+                        'pending_slots': max_photos,
+                        'photos_taken': 0,
+                        'in_time_mode': False,
+                        'time_mode_start': None,
+                        'time_mode_photos': 0,
+                        'slot_interval': None,
+                        'max_photos': max_photos,
+                        'expected_duration': expected_duration,
+                    }
+                    logger.info(f"Photo budget for '{event_def}': {max_photos} over {expected_duration/3600:.1f}h")
+
+                budget = photo_budgets[event_def]
+
+                # If in time mode, calculate earned slots
+                if budget['in_time_mode']:
+                    elapsed = current_time - budget['time_mode_start']
+                    slots_earned = int(elapsed / budget['slot_interval'])
+                    budget['pending_slots'] = max(0, slots_earned - budget['time_mode_photos'])
+
+                # Check if we have a slot available
+                if budget['pending_slots'] <= 0:
+                    continue  # No slot available, skip this event
+
+                # We'll consume a slot after successful save (below)
 
             # Find temp frame by ID (direct lookup)
             frame_id = event.get('frame_id')
@@ -113,6 +142,30 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                 if saved_path:
                     logger.info(f"Captured frame for: {event.get('event_definition')}")
                     cooldowns[cooldown_key] = current_time
+
+                    # Update photo budget if applicable
+                    if max_photos and event.get('event_definition') in photo_budgets:
+                        budget = photo_budgets[event.get('event_definition')]
+                        budget['pending_slots'] -= 1
+                        budget['photos_taken'] += 1
+
+                        if budget['in_time_mode']:
+                            budget['time_mode_photos'] += 1
+
+                        # Check if eager phase just ended - switch to time mode
+                        if not budget['in_time_mode'] and budget['pending_slots'] == 0:
+                            budget['in_time_mode'] = True
+                            budget['time_mode_start'] = current_time
+                            elapsed = current_time - start_time
+                            remaining = budget['expected_duration'] - elapsed
+                            if remaining > 0:
+                                budget['slot_interval'] = remaining / budget['max_photos']
+                                logger.info(f"'{event.get('event_definition')}' switching to time mode: "
+                                          f"1 photo per {budget['slot_interval']:.0f}s")
+                            else:
+                                # Past expected duration, use small interval
+                                budget['slot_interval'] = 60
+                            budget['time_mode_photos'] = 0
                 else:
                     logger.warning("Failed to save frame")
             else:
@@ -126,6 +179,9 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     except Exception as e:
         logger.error(f"Error in Frame Capture: {e}", exc_info=True)
     finally:
+        # Log photo budget stats
+        for event_def, budget in photo_budgets.items():
+            logger.info(f"Photo budget '{event_def}': {budget['photos_taken']}/{budget['max_photos']} captured")
         logger.info("Frame Capture shutdown complete")
 
 

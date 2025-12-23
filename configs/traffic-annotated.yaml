@@ -15,6 +15,10 @@ events:
       object_class: ["car", "motorcycle", "bus", "truck"]
     actions:
       pdf_report: "traffic_report"
+      frame_capture:
+        enabled: true
+        max_photos: 100
+        expected_duration_seconds: 28800  # 8 hours
   - name: "headlight_crossing"
     match:
       event_type: "LINE_CROSS"
@@ -22,6 +26,10 @@ events:
       object_class: ["headlight"]
     actions:
       pdf_report: "traffic_report"
+      frame_capture:
+        enabled: true
+        max_photos: 50
+        expected_duration_seconds: 28800  # 8 hours
 
 pdf_reports:
   - id: "traffic_report"
