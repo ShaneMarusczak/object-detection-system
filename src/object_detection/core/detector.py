@@ -13,7 +13,6 @@ import time
 import uuid
 from datetime import datetime
 from multiprocessing import Queue, Event
-from typing import Dict, List, Optional
 
 import cv2
 import torch
@@ -137,8 +136,8 @@ def _detection_loop(
     model: YOLO,
     data_queue: Queue,
     config: dict,
-    lines: List[LineConfig],
-    zones: List[ZoneConfig],
+    lines: list[LineConfig],
+    zones: list[ZoneConfig],
     roi_config: ROIConfig,
     speed_enabled: bool,
     frame_config: dict,
@@ -147,10 +146,10 @@ def _detection_loop(
     """Main detection loop processing frames."""
 
     # State tracking with TrackedObject dataclass
-    tracked_objects: Dict[int, TrackedObject] = {}
+    tracked_objects: dict[int, TrackedObject] = {}
 
     # Performance tracking
-    fps_list: List[float] = []
+    fps_list: list[float] = []
     frame_count = 0
     event_count = 0
     start_time = time.time()
@@ -285,9 +284,9 @@ def _run_yolo_inference(model: YOLO, frame, config: dict):
 
 def _process_detections(
     boxes,
-    tracked_objects: Dict[int, TrackedObject],
-    lines: List[LineConfig],
-    zones: List[ZoneConfig],
+    tracked_objects: dict[int, TrackedObject],
+    lines: list[LineConfig],
+    zones: list[ZoneConfig],
     roi_dims: tuple,
     data_queue: Queue,
     current_time: float,
@@ -366,9 +365,9 @@ def _process_detections(
 def _process_headlight_detections(
     headlight_detector: "HeadlightDetector",
     frame,
-    tracked_objects: Dict[int, TrackedObject],
-    lines: List[LineConfig],
-    zones: List[ZoneConfig],
+    tracked_objects: dict[int, TrackedObject],
+    lines: list[LineConfig],
+    zones: list[ZoneConfig],
     roi_dims: tuple,
     data_queue: Queue,
     current_time: float,
@@ -449,7 +448,7 @@ def _process_headlight_detections(
 
 def _check_headlight_line_crossings(
     tracked_obj: TrackedObject,
-    lines: List[LineConfig],
+    lines: list[LineConfig],
     roi_dims: tuple,
     data_queue: Queue,
     relative_time: float,
@@ -503,7 +502,7 @@ def _check_headlight_line_crossings(
 
 def _check_headlight_zone_events(
     tracked_obj: TrackedObject,
-    zones: List[ZoneConfig],
+    zones: list[ZoneConfig],
     roi_dims: tuple,
     data_queue: Queue,
     relative_time: float,
@@ -580,7 +579,7 @@ def _check_headlight_zone_events(
 
 def _check_line_crossings(
     tracked_obj: TrackedObject,
-    lines: List[LineConfig],
+    lines: list[LineConfig],
     roi_dims: tuple,
     data_queue: Queue,
     relative_time: float,
@@ -648,7 +647,7 @@ def _detect_line_crossing(
     line: LineConfig,
     roi_width: int,
     roi_height: int,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Detect if movement crossed a line.
 
@@ -694,7 +693,7 @@ def _add_speed_data(
 
 def _check_zone_events(
     tracked_obj: TrackedObject,
-    zones: List[ZoneConfig],
+    zones: list[ZoneConfig],
     roi_dims: tuple,
     data_queue: Queue,
     relative_time: float,
@@ -789,7 +788,7 @@ def _apply_roi_crop(frame, roi_config: ROIConfig) -> tuple:
         return frame, (frame_width, frame_height)
 
 
-def _parse_lines(config: dict) -> List[LineConfig]:
+def _parse_lines(config: dict) -> list[LineConfig]:
     """Parse line configurations from config."""
     lines = []
     vertical_count = 0
@@ -820,7 +819,7 @@ def _parse_lines(config: dict) -> List[LineConfig]:
     return lines
 
 
-def _parse_zones(config: dict) -> List[ZoneConfig]:
+def _parse_zones(config: dict) -> list[ZoneConfig]:
     """Parse zone configurations from config."""
     zones = []
 
@@ -858,7 +857,7 @@ def _parse_roi(config: dict) -> ROIConfig:
     )
 
 
-def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> Optional[str]:
+def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> str | None:
     """
     Save temporary frame for event capture with UUID filename.
     Cleans up old frames beyond max_age_seconds.
@@ -903,8 +902,8 @@ def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> Optional[str
 
 def _save_annotated_frame(
     frame,
-    lines: List[LineConfig],
-    zones: List[ZoneConfig],
+    lines: list[LineConfig],
+    zones: list[ZoneConfig],
     roi_config: ROIConfig,
     frame_size: tuple,
     event_count: int,
@@ -927,8 +926,8 @@ def _save_annotated_frame(
 
 def _annotate_frame(
     frame,
-    lines: List[LineConfig],
-    zones: List[ZoneConfig],
+    lines: list[LineConfig],
+    zones: list[ZoneConfig],
     roi_config: ROIConfig,
     frame_size: tuple,
     event_count: int,
@@ -1021,8 +1020,8 @@ def _annotate_frame(
 
 
 def _log_detection_config(
-    lines: List[LineConfig],
-    zones: List[ZoneConfig],
+    lines: list[LineConfig],
+    zones: list[ZoneConfig],
     roi_config: ROIConfig,
     speed_enabled: bool,
     frame_config: dict,
@@ -1047,7 +1046,7 @@ def _log_detection_config(
         )
 
 
-def _log_status(frame_count: int, fps_list: List[float], start_time: float) -> None:
+def _log_status(frame_count: int, fps_list: list[float], start_time: float) -> None:
     """Log periodic status update."""
     avg_fps = sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE)
     elapsed = time.time() - start_time
@@ -1055,7 +1054,7 @@ def _log_status(frame_count: int, fps_list: List[float], start_time: float) -> N
 
 
 def _log_final_stats(
-    frame_count: int, fps_list: List[float], start_time: float
+    frame_count: int, fps_list: list[float], start_time: float
 ) -> None:
     """Log final detection statistics."""
     elapsed = time.time() - start_time

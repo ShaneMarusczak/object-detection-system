@@ -3,7 +3,12 @@ Tests for data models
 """
 
 import unittest
-from src.object_detection.core.models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
+from src.object_detection.core.models import (
+    TrackedObject,
+    LineConfig,
+    ZoneConfig,
+    ROIConfig,
+)
 
 
 class TestTrackedObject(unittest.TestCase):
@@ -11,11 +16,7 @@ class TestTrackedObject(unittest.TestCase):
 
     def test_creation(self):
         """Test creating a tracked object."""
-        obj = TrackedObject(
-            track_id=1,
-            object_class=15,
-            current_pos=(100.0, 200.0)
-        )
+        obj = TrackedObject(track_id=1, object_class=15, current_pos=(100.0, 200.0))
 
         self.assertEqual(obj.track_id, 1)
         self.assertEqual(obj.object_class, 15)
@@ -26,11 +27,7 @@ class TestTrackedObject(unittest.TestCase):
 
     def test_update_position(self):
         """Test position update moves current to previous."""
-        obj = TrackedObject(
-            track_id=1,
-            object_class=15,
-            current_pos=(100.0, 200.0)
-        )
+        obj = TrackedObject(track_id=1, object_class=15, current_pos=(100.0, 200.0))
 
         obj.update_position(150.0, 250.0)
 
@@ -39,11 +36,7 @@ class TestTrackedObject(unittest.TestCase):
 
     def test_is_new(self):
         """Test is_new returns True when no previous position."""
-        obj = TrackedObject(
-            track_id=1,
-            object_class=15,
-            current_pos=(100.0, 200.0)
-        )
+        obj = TrackedObject(track_id=1, object_class=15, current_pos=(100.0, 200.0))
 
         self.assertTrue(obj.is_new())
 
@@ -52,11 +45,7 @@ class TestTrackedObject(unittest.TestCase):
 
     def test_crossed_lines_tracking(self):
         """Test tracking crossed lines."""
-        obj = TrackedObject(
-            track_id=1,
-            object_class=15,
-            current_pos=(100.0, 200.0)
-        )
+        obj = TrackedObject(track_id=1, object_class=15, current_pos=(100.0, 200.0))
 
         obj.crossed_lines.add("V1")
         obj.crossed_lines.add("H1")
@@ -67,11 +56,7 @@ class TestTrackedObject(unittest.TestCase):
 
     def test_active_zones_tracking(self):
         """Test tracking active zones with timestamps."""
-        obj = TrackedObject(
-            track_id=1,
-            object_class=15,
-            current_pos=(100.0, 200.0)
-        )
+        obj = TrackedObject(track_id=1, object_class=15, current_pos=(100.0, 200.0))
 
         obj.active_zones["Z1"] = 123.456
         obj.active_zones["Z2"] = 789.012
@@ -91,7 +76,7 @@ class TestLineConfig(unittest.TestCase):
             type="vertical",
             position_pct=50.0,
             description="center line",
-            allowed_classes=[15, 16]
+            allowed_classes=[15, 16],
         )
 
         self.assertEqual(line.line_id, "V1")
@@ -106,7 +91,7 @@ class TestLineConfig(unittest.TestCase):
             type="horizontal",
             position_pct=30.0,
             description="upper boundary",
-            allowed_classes=[0]
+            allowed_classes=[0],
         )
 
         self.assertEqual(line.type, "horizontal")
@@ -125,7 +110,7 @@ class TestZoneConfig(unittest.TestCase):
             x2_pct=30.0,
             y2_pct=40.0,
             description="food bowl",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         self.assertEqual(zone.zone_id, "Z1")
@@ -147,13 +132,7 @@ class TestROIConfig(unittest.TestCase):
 
     def test_roi_enabled(self):
         """Test ROI configuration when enabled."""
-        roi = ROIConfig(
-            enabled=True,
-            h_from=10.0,
-            h_to=90.0,
-            v_from=20.0,
-            v_to=80.0
-        )
+        roi = ROIConfig(enabled=True, h_from=10.0, h_to=90.0, v_from=20.0, v_to=80.0)
 
         self.assertTrue(roi.enabled)
         self.assertEqual(roi.h_from, 10.0)
@@ -162,5 +141,5 @@ class TestROIConfig(unittest.TestCase):
         self.assertEqual(roi.v_to, 80.0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,6 @@ Data models for object detection
 """
 
 from dataclasses import dataclass, field
-from typing import Tuple, Set, Dict, Optional
 
 
 @dataclass
@@ -25,16 +24,16 @@ class TrackedObject:
 
     track_id: int
     object_class: int
-    current_pos: Tuple[float, float]
-    bbox: Tuple[int, int, int, int] | None = None
-    previous_pos: Tuple[float, float] | None = None
-    first_pos: Tuple[float, float] | None = None
+    current_pos: tuple[float, float]
+    bbox: tuple[int, int, int, int] | None = None
+    previous_pos: tuple[float, float] | None = None
+    first_pos: tuple[float, float] | None = None
     first_seen_time: float | None = None
-    crossed_lines: Set[str] = field(default_factory=set)
-    active_zones: Dict[str, float] = field(default_factory=dict)
+    crossed_lines: set[str] = field(default_factory=set)
+    active_zones: dict[str, float] = field(default_factory=dict)
 
     def update_position(
-        self, x: float, y: float, bbox: Optional[Tuple[int, int, int, int]] = None
+        self, x: float, y: float, bbox: tuple[int, int, int, int] | None = None
     ) -> None:
         """Update position and bbox, moving current to previous."""
         self.previous_pos = self.current_pos

@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +47,15 @@ class DigestPeriodState:
     period_end: datetime
     digest_sent: bool = False
     event_count: int = 0
-    by_class: Dict[str, int] = field(default_factory=dict)
-    by_zone: Dict[str, int] = field(default_factory=dict)
-    by_line: Dict[str, int] = field(default_factory=dict)
-    frame_refs: List[str] = field(default_factory=list)
+    by_class: dict[str, int] = field(default_factory=dict)
+    by_zone: dict[str, int] = field(default_factory=dict)
+    by_line: dict[str, int] = field(default_factory=dict)
+    frame_refs: list[str] = field(default_factory=list)
     last_checkpoint: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
 
-    def add_event(self, event: Dict[str, Any]) -> None:
+    def add_event(self, event: dict[str, Any]) -> None:
         """Add an event to the accumulation."""
         self.event_count += 1
 
@@ -77,7 +77,7 @@ class DigestPeriodState:
         """Add a captured frame reference."""
         self.frame_refs.append(frame_path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for JSON storage."""
         return {
             "digest_id": self.digest_id,
@@ -93,7 +93,7 @@ class DigestPeriodState:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DigestPeriodState":
+    def from_dict(cls, data: dict[str, Any]) -> "DigestPeriodState":
         """Deserialize from dictionary."""
         return cls(
             digest_id=data["digest_id"],
@@ -132,7 +132,7 @@ class DigestStateManager:
         self.state_file = self.state_dir / "digests.json"
 
         # In-memory state
-        self.states: Dict[str, DigestPeriodState] = {}
+        self.states: dict[str, DigestPeriodState] = {}
 
         # Checkpoint tracking
         self.events_since_checkpoint = 0
@@ -153,7 +153,7 @@ class DigestStateManager:
             return
 
         try:
-            with open(self.state_file, "r") as f:
+            with open(self.state_file) as f:
                 data = json.load(f)
 
             for digest_id, state_data in data.get("digests", {}).items():
@@ -210,9 +210,9 @@ class DigestStateManager:
             return
 
         try:
-            with open(self.state_file, "r") as f:
+            with open(self.state_file) as f:
                 data = json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, OSError):
             return
 
         to_delete = []
@@ -267,8 +267,8 @@ class DigestStateManager:
         self.last_gc_time = time.time()
 
     def initialize_digest(
-        self, digest_id: str, period_minutes: int, config_digest_ids: Set[str]
-    ) -> Optional[DigestPeriodState]:
+        self, digest_id: str, period_minutes: int, config_digest_ids: set[str]
+    ) -> DigestPeriodState | None:
         """
         Initialize or recover state for a digest.
 
@@ -317,7 +317,7 @@ class DigestStateManager:
         return None
 
     def add_event(
-        self, digest_id: str, event: Dict[str, Any], frame_path: Optional[str] = None
+        self, digest_id: str, event: dict[str, Any], frame_path: str | None = None
     ) -> None:
         """Add an event to a digest's accumulation."""
         if digest_id not in self.states:
@@ -358,11 +358,11 @@ class DigestStateManager:
             del self.states[digest_id]
             self._save_state()
 
-    def get_state(self, digest_id: str) -> Optional[DigestPeriodState]:
+    def get_state(self, digest_id: str) -> DigestPeriodState | None:
         """Get current state for a digest."""
         return self.states.get(digest_id)
 
-    def get_pending_sends(self) -> List[DigestPeriodState]:
+    def get_pending_sends(self) -> list[DigestPeriodState]:
         """Get digests whose period has ended but haven't been sent."""
         now = datetime.now(timezone.utc)
         pending = []
@@ -409,7 +409,7 @@ class DigestStateManager:
 
         return removed
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get statistics about current state."""
         return {
             "active_digests": len(self.states),

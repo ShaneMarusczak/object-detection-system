@@ -4,7 +4,7 @@ Pydantic schemas for configuration validation.
 Provides type-safe, declarative validation with clear error messages.
 """
 
-from typing import List, Optional, Union, Literal
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -72,7 +72,7 @@ class LineConfig(BaseModel):
     type: Literal["vertical", "horizontal"]
     position_pct: float = Field(..., ge=0, le=100, description="Position as percentage")
     description: str = Field(..., min_length=1, description="Human-readable line name")
-    allowed_classes: Optional[List[int]] = Field(
+    allowed_classes: list[int] | None = Field(
         default=None, description="COCO class IDs allowed to cross"
     )
 
@@ -85,7 +85,7 @@ class ZoneConfig(BaseModel):
     x2_pct: float = Field(..., ge=0, le=100)
     y2_pct: float = Field(..., ge=0, le=100)
     description: str = Field(..., min_length=1)
-    allowed_classes: Optional[List[int]] = None
+    allowed_classes: list[int] | None = None
 
     @model_validator(mode="after")
     def validate_coordinates(self):
@@ -99,13 +99,13 @@ class ZoneConfig(BaseModel):
 class EventMatch(BaseModel):
     """Event matching criteria."""
 
-    event_type: Optional[
-        Literal["LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL"]
-    ] = None
-    line: Optional[str] = None
-    zone: Optional[str] = None
-    object_class: Optional[Union[str, List[str]]] = None
-    direction: Optional[Literal["LTR", "RTL", "TTB", "BTT"]] = None
+    event_type: (
+        None | (Literal["LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL"])
+    ) = None
+    line: str | None = None
+    zone: str | None = None
+    object_class: str | list[str] | None = None
+    direction: Literal["LTR", "RTL", "TTB", "BTT"] | None = None
 
 
 class EmailImmediateAction(BaseModel):
@@ -113,8 +113,8 @@ class EmailImmediateAction(BaseModel):
 
     enabled: bool = True
     cooldown_minutes: int = Field(default=30, ge=0)
-    message: Optional[str] = None
-    subject: Optional[str] = None
+    message: str | None = None
+    subject: str | None = None
     include_frame: bool = False
 
 
@@ -129,11 +129,11 @@ class FrameCaptureAction(BaseModel):
 class EventActions(BaseModel):
     """Event actions configuration."""
 
-    json_log: Optional[bool] = None
-    email_immediate: Optional[Union[bool, EmailImmediateAction]] = None
-    email_digest: Optional[str] = None
-    pdf_report: Optional[str] = None
-    frame_capture: Optional[Union[bool, FrameCaptureAction]] = None
+    json_log: bool | None = None
+    email_immediate: bool | EmailImmediateAction | None = None
+    email_digest: str | None = None
+    pdf_report: str | None = None
+    frame_capture: bool | FrameCaptureAction | None = None
 
 
 class EventConfig(StrictModel):
@@ -159,11 +159,11 @@ class DigestConfig(StrictModel):
     )
     period_label: str = Field(default="")
     subject: str = Field(default="", description="Email subject line")
-    events: List[str] = Field(
+    events: list[str] = Field(
         default_factory=list, description="Event definition names to include"
     )
     photos: bool = False
-    frame_config: Optional[FrameConfig] = None
+    frame_config: FrameConfig | None = None
 
 
 class PDFReportConfig(StrictModel):
@@ -172,25 +172,25 @@ class PDFReportConfig(StrictModel):
     id: str = Field(..., min_length=1)
     output_dir: str = Field(default="reports", description="Directory for PDF output")
     title: str = Field(default="Object Detection Report", description="Report title")
-    events: List[str] = Field(
+    events: list[str] = Field(
         default_factory=list, description="Event definition names to include"
     )
     photos: bool = False
     annotate: bool = False  # Draw lines/zones/bboxes on photos
-    frame_config: Optional[FrameConfig] = None
+    frame_config: FrameConfig | None = None
 
 
 class EmailConfig(BaseModel):
     """Email notification settings."""
 
     enabled: bool = False
-    smtp_server: Optional[str] = None
-    smtp_port: Optional[int] = Field(default=587, ge=1, le=65535)
+    smtp_server: str | None = None
+    smtp_port: int | None = Field(default=587, ge=1, le=65535)
     use_tls: bool = True
-    username: Optional[str] = None
-    password: Optional[str] = None
-    from_address: Optional[str] = None
-    to_addresses: Optional[List[str]] = None
+    username: str | None = None
+    password: str | None = None
+    from_address: str | None = None
+    to_addresses: list[str] | None = None
 
 
 class NotificationsConfig(BaseModel):
@@ -248,11 +248,11 @@ class Config(StrictModel):
 
     detection: DetectionConfig
     roi: ROIConfig = Field(default_factory=ROIConfig)
-    lines: List[LineConfig] = Field(default_factory=list)
-    zones: List[ZoneConfig] = Field(default_factory=list)
-    events: List[EventConfig] = Field(default_factory=list)
-    digests: List[DigestConfig] = Field(default_factory=list)
-    pdf_reports: List[PDFReportConfig] = Field(default_factory=list)
+    lines: list[LineConfig] = Field(default_factory=list)
+    zones: list[ZoneConfig] = Field(default_factory=list)
+    events: list[EventConfig] = Field(default_factory=list)
+    digests: list[DigestConfig] = Field(default_factory=list)
+    pdf_reports: list[PDFReportConfig] = Field(default_factory=list)
     output: OutputConfig = Field(default_factory=OutputConfig)
     camera: CameraConfig
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)

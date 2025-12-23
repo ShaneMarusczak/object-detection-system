@@ -8,7 +8,6 @@ Uses streetlight presence in upper frame as darkness indicator.
 import logging
 import time
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
 
 import cv2
 import numpy as np
@@ -24,9 +23,9 @@ HEADLIGHT_CLASS_NAME = "headlight"
 class BlobDetection:
     """A detected bright blob (potential headlight)."""
 
-    center: Tuple[float, float]  # (x, y) center position
+    center: tuple[float, float]  # (x, y) center position
     size: float  # blob size/radius
-    bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2) bounding box
+    bbox: tuple[int, int, int, int]  # (x1, y1, x2, y2) bounding box
 
 
 class LightingMonitor:
@@ -63,7 +62,7 @@ class LightingMonitor:
         """
         self.enabled = enabled
         self.is_dark = False
-        self.last_check_time: Optional[float] = None
+        self.last_check_time: float | None = None
         self.frames_checked = 0
 
         if enabled:
@@ -202,7 +201,7 @@ class HeadlightDetector:
 
         return cv2.SimpleBlobDetector_create(params)
 
-    def detect(self, frame: np.ndarray) -> List[BlobDetection]:
+    def detect(self, frame: np.ndarray) -> list[BlobDetection]:
         """
         Detect bright blobs (headlights) in frame.
 
@@ -256,11 +255,11 @@ class HeadlightDetector:
 
     def detections_to_tracks(
         self,
-        detections: List[BlobDetection],
+        detections: list[BlobDetection],
         existing_tracks: dict,
         current_time: float,
         max_distance: float = 50.0,
-    ) -> List[Tuple[int, BlobDetection]]:
+    ) -> list[tuple[int, BlobDetection]]:
         """
         Associate blob detections with track IDs.
 

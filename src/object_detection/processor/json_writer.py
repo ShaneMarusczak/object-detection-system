@@ -7,7 +7,6 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Dict
 
 from ..utils import SUMMARY_EVENT_INTERVAL
 
@@ -123,7 +122,7 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
 
 
 def _print_summary(
-    event_count: int, event_counts_by_type: Dict[str, int], start_time: datetime
+    event_count: int, event_counts_by_type: dict[str, int], start_time: datetime
 ) -> None:
     """Print periodic summary for 'summary' console mode."""
     elapsed = (datetime.now() - start_time).total_seconds()
@@ -135,7 +134,7 @@ def _print_summary(
 
 
 def _log_final_summary(
-    event_count: int, event_counts_by_type: Dict[str, int], json_filename: str
+    event_count: int, event_counts_by_type: dict[str, int], json_filename: str
 ) -> None:
     """Log final summary statistics."""
     logger.info("JSON Writer complete")

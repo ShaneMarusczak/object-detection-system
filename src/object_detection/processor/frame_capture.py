@@ -8,7 +8,6 @@ import logging
 import os
 import time
 from multiprocessing import Queue
-from typing import Dict, List, Optional, Tuple
 
 import cv2
 
@@ -37,13 +36,13 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     roi_config = config.get("roi", {})
 
     # Track cooldowns per (track_id, zone/line)
-    cooldowns: Dict[Tuple[int, str], float] = {}
+    cooldowns: dict[tuple[int, str], float] = {}
 
     # Per-event photo budgets - each event definition can have its own max_photos
     # Budget state tracked separately per event_definition name
     start_time = time.time()
     default_duration = config.get("expected_duration_seconds", 3600)  # Default 1 hour
-    photo_budgets: Dict[str, dict] = {}  # event_def -> budget state
+    photo_budgets: dict[str, dict] = {}  # event_def -> budget state
 
     logger.info("Frame Capture consumer started")
     logger.info(f"Temp frame dir: {temp_frame_dir}")
@@ -237,10 +236,10 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
 def _annotate_frame(
     frame_path: str,
     event: dict,
-    lines_config: List[dict],
-    zones_config: List[dict],
+    lines_config: list[dict],
+    zones_config: list[dict],
     roi_config: dict,
-) -> Optional[str]:
+) -> str | None:
     """
     Annotate frame with bounding box, lines, and zones.
 

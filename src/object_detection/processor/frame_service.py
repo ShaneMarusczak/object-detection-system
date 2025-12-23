@@ -8,7 +8,6 @@ import logging
 import os
 import shutil
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 class FrameService:
     """Manages local frame storage and retrieval."""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         """Initialize frame service.
 
         Args:
@@ -38,11 +37,11 @@ class FrameService:
         # Run initial cleanup
         self.cleanup_old_frames(self.retention_days)
 
-    def _load_metadata(self) -> Dict:
+    def _load_metadata(self) -> dict:
         """Load frame metadata from disk."""
         if os.path.exists(self.metadata_file):
             try:
-                with open(self.metadata_file, "r") as f:
+                with open(self.metadata_file) as f:
                     return json.load(f)
             except Exception:
                 logger.warning("Failed to load metadata, starting fresh")
@@ -56,7 +55,7 @@ class FrameService:
         except Exception as e:
             logger.error(f"Failed to save metadata: {e}")
 
-    def save_event_frame(self, event: Dict, temp_frame_path: str) -> Optional[str]:
+    def save_event_frame(self, event: dict, temp_frame_path: str) -> str | None:
         """
         Save frame permanently with event metadata.
 
@@ -106,14 +105,14 @@ class FrameService:
             logger.error(f"Failed to save frame: {e}")
             return None
 
-    def get_frame_path(self, event_id: str) -> Optional[str]:
+    def get_frame_path(self, event_id: str) -> str | None:
         """Get local path for a frame by event ID."""
         frame_data = self.metadata.get(event_id)
         if frame_data:
             return frame_data.get("local_path")
         return None
 
-    def get_frame_paths_for_events(self, events: List[Dict]) -> Dict[str, str]:
+    def get_frame_paths_for_events(self, events: list[dict]) -> dict[str, str]:
         """
         Get frame paths for a list of events.
 
@@ -140,7 +139,7 @@ class FrameService:
 
         return result
 
-    def read_frame_bytes(self, event_id: str) -> Optional[bytes]:
+    def read_frame_bytes(self, event_id: str) -> bytes | None:
         """
         Read frame file as bytes (for email embedding).
 
@@ -200,6 +199,6 @@ class FrameService:
 
         return removed
 
-    def get_frame_info(self, event_id: str) -> Optional[Dict]:
+    def get_frame_info(self, event_id: str) -> dict | None:
         """Get frame metadata for an event ID."""
         return self.metadata.get(event_id)

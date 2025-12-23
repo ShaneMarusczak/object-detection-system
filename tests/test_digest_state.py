@@ -11,7 +11,6 @@ from pathlib import Path
 from src.object_detection.consumers.digest_state import (
     DigestPeriodState,
     DigestStateManager,
-    STALE_THRESHOLD,
 )
 
 
@@ -31,28 +30,19 @@ class TestDigestPeriodState(unittest.TestCase):
         """Test adding events."""
         state = DigestPeriodState.new_period("test", 60)
 
-        state.add_event({
-            'object_class_name': 'car',
-            'line_description': 'driveway'
-        })
-        state.add_event({
-            'object_class_name': 'car',
-            'zone_description': 'parking'
-        })
-        state.add_event({
-            'object_class_name': 'truck',
-            'line_description': 'driveway'
-        })
+        state.add_event({"object_class_name": "car", "line_description": "driveway"})
+        state.add_event({"object_class_name": "car", "zone_description": "parking"})
+        state.add_event({"object_class_name": "truck", "line_description": "driveway"})
 
         self.assertEqual(state.event_count, 3)
-        self.assertEqual(state.by_class, {'car': 2, 'truck': 1})
-        self.assertEqual(state.by_line, {'driveway': 2})
-        self.assertEqual(state.by_zone, {'parking': 1})
+        self.assertEqual(state.by_class, {"car": 2, "truck": 1})
+        self.assertEqual(state.by_line, {"driveway": 2})
+        self.assertEqual(state.by_zone, {"parking": 1})
 
     def test_serialization(self):
         """Test to_dict and from_dict."""
         state = DigestPeriodState.new_period("test", 60)
-        state.add_event({'object_class_name': 'cat'})
+        state.add_event({"object_class_name": "cat"})
         state.add_frame_ref("/tmp/frame.jpg")
 
         # Round-trip
@@ -78,27 +68,24 @@ class TestDigestStateManager(unittest.TestCase):
     def tearDown(self):
         """Clean up temp directory."""
         import shutil
+
         shutil.rmtree(self.temp_dir)
 
     def test_init_creates_directories(self):
         """Test that init creates state directory."""
         _manager = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
         self.assertTrue(self.state_dir.exists())
 
     def test_initialize_new_digest(self):
         """Test initializing a new digest."""
         manager = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         state = manager.initialize_digest(
-            "daily_traffic",
-            period_minutes=1440,
-            config_digest_ids={"daily_traffic"}
+            "daily_traffic", period_minutes=1440, config_digest_ids={"daily_traffic"}
         )
 
         self.assertIsNotNone(state)
@@ -108,15 +95,14 @@ class TestDigestStateManager(unittest.TestCase):
     def test_add_event_and_checkpoint(self):
         """Test adding events triggers checkpoint."""
         manager = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         manager.initialize_digest("test", 60, {"test"})
 
         # Add events
         for i in range(15):
-            manager.add_event("test", {'object_class_name': 'car'})
+            manager.add_event("test", {"object_class_name": "car"})
 
         # State should be persisted
         state_file = self.state_dir / "digests.json"
@@ -125,24 +111,22 @@ class TestDigestStateManager(unittest.TestCase):
         with open(state_file) as f:
             data = json.load(f)
 
-        self.assertEqual(data['digests']['test']['event_count'], 15)
+        self.assertEqual(data["digests"]["test"]["event_count"], 15)
 
     def test_recovery_after_restart(self):
         """Test state recovery after simulated restart."""
         # First run - accumulate events
         manager1 = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
         manager1.initialize_digest("test", 1440, {"test"})
         for i in range(5):
-            manager1.add_event("test", {'object_class_name': 'car'})
+            manager1.add_event("test", {"object_class_name": "car"})
         manager1._save_state()  # Force checkpoint
 
         # "Restart" - new manager instance
         manager2 = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         state = manager2.get_state("test")
@@ -152,12 +136,11 @@ class TestDigestStateManager(unittest.TestCase):
     def test_mark_sent_deletes_state(self):
         """Test that mark_sent removes state."""
         manager = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         manager.initialize_digest("test", 60, {"test"})
-        manager.add_event("test", {'object_class_name': 'car'})
+        manager.add_event("test", {"object_class_name": "car"})
 
         self.assertIsNotNone(manager.get_state("test"))
 
@@ -168,23 +151,23 @@ class TestDigestStateManager(unittest.TestCase):
     def test_gc_removes_stale_state(self):
         """Test GC removes state older than 2 weeks."""
         manager = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         # Manually create stale state
         stale_state = DigestPeriodState(
             digest_id="stale_digest",
             period_start=datetime.now(timezone.utc) - timedelta(weeks=3),
-            period_end=datetime.now(timezone.utc) - timedelta(weeks=3) + timedelta(days=1),
+            period_end=datetime.now(timezone.utc)
+            - timedelta(weeks=3)
+            + timedelta(days=1),
         )
         manager.states["stale_digest"] = stale_state
         manager._save_state()
 
         # New manager runs GC on init
         manager2 = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         self.assertIsNone(manager2.get_state("stale_digest"))
@@ -192,8 +175,7 @@ class TestDigestStateManager(unittest.TestCase):
     def test_gc_removes_sent_state(self):
         """Test GC removes state with digest_sent=true."""
         manager = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         # Create state and mark as sent but don't delete (simulating crash)
@@ -204,8 +186,7 @@ class TestDigestStateManager(unittest.TestCase):
 
         # New manager runs GC on init
         manager2 = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         self.assertIsNone(manager2.get_state("test"))
@@ -215,8 +196,7 @@ class TestDigestStateManager(unittest.TestCase):
         import time
 
         manager = DigestStateManager(
-            state_dir=str(self.state_dir),
-            frames_dir=str(self.frames_dir)
+            state_dir=str(self.state_dir), frames_dir=str(self.frames_dir)
         )
 
         # Create some frames
@@ -228,6 +208,7 @@ class TestDigestStateManager(unittest.TestCase):
         # Make orphan frame old
         old_time = time.time() - 86400 * 2  # 2 days old
         import os
+
         os.utime(orphan_frame, (old_time, old_time))
 
         # Create state referencing one frame
@@ -242,5 +223,5 @@ class TestDigestStateManager(unittest.TestCase):
         self.assertFalse(orphan_frame.exists())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

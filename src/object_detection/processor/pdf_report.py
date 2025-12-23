@@ -9,7 +9,6 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from collections import Counter
 
@@ -133,8 +132,8 @@ def _aggregate_from_json(
     json_dir: str,
     start_time: datetime,
     end_time: datetime,
-    event_names: Optional[List[str]] = None,
-) -> Dict:
+    event_names: list[str] | None = None,
+) -> dict:
     """
     Aggregate statistics from JSON log files within time window.
 
@@ -175,7 +174,7 @@ def _aggregate_from_json(
 
     for jsonl_file in jsonl_files:
         try:
-            with open(jsonl_file, "r") as f:
+            with open(jsonl_file) as f:
                 for line in f:
                     try:
                         event = json.loads(line)
@@ -251,7 +250,7 @@ def _aggregate_from_json(
     }
 
 
-def _empty_stats() -> Dict:
+def _empty_stats() -> dict:
     """Return empty statistics dictionary."""
     return {
         "total_events": 0,
@@ -269,8 +268,8 @@ def _empty_stats() -> Dict:
 def _generate_pdf(
     output_dir: str,
     title: str,
-    stats: Dict,
-    frame_data_map: Dict[str, bytes],
+    stats: dict,
+    frame_data_map: dict[str, bytes],
     start_time: datetime,
     end_time: datetime,
 ) -> str:

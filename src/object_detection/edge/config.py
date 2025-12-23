@@ -6,7 +6,6 @@ Only what's needed for detection - no event routing, emails, or digests.
 """
 
 from dataclasses import dataclass, field
-from typing import List
 import yaml
 
 
@@ -28,7 +27,7 @@ class LineConfig:
     line_id: str
     type: str  # 'vertical' or 'horizontal'
     position_pct: float
-    allowed_classes: List[int] = field(default_factory=list)
+    allowed_classes: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -40,7 +39,7 @@ class ZoneConfig:
     y1_pct: float
     x2_pct: float
     y2_pct: float
-    allowed_classes: List[int] = field(default_factory=list)
+    allowed_classes: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -59,14 +58,14 @@ class EdgeConfig:
     # Detection
     model_file: str
     confidence_threshold: float
-    track_classes: List[int]
+    track_classes: list[int]
 
     # Camera
     camera_url: str
 
     # Geometry
-    lines: List[LineConfig] = field(default_factory=list)
-    zones: List[ZoneConfig] = field(default_factory=list)
+    lines: list[LineConfig] = field(default_factory=list)
+    zones: list[ZoneConfig] = field(default_factory=list)
     roi: ROIConfig = field(default_factory=ROIConfig)
 
     # Output
@@ -81,7 +80,7 @@ class EdgeConfig:
     @classmethod
     def from_yaml(cls, path: str) -> "EdgeConfig":
         """Load configuration from YAML file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls.from_dict(data)
 

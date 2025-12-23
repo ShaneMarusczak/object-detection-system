@@ -10,7 +10,6 @@ import readline  # noqa: F401 - Enables arrow key history for input()
 import subprocess
 import sys
 from datetime import datetime
-from typing import Dict, List, Optional
 
 import cv2
 import yaml
@@ -48,15 +47,15 @@ class ConfigBuilder:
     """Interactive config builder with live preview."""
 
     def __init__(self):
-        self.config: Dict = {}
+        self.config: dict = {}
         self.camera_url: str = ""
-        self.cap: Optional[cv2.VideoCapture] = None
+        self.cap: cv2.VideoCapture | None = None
         self.preview_dir: str = "data"
-        self.http_server: Optional[subprocess.Popen] = None
+        self.http_server: subprocess.Popen | None = None
         self.frame_width: int = 0
         self.frame_height: int = 0
 
-    def run(self) -> Optional[str]:
+    def run(self) -> str | None:
         """Run the config builder wizard. Returns config filename or None."""
         try:
             self._print_header()
@@ -705,7 +704,7 @@ class ConfigBuilder:
             if frame_capture:
                 frame_capture["expected_duration_seconds"] = duration_seconds
 
-    def _save_config(self) -> Optional[str]:
+    def _save_config(self) -> str | None:
         """Save config to YAML file with options for what to do next."""
         print(f"\n{Colors.BOLD}--- Finish ---{Colors.RESET}")
 
@@ -797,7 +796,7 @@ use: {config_path}
         cv2.imwrite(preview_path, frame)
 
     def _capture_annotated_preview(
-        self, lines: Optional[List[dict]] = None, zones: Optional[List[dict]] = None
+        self, lines: list[dict] | None = None, zones: list[dict] | None = None
     ):
         """Capture preview with annotations."""
         if self.cap is None:
@@ -899,7 +898,7 @@ use: {config_path}
             self.http_server = None
 
 
-def run_builder() -> Optional[str]:
+def run_builder() -> str | None:
     """Run the config builder and return the config path."""
     builder = ConfigBuilder()
     return builder.run()

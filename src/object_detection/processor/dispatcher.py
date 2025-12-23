@@ -12,7 +12,7 @@ import logging
 from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
-from typing import Dict, List, Any, Set
+from typing import Any
 
 from .json_writer import json_writer_consumer
 from .email_notifier import email_notifier_consumer
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class EventDefinition:
     """Declarative event definition - specifies what to match and what actions to take."""
 
-    def __init__(self, name: str, match: Dict[str, Any], actions: Dict[str, Any]):
+    def __init__(self, name: str, match: dict[str, Any], actions: dict[str, Any]):
         """
         Create event definition from pre-resolved config.
 
@@ -52,7 +52,7 @@ class EventDefinition:
         else:
             self.object_classes = None  # Match any class
 
-    def matches(self, event: Dict[str, Any]) -> bool:
+    def matches(self, event: dict[str, Any]) -> bool:
         """Check if raw event matches this definition."""
         # Check event type
         if self.event_type and event.get("event_type") != self.event_type:
@@ -79,12 +79,12 @@ class EventDefinition:
 
         return True
 
-    def get_object_classes(self) -> Set[str]:
+    def get_object_classes(self) -> set[str]:
         """Get all object classes this event definition matches."""
         return self.object_classes if self.object_classes else set()
 
 
-def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]):
+def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]):
     """
     Central event dispatcher - routes events to consumers based on event definitions.
 
@@ -309,7 +309,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: Dict[int, str]
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")
 
 
-def _parse_event_definitions(config: dict) -> List[EventDefinition]:
+def _parse_event_definitions(config: dict) -> list[EventDefinition]:
     """
     Parse event definitions from config.
 
@@ -329,8 +329,8 @@ def _parse_event_definitions(config: dict) -> List[EventDefinition]:
 
 
 def _enrich_event(
-    raw_event: Dict, zone_lookup: Dict, line_lookup: Dict, model_names: Dict[int, str]
-) -> Dict:
+    raw_event: dict, zone_lookup: dict, line_lookup: dict, model_names: dict[int, str]
+) -> dict:
     """Enrich raw event with descriptions and timestamps."""
     enriched = raw_event.copy()
 
@@ -356,7 +356,7 @@ def _enrich_event(
     return enriched
 
 
-def _route_event(event: Dict, actions: Dict, consumer_queues: Dict[str, Queue]):
+def _route_event(event: dict, actions: dict, consumer_queues: dict[str, Queue]):
     """Route event to appropriate consumers based on action configuration."""
 
     # JSON logging
@@ -388,7 +388,7 @@ def _route_event(event: Dict, actions: Dict, consumer_queues: Dict[str, Queue]):
             consumer_queues["frame_capture"].put(event)
 
 
-def _build_zone_lookup(config: dict) -> Dict[str, Dict]:
+def _build_zone_lookup(config: dict) -> dict[str, dict]:
     """Build lookup from zone_id to zone info."""
     lookup = {}
     for i, zone in enumerate(config.get("zones", []), 1):
@@ -400,7 +400,7 @@ def _build_zone_lookup(config: dict) -> Dict[str, Dict]:
     return lookup
 
 
-def _build_line_lookup(config: dict) -> Dict[str, Dict]:
+def _build_line_lookup(config: dict) -> dict[str, dict]:
     """Build lookup from line_id to line info."""
     lookup = {}
     v_count = 0

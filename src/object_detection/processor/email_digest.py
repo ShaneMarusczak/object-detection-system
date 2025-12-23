@@ -9,7 +9,6 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
 from collections import Counter
 
 from .email_service import EmailService
@@ -161,9 +160,9 @@ def _aggregate_from_json(
     json_dir: str,
     start_time: datetime,
     end_time: datetime,
-    filters: Dict = None,
-    event_names: List[str] = None,
-) -> Dict:
+    filters: dict = None,
+    event_names: list[str] = None,
+) -> dict:
     """
     Aggregate statistics from JSON log files within time window.
 
@@ -214,7 +213,7 @@ def _aggregate_from_json(
     # Read events from all files
     for jsonl_file in jsonl_files:
         try:
-            with open(jsonl_file, "r") as f:
+            with open(jsonl_file) as f:
                 for line in f:
                     try:
                         event = json.loads(line)
@@ -320,7 +319,7 @@ def _aggregate_from_json(
     }
 
 
-def _empty_stats() -> Dict:
+def _empty_stats() -> dict:
     """Return empty statistics dictionary."""
     return {
         "total_events": 0,

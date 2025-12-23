@@ -16,7 +16,6 @@ import time
 import yaml
 from multiprocessing import Process, Queue, Event
 from pathlib import Path
-from typing import Optional
 
 from ultralytics import YOLO
 

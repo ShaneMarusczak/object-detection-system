@@ -14,7 +14,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Set, Any, Optional, Tuple
+from typing import Any
 
 from ..processor.coco_classes import COCO_NAME_TO_ID
 from ..utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
@@ -54,9 +54,9 @@ class ValidationResult:
     """Result of config validation."""
 
     valid: bool
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    derived: Dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    derived: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -64,24 +64,24 @@ class EventPlan:
     """Plan for a single event definition."""
 
     name: str
-    match_criteria: Dict[str, Any]
-    actions: Dict[str, Any]
-    implied_actions: List[str]
-    consumers: List[str]
-    digest_id: Optional[str] = None
-    pdf_report_id: Optional[str] = None
+    match_criteria: dict[str, Any]
+    actions: dict[str, Any]
+    implied_actions: list[str]
+    consumers: list[str]
+    digest_id: str | None = None
+    pdf_report_id: str | None = None
 
 
 @dataclass
 class ConfigPlan:
     """Complete configuration plan."""
 
-    events: List[EventPlan]
-    digests: Dict[str, Dict]
-    pdf_reports: Dict[str, Dict]
-    track_classes: List[Tuple[int, str]]  # (id, name) pairs
-    consumers: List[str]
-    geometry: Dict[str, List[str]]  # lines/zones descriptions
+    events: list[EventPlan]
+    digests: dict[str, dict]
+    pdf_reports: dict[str, dict]
+    track_classes: list[tuple[int, str]]  # (id, name) pairs
+    consumers: list[str]
+    geometry: dict[str, list[str]]  # lines/zones descriptions
 
 
 def validate_config_full(config: dict) -> ValidationResult:
@@ -246,7 +246,7 @@ def _validate_roi(config: dict, result: ValidationResult) -> None:
             )
 
 
-def _validate_zones(config: dict, result: ValidationResult) -> Set[str]:
+def _validate_zones(config: dict, result: ValidationResult) -> set[str]:
     """Validate zone definitions. Returns set of zone descriptions."""
     descriptions = set()
     zones = config.get("zones", [])
@@ -289,7 +289,7 @@ def _validate_zones(config: dict, result: ValidationResult) -> Set[str]:
     return descriptions
 
 
-def _validate_lines(config: dict, result: ValidationResult) -> Set[str]:
+def _validate_lines(config: dict, result: ValidationResult) -> set[str]:
     """Validate line definitions. Returns set of line descriptions."""
     descriptions = set()
     lines = config.get("lines", [])
@@ -327,7 +327,7 @@ def _validate_lines(config: dict, result: ValidationResult) -> Set[str]:
     return descriptions
 
 
-def _validate_digests(config: dict, result: ValidationResult) -> Set[str]:
+def _validate_digests(config: dict, result: ValidationResult) -> set[str]:
     """Validate digest definitions. Returns set of digest IDs."""
     digest_ids = set()
     digests = config.get("digests", [])
@@ -371,9 +371,9 @@ def _validate_digests(config: dict, result: ValidationResult) -> Set[str]:
 def _validate_events(
     config: dict,
     result: ValidationResult,
-    zone_descriptions: Set[str],
-    line_descriptions: Set[str],
-    digest_ids: Set[str],
+    zone_descriptions: set[str],
+    line_descriptions: set[str],
+    digest_ids: set[str],
 ) -> None:
     """Validate event definitions."""
     events = config.get("events", [])
@@ -529,7 +529,7 @@ def _validate_frame_storage(config: dict, result: ValidationResult) -> None:
     # No warning needed - the event owns the frame capture decision
 
 
-def _derive_consumers_for_validation(config: dict) -> List[str]:
+def _derive_consumers_for_validation(config: dict) -> list[str]:
     """Derive which consumers will be active (for validation display only)."""
     consumers = set()
     events = config.get("events", [])
@@ -567,7 +567,7 @@ def _derive_consumers_for_validation(config: dict) -> List[str]:
 
 def _derive_track_classes_from_events(
     config: dict, result: ValidationResult
-) -> List[Tuple[int, str]]:
+) -> list[tuple[int, str]]:
     """Derive COCO class IDs from event definitions."""
     class_names = set()
 
@@ -588,7 +588,7 @@ def _derive_track_classes_from_events(
     return track_classes
 
 
-def derive_track_classes(config: dict) -> List[int]:
+def derive_track_classes(config: dict) -> list[int]:
     """
     Derive COCO class IDs from event definitions.
 
@@ -656,7 +656,7 @@ def prepare_runtime_config(config: dict) -> dict:
     return config
 
 
-def _resolve_implied_actions(config: dict) -> List[str]:
+def _resolve_implied_actions(config: dict) -> list[str]:
     """
     Resolve all implied actions and modify event configs in place.
 
@@ -1025,7 +1025,7 @@ def print_plan(plan: ConfigPlan) -> None:
     print()
 
 
-def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
+def simulate_dry_run(config: dict, sample_events: list[dict]) -> None:
     """Simulate event processing with sample events."""
     print()
     print(f"{Colors.BOLD}Dry Run Simulation{Colors.RESET}")
@@ -1140,7 +1140,7 @@ def simulate_dry_run(config: dict, sample_events: List[Dict]) -> None:
     print()
 
 
-def _matches_event(sample: Dict, event_plan: EventPlan) -> bool:
+def _matches_event(sample: dict, event_plan: EventPlan) -> bool:
     """Check if sample event matches event plan criteria."""
     match = event_plan.match_criteria
 
@@ -1175,7 +1175,7 @@ def _matches_event(sample: Dict, event_plan: EventPlan) -> bool:
     return True
 
 
-def generate_sample_events(config: dict) -> List[Dict]:
+def generate_sample_events(config: dict) -> list[dict]:
     """Generate sample events based on config for dry-run testing."""
     samples = []
 
@@ -1219,9 +1219,9 @@ def generate_sample_events(config: dict) -> List[Dict]:
     return samples
 
 
-def load_sample_events(path: str) -> List[Dict]:
+def load_sample_events(path: str) -> list[dict]:
     """Load sample events from JSON file."""
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Handle both array and object with 'events' key

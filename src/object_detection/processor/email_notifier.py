@@ -7,7 +7,6 @@ Cooldown configuration comes from event metadata.
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict
 
 from .email_service import EmailService
 
@@ -18,7 +17,7 @@ class EventNotifier:
     """Tracks cooldowns for immediate email notifications."""
 
     def __init__(self):
-        self._last_notification: Dict[str, datetime] = {}
+        self._last_notification: dict[str, datetime] = {}
 
     def should_notify(self, identifier: str, cooldown_minutes: int) -> bool:
         """Check if enough time has passed since last notification."""

@@ -11,7 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from email.mime.base import MIMEBase
 from email import encoders
-from typing import Dict, List, Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class EmailService:
     """Handles sending emails via SMTP with image attachment support."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize email service with SMTP configuration.
 
         Args:
@@ -35,7 +35,7 @@ class EmailService:
         self.use_tls = config.get("use_tls", True)
 
     def send(
-        self, subject: str, body: str, attachments: Optional[List[Dict]] = None
+        self, subject: str, body: str, attachments: list[dict] | None = None
     ) -> bool:
         """Send an email with optional attachments.
 
@@ -88,7 +88,7 @@ class EmailService:
             logger.error(f"Failed to send email: {e}")
             return False
 
-    def _add_attachment(self, msg: MIMEMultipart, attachment: Dict) -> None:
+    def _add_attachment(self, msg: MIMEMultipart, attachment: dict) -> None:
         """Add an attachment to the email message."""
         data = attachment.get("data")
         filename = attachment.get("filename", "attachment")
@@ -115,10 +115,10 @@ class EmailService:
 
     def send_event_notification(
         self,
-        event: Dict[str, Any],
-        custom_message: Optional[str] = None,
-        frame_data: Optional[bytes] = None,
-        custom_subject: Optional[str] = None,
+        event: dict[str, Any],
+        custom_message: str | None = None,
+        frame_data: bytes | None = None,
+        custom_subject: str | None = None,
     ) -> bool:
         """Send notification for a single event with optional frame attachment.
 
@@ -200,9 +200,9 @@ class EmailService:
     def send_digest(
         self,
         period: str,
-        stats: Dict[str, Any],
-        frame_data_map: Optional[Dict[str, bytes]] = None,
-        subject: Optional[str] = None,
+        stats: dict[str, Any],
+        frame_data_map: dict[str, bytes] | None = None,
+        subject: str | None = None,
     ) -> bool:
         """Send a digest email with aggregated statistics and embedded photos.
 

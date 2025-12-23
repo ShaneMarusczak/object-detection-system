@@ -22,7 +22,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Callable
+from collections.abc import Callable
 
 import cv2
 import torch
@@ -41,9 +41,9 @@ class TrackedObject:
     track_id: int
     object_class: int
     current_pos: tuple
-    previous_pos: Optional[tuple] = None
+    previous_pos: tuple | None = None
     crossed_lines: set = field(default_factory=set)
-    active_zones: Dict[str, float] = field(default_factory=dict)
+    active_zones: dict[str, float] = field(default_factory=dict)
 
     def update_position(self, x: float, y: float) -> None:
         self.previous_pos = self.current_pos
@@ -74,9 +74,9 @@ class EdgeDetector:
         """
         self.config = config
         self.publisher = publisher
-        self.model: Optional[YOLO] = None
-        self.cap: Optional[cv2.VideoCapture] = None
-        self.tracked_objects: Dict[int, TrackedObject] = {}
+        self.model: YOLO | None = None
+        self.cap: cv2.VideoCapture | None = None
+        self.tracked_objects: dict[int, TrackedObject] = {}
         self.frame_count = 0
         self.event_count = 0
 
