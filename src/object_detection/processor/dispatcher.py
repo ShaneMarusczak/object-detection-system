@@ -36,6 +36,7 @@ class EventDefinition:
         self.event_type = match.get('event_type')
         self.zone = match.get('zone')
         self.line = match.get('line')
+        self.direction = match.get('direction')
 
         # Handle single class or list of classes
         obj_class = match.get('object_class')
@@ -90,6 +91,10 @@ class EventDefinition:
 
         # Check line
         if self.line and event.get('line_description') != self.line:
+            return False
+
+        # Check direction (for LINE_CROSS events)
+        if self.direction and event.get('direction') != self.direction:
             return False
 
         # Check object class

@@ -86,6 +86,7 @@ class EventMatch(BaseModel):
     line: Optional[str] = None
     zone: Optional[str] = None
     object_class: Optional[Union[str, List[str]]] = None
+    direction: Optional[Literal["LTR", "RTL", "TTB", "BTT"]] = None
 
 
 class EmailImmediateAction(BaseModel):
@@ -102,6 +103,7 @@ class FrameCaptureAction(BaseModel):
     """Frame capture action configuration."""
     enabled: bool = True
     cooldown_seconds: int = Field(default=300, ge=0)
+    annotate: bool = False
 
 
 class EventActions(BaseModel):
@@ -150,6 +152,7 @@ class EmailConfig(BaseModel):
     use_tls: bool = True
     username: Optional[str] = None
     password: Optional[str] = None
+    password_env: Optional[str] = Field(default=None, description="Environment variable name for password")
     from_address: Optional[str] = None
     to_addresses: Optional[List[str]] = None
 
@@ -187,7 +190,9 @@ class ConsoleOutputConfig(BaseModel):
 
 class FrameStorageConfig(BaseModel):
     """Frame storage configuration."""
+    type: Literal["local"] = "local"
     local_dir: str = "frames"
+    retention_days: int = Field(default=7, ge=1, description="Days to retain frames")
 
 
 class SpeedCalculationConfig(BaseModel):

@@ -26,13 +26,18 @@ class FrameService:
         storage_config = config.get('storage', {})
         self.local_dir = storage_config.get('local_dir', 'frames')
         self.storage_type = storage_config.get('type', 'local')
+        self.retention_days = storage_config.get('retention_days', 7)
         self.metadata_file = os.path.join(self.local_dir, 'metadata.json')
+        self._last_cleanup = datetime.now()
 
         # Ensure local directory exists
         os.makedirs(self.local_dir, exist_ok=True)
 
         # Load or initialize metadata
         self.metadata = self._load_metadata()
+
+        # Run initial cleanup
+        self.cleanup_old_frames(self.retention_days)
 
     def _load_metadata(self) -> Dict:
         """Load frame metadata from disk."""
@@ -66,6 +71,11 @@ class FrameService:
         if not os.path.exists(temp_frame_path):
             logger.warning(f"Temp frame not found: {temp_frame_path}")
             return None
+
+        # Periodic cleanup (once per hour)
+        if (datetime.now() - self._last_cleanup).total_seconds() > 3600:
+            self.cleanup_old_frames(self.retention_days)
+            self._last_cleanup = datetime.now()
 
         # Generate permanent filename
         event_id = f"{event['timestamp']}_{event['track_id']}"
