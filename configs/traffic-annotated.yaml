@@ -1,7 +1,3 @@
-# ==============================================================================
-# TRAFFIC CONFIG - Pure declarative: just say what you want
-# ==============================================================================
-
 detection:
   model_file: "yolo11n.pt"
   confidence_threshold: 0.3
@@ -9,78 +5,29 @@ detection:
 lines:
   - type: vertical
     position_pct: 30
-    description: "entrance gate"
-  - type: vertical
-    position_pct: 70
-    description: "exit gate"
-
-zones:
-  - description: "loading dock"
-    x1_pct: 0
-    x2_pct: 25
-    y1_pct: 60
-    y2_pct: 100
+    description: "traffic boundary"
 
 events:
-  - name: "vehicle_entering"
+  - name: "vehicle_crossing"
     match:
       event_type: "LINE_CROSS"
-      line: "entrance gate"
+      line: "traffic boundary"
       object_class: ["car", "motorcycle", "bus", "truck"]
     actions:
       pdf_report: "traffic_report"
-
-  - name: "vehicle_exiting"
+  - name: "headlight_crossing"
     match:
       event_type: "LINE_CROSS"
-      line: "exit gate"
-      object_class: ["car", "motorcycle", "bus", "truck"]
-    actions:
-      pdf_report: "traffic_report"
-
-  - name: "loading_dock_arrival"
-    match:
-      event_type: "ZONE_ENTER"
-      zone: "loading dock"
-      object_class: ["truck", "car"]
-    actions:
-      pdf_report: "traffic_report"
-
-  # Nighttime detection events (headlights detected when dark)
-  - name: "headlight_entering"
-    match:
-      event_type: "LINE_CROSS"
-      line: "entrance gate"
+      line: "traffic boundary"
       object_class: ["headlight"]
     actions:
       pdf_report: "traffic_report"
 
-  - name: "headlight_exiting"
-    match:
-      event_type: "LINE_CROSS"
-      line: "exit gate"
-      object_class: ["headlight"]
-    actions:
-      pdf_report: "traffic_report"
-
-  - name: "headlight_at_dock"
-    match:
-      event_type: "ZONE_ENTER"
-      zone: "loading dock"
-      object_class: ["headlight"]
-    actions:
-      pdf_report: "traffic_report"
-
-# Just say what you want - everything else is implied:
-#   photos: true  → frame_capture enabled
-#   annotate: true → frames have lines/zones/bboxes drawn
-#   (json_log, temp_frames all auto-enabled)
-# PDF reports are generated on shutdown covering the entire run
 pdf_reports:
   - id: "traffic_report"
     output_dir: "reports/traffic"
     title: "Traffic Report"
-    events: ["vehicle_entering", "vehicle_exiting", "loading_dock_arrival", "headlight_entering", "headlight_exiting", "headlight_at_dock"]
+    events: ["vehicle_crossing", "headlight_crossing"]
     photos: true
     annotate: true
 
@@ -96,8 +43,8 @@ console_output:
   level: "detailed"
 
 camera:
-  url: "rtsp://192.168.1.100:554/stream1"
+  url: "http://192.168.86.33:4747/video"
 
 runtime:
-  default_duration_hours: 0.0833  # 5 minutes
+  default_duration_hours: 8
   queue_size: 500
