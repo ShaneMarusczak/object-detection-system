@@ -51,11 +51,12 @@ class ConfigBuilder:
         """Run the config builder wizard. Returns config filename or None."""
         try:
             self._print_header()
-            self._start_preview_server()
 
-            # Build config sections
+            # Setup camera first, then start preview server
             if not self._setup_camera():
                 return None
+
+            self._start_preview_server()
 
             self._setup_detection()
             self._setup_lines()
@@ -153,9 +154,8 @@ class ConfigBuilder:
         self.camera_url = url
         self.config['camera'] = {'url': url}
 
-        # Capture initial preview
+        # Capture initial preview (server starts after this)
         self._capture_preview(frame)
-        print(f"{Colors.GRAY}Preview saved - refresh browser{Colors.RESET}")
 
         return True
 
