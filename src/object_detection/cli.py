@@ -390,17 +390,12 @@ def shutdown_processes(detector: Process, analyzer: Process, shutdown_event, con
         else:
             logger.info("Detector stopped")
 
-    # Wait for analyzer to finish processing remaining events
+    # Wait for analyzer to finish processing remaining events and generate reports
+    # No timeout - PDF report generation can take significant time for large reports
     if analyzer.is_alive():
-        logger.info("Waiting for analyzer to complete...")
-        analyzer.join(timeout=10)
-
-        if analyzer.is_alive():
-            logger.warning("Analyzer not responding - forcing shutdown...")
-            analyzer.terminate()
-            analyzer.join()
-        else:
-            logger.info("Analyzer completed")
+        logger.info("Waiting for analyzer to complete (PDF reports may take time)...")
+        analyzer.join()
+        logger.info("Analyzer completed")
 
 
 def print_final_status(

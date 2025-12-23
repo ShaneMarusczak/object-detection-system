@@ -60,31 +60,39 @@ def generate_pdf_reports(json_dir: str, config: dict, start_time: datetime) -> N
     frame_service_config = config.get('frame_service_config', {})
     frame_service = FrameService(frame_service_config) if frame_service_config else None
 
-    for report_config in pdf_report_configs:
+    for i, report_config in enumerate(pdf_report_configs, 1):
         report_id = report_config.get('id', 'report')
         event_names = report_config.get('events', [])
+
+        logger.info(f"[{i}/{len(pdf_report_configs)}] Processing report '{report_id}'...")
 
         # Aggregate all events from the run
         stats = _aggregate_from_json(json_dir, start_time, end_time, event_names)
 
         if stats['total_events'] == 0:
-            logger.info(f"No events for report '{report_id}' - skipping")
+            logger.info(f"  No events for report '{report_id}' - skipping")
             continue
+
+        logger.info(f"  Found {stats['total_events']} events to include")
 
         # Get frame data if photos enabled
         frame_data_map = {}
         if report_config.get('photos') and frame_service and stats.get('events'):
+            logger.info(f"  Loading {len(stats['events'])} frames for photos...")
             frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
-            logger.debug(f"Found {len(frame_paths)} frame paths for {len(stats['events'])} events")
+            loaded = 0
             for event_id, path in frame_paths.items():
                 frame_bytes = frame_service.read_frame_bytes(event_id)
                 if frame_bytes:
                     frame_data_map[event_id] = frame_bytes
+                    loaded += 1
+            logger.info(f"  Loaded {loaded} frames")
 
         # Generate PDF
         output_dir = report_config.get('output_dir', 'reports')
         title = report_config.get('title', 'Object Detection Report')
 
+        logger.info(f"  Building PDF ({stats['total_events']} events, {len(frame_data_map)} photos)...")
         pdf_path = _generate_pdf(
             output_dir=output_dir,
             title=title,
@@ -95,9 +103,9 @@ def generate_pdf_reports(json_dir: str, config: dict, start_time: datetime) -> N
         )
 
         if pdf_path:
-            logger.info(f"Report '{report_id}' saved: {pdf_path}")
+            logger.info(f"  Report saved: {pdf_path}")
         else:
-            logger.warning(f"Failed to generate report '{report_id}'")
+            logger.warning(f"  Failed to generate report '{report_id}'")
 
     logger.info("PDF report generation complete")
 
