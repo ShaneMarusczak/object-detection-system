@@ -138,9 +138,8 @@ class DigestConfig(BaseModel):
 
 
 class PDFReportConfig(BaseModel):
-    """PDF report configuration."""
+    """PDF report configuration. Generated on shutdown covering the entire run."""
     id: str = Field(..., min_length=1)
-    period_minutes: int = Field(..., gt=0, description="Period in minutes between PDF reports")
     output_dir: str = Field(default="reports", description="Directory for PDF output")
     title: str = Field(default="Object Detection Report", description="Report title")
     events: List[str] = Field(default_factory=list, description="Event definition names to include")

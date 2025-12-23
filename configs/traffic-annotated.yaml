@@ -52,9 +52,9 @@ events:
 #   photos: true  → frame_capture enabled
 #   annotate: true → frames have lines/zones/bboxes drawn
 #   (json_log, temp_frames all auto-enabled)
+# PDF reports are generated on shutdown covering the entire run
 pdf_reports:
   - id: "traffic_report"
-    period_minutes: 5
     output_dir: "reports/traffic"
     title: "Traffic Report"
     events: ["vehicle_entering", "vehicle_exiting", "loading_dock_arrival"]

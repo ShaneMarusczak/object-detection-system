@@ -1,7 +1,6 @@
 """
 PDF Report Consumer
-Generates periodic PDF reports by reading from JSON log files.
-Similar to email digest but outputs to PDF files with embedded images.
+Generates PDF reports on shutdown covering the entire run.
 """
 
 import io
@@ -9,7 +8,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
@@ -34,9 +33,8 @@ except ImportError:
 
 def pdf_report_consumer(json_dir: str, config: dict) -> None:
     """
-    Generate periodic PDF reports by reading JSON log files.
-    Runs independently, reading from persistent JSON logs.
-    Supports multiple report configurations with independent filters and photos.
+    Generate PDF reports on shutdown.
+    Waits for shutdown signal, then generates reports covering the entire run.
 
     Args:
         json_dir: Directory containing JSON log files
@@ -57,82 +55,64 @@ def pdf_report_consumer(json_dir: str, config: dict) -> None:
         logger.warning("No PDF report configurations found")
         return
 
-    # Track state for each report
-    report_states = {}
-    for i, report_config in enumerate(pdf_report_configs):
-        report_id = report_config.get('id', f"report_{i}")
-        period_minutes = report_config.get('period_minutes', 60)
-        report_states[report_id] = {
-            'config': report_config,
-            'period_minutes': period_minutes,
-            'last_report_time': datetime.now()
-        }
-        logger.info(f"PDF Report '{report_id}': every {period_minutes} min")
+    start_time = datetime.now()
 
-    logger.info(f"PDF Report Consumer started with {len(pdf_report_configs)} report(s)")
-    logger.info(f"Reading from: {json_dir}")
+    for report_config in pdf_report_configs:
+        report_id = report_config.get('id', 'report')
+        logger.info(f"PDF Report '{report_id}' will be generated on shutdown")
+
+    logger.info(f"PDF Report Consumer started ({len(pdf_report_configs)} report(s))")
 
     try:
+        # Just wait for shutdown
         while True:
-            time.sleep(60)  # Check every minute
-
-            current_time = datetime.now()
-
-            for report_id, state in report_states.items():
-                report_config = state['config']
-                last_report_time = state['last_report_time']
-                period_minutes = state['period_minutes']
-                elapsed = (current_time - last_report_time).total_seconds() / 60
-
-                if elapsed >= period_minutes:
-                    logger.info(f"Generating PDF report '{report_id}'...")
-
-                    start_time = last_report_time
-                    end_time = current_time
-                    event_names = report_config.get('events', [])
-
-                    # Read and aggregate events
-                    stats = _aggregate_from_json(json_dir, start_time, end_time, event_names)
-
-                    if stats['total_events'] > 0:
-                        # Get frame data if photos enabled
-                        frame_data_map = {}
-                        wants_photos = report_config.get('photos', False)
-                        if wants_photos and frame_service and stats.get('events'):
-                            frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
-                            for event_id, path in frame_paths.items():
-                                frame_bytes = frame_service.read_frame_bytes(event_id)
-                                if frame_bytes:
-                                    frame_data_map[event_id] = frame_bytes
-                            logger.debug(f"Retrieved {len(frame_data_map)} frame images")
-
-                        # Generate PDF
-                        output_dir = report_config.get('output_dir', 'reports')
-                        title = report_config.get('title', 'Object Detection Report')
-
-                        pdf_path = _generate_pdf(
-                            output_dir=output_dir,
-                            title=title,
-                            stats=stats,
-                            frame_data_map=frame_data_map,
-                            start_time=start_time,
-                            end_time=end_time
-                        )
-
-                        if pdf_path:
-                            logger.info(f"PDF report '{report_id}' saved: {pdf_path}")
-                        else:
-                            logger.warning(f"Failed to generate PDF report '{report_id}'")
-                    else:
-                        logger.debug(f"No events for report '{report_id}' - skipping")
-
-                    state['last_report_time'] = current_time
+            time.sleep(1)
 
     except KeyboardInterrupt:
-        logger.info("PDF Report Consumer stopped by user")
-    except Exception as e:
-        logger.error(f"Error in PDF Report Consumer: {e}", exc_info=True)
+        pass
     finally:
+        # Generate reports on shutdown
+        end_time = datetime.now()
+        logger.info("Generating PDF reports...")
+
+        for report_config in pdf_report_configs:
+            report_id = report_config.get('id', 'report')
+            event_names = report_config.get('events', [])
+
+            # Aggregate all events from the run
+            stats = _aggregate_from_json(json_dir, start_time, end_time, event_names)
+
+            if stats['total_events'] == 0:
+                logger.info(f"No events for report '{report_id}' - skipping")
+                continue
+
+            # Get frame data if photos enabled
+            frame_data_map = {}
+            if report_config.get('photos') and frame_service and stats.get('events'):
+                frame_paths = frame_service.get_frame_paths_for_events(stats['events'])
+                for event_id, path in frame_paths.items():
+                    frame_bytes = frame_service.read_frame_bytes(event_id)
+                    if frame_bytes:
+                        frame_data_map[event_id] = frame_bytes
+
+            # Generate PDF
+            output_dir = report_config.get('output_dir', 'reports')
+            title = report_config.get('title', 'Object Detection Report')
+
+            pdf_path = _generate_pdf(
+                output_dir=output_dir,
+                title=title,
+                stats=stats,
+                frame_data_map=frame_data_map,
+                start_time=start_time,
+                end_time=end_time
+            )
+
+            if pdf_path:
+                logger.info(f"Report '{report_id}' saved: {pdf_path}")
+            else:
+                logger.warning(f"Failed to generate report '{report_id}'")
+
         logger.info("PDF Report Consumer shutdown complete")
 
 
