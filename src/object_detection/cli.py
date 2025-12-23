@@ -107,7 +107,7 @@ def load_config(config_path: str = 'config.yaml', skip_validation: bool = False)
     config_file = find_config_file(config_path)
 
     try:
-        with open(config_file, 'r', encoding='utf-8') as f:
+        with open(config_file, encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
         # Support pointer files: { use: "path/to/actual/config.yaml" }
@@ -116,7 +116,7 @@ def load_config(config_path: str = 'config.yaml', skip_validation: bool = False)
             # Resolve relative to the pointer file's directory
             pointer_path = Path(config_file).parent / pointer_target
             logger.info(f"Config pointer: {config_path} -> {pointer_target}")
-            with open(pointer_path, 'r', encoding='utf-8') as f:
+            with open(pointer_path, encoding='utf-8') as f:
                 config = yaml.safe_load(f)
             config_path = str(pointer_path)
 
@@ -285,7 +285,7 @@ Environment Variables:
     return parser.parse_args()
 
 
-def parse_duration(duration_arg: Optional[float], config: dict) -> float:
+def parse_duration(duration_arg: float | None, config: dict) -> float:
     """
     Parse duration from command line argument or config.
 
@@ -467,7 +467,7 @@ def run_plan(config_path: str) -> None:
     sys.exit(0)
 
 
-def run_dry_run(config_path: str, events_file: Optional[str]) -> None:
+def run_dry_run(config_path: str, events_file: str | None) -> None:
     """Run dry-run simulation mode."""
     config = load_config(config_path, skip_validation=True)
 
