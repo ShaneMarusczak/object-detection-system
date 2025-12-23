@@ -647,7 +647,10 @@ def build_plan(config: dict) -> ConfigPlan:
 
             pdf_report = pdf_reports.get(pdf_report_id, {})
             if pdf_report.get('photos') and not actions.get('frame_capture'):
-                actions['frame_capture'] = {'enabled': True}
+                actions['frame_capture'] = {
+                    'enabled': True,
+                    'annotate': pdf_report.get('annotate', False)
+                }
                 implied.append(f"frame_capture (required by {pdf_report_id} with photos=true)")
 
         # Determine consumers

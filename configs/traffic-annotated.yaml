@@ -1,5 +1,5 @@
 # ==============================================================================
-# TRAFFIC CONFIG - 5 minute test with annotated PDF reports
+# TRAFFIC CONFIG - Pure declarative: just say what you want
 # ==============================================================================
 
 detection:
@@ -29,10 +29,6 @@ events:
       direction: "LTR"
       object_class: ["car", "motorcycle", "bus", "truck"]
     actions:
-      json_log: true
-      frame_capture:
-        enabled: true
-        annotate: true
       pdf_report: "traffic_report"
 
   - name: "vehicle_exiting"
@@ -42,10 +38,6 @@ events:
       direction: "LTR"
       object_class: ["car", "motorcycle", "bus", "truck"]
     actions:
-      json_log: true
-      frame_capture:
-        enabled: true
-        annotate: true
       pdf_report: "traffic_report"
 
   - name: "loading_dock_arrival"
@@ -54,19 +46,20 @@ events:
       zone: "loading dock"
       object_class: ["truck", "car"]
     actions:
-      json_log: true
-      frame_capture:
-        enabled: true
-        annotate: true
       pdf_report: "traffic_report"
 
+# Just say what you want - everything else is implied:
+#   photos: true  → frame_capture enabled
+#   annotate: true → frames have lines/zones/bboxes drawn
+#   (json_log, temp_frames all auto-enabled)
 pdf_reports:
   - id: "traffic_report"
     period_minutes: 5
     output_dir: "reports/traffic"
-    title: "Traffic Report (Annotated)"
+    title: "Traffic Report"
     events: ["vehicle_entering", "vehicle_exiting", "loading_dock_arrival"]
     photos: true
+    annotate: true
 
 frame_storage:
   type: "local"

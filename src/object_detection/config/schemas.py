@@ -145,6 +145,7 @@ class PDFReportConfig(BaseModel):
     title: str = Field(default="Object Detection Report", description="Report title")
     events: List[str] = Field(default_factory=list, description="Event definition names to include")
     photos: bool = False
+    annotate: bool = False  # Draw lines/zones/bboxes on photos
     frame_config: Optional[FrameConfig] = None
 
 

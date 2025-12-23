@@ -99,6 +99,7 @@ class EventDefinition:
                     frame_config = report.get('frame_config', {})
                     actions['frame_capture'] = {
                         'enabled': True,
+                        'annotate': report.get('annotate', False),
                         **frame_config
                     }
                     logger.debug(f"Auto-enabled frame_capture (required by photo pdf_report '{report_id}')")
