@@ -234,13 +234,13 @@ def _detection_loop(
 
             # Periodic status update
             if frame_count % FPS_REPORT_INTERVAL == 0:
-                _log_status(frame_count, fps_list, event_count, start_time)
+                _log_status(frame_count, fps_list, start_time)
 
     except KeyboardInterrupt:
         logger.info("Detection stopped by user")
     finally:
         data_queue.put(None)  # Signal end to analyzer
-        _log_final_stats(frame_count, fps_list, event_count, start_time)
+        _log_final_stats(frame_count, fps_list, start_time)
 
 
 def _run_yolo_inference(model: YOLO, frame, config: dict):
@@ -937,14 +937,14 @@ def _log_detection_config(
                    f"-> {frame_config.get('output_dir')}/")
 
 
-def _log_status(frame_count: int, fps_list: List[float], event_count: int, start_time: float) -> None:
+def _log_status(frame_count: int, fps_list: List[float], start_time: float) -> None:
     """Log periodic status update."""
     avg_fps = sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE)
     elapsed = time.time() - start_time
-    logger.info(f"[{elapsed/60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}")
+    logger.info(f"[{elapsed/60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f}")
 
 
-def _log_final_stats(frame_count: int, fps_list: List[float], event_count: int, start_time: float) -> None:
+def _log_final_stats(frame_count: int, fps_list: List[float], start_time: float) -> None:
     """Log final detection statistics."""
     elapsed = time.time() - start_time
     avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
@@ -953,4 +953,3 @@ def _log_final_stats(frame_count: int, fps_list: List[float], event_count: int, 
     logger.info(f"Runtime: {elapsed/60:.1f} minutes")
     logger.info(f"Frames: {frame_count}")
     logger.info(f"Avg FPS: {avg_fps:.1f}")
-    logger.info(f"Events: {event_count}")
