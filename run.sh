@@ -30,17 +30,60 @@ echo ""
 if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
     echo "What would you like to do?"
     echo "  1. Run with existing config"
-    echo "  2. Build new config"
+    echo "  2. Pick a config"
+    echo "  3. Build new config"
     read -p "Choice [1]: " ENTRY_CHOICE
 
-    if [ "$ENTRY_CHOICE" = "2" ]; then
+    if [ "$ENTRY_CHOICE" = "3" ]; then
         python -m object_detection --build-config
         exit 0
+    elif [ "$ENTRY_CHOICE" = "2" ]; then
+        # List configs in configs/ folder
+        echo ""
+        echo "Available configs:"
+        configs=(configs/*.yaml configs/*.yml 2>/dev/null)
+        # Filter out non-existent globs
+        valid_configs=()
+        for cfg in "${configs[@]}"; do
+            [ -f "$cfg" ] && valid_configs+=("$cfg")
+        done
+
+        if [ ${#valid_configs[@]} -eq 0 ]; then
+            echo -e "  ${YELLOW}No configs found in configs/${NC}"
+            echo "  Run option 3 to build one"
+            exit 1
+        fi
+
+        i=1
+        for cfg in "${valid_configs[@]}"; do
+            echo "  $i. $cfg"
+            ((i++))
+        done
+
+        read -p "Choice [1]: " CONFIG_CHOICE
+        CONFIG_CHOICE=${CONFIG_CHOICE:-1}
+        idx=$((CONFIG_CHOICE - 1))
+
+        if [ $idx -lt 0 ] || [ $idx -ge ${#valid_configs[@]} ]; then
+            echo -e "${YELLOW}Invalid choice${NC}"
+            exit 1
+        fi
+
+        SELECTED_CONFIG="${valid_configs[$idx]}"
+        echo ""
+        echo -e "${GREEN}Selected:${NC} $SELECTED_CONFIG"
+
+        # Update config.yaml pointer
+        cat > config.yaml << EOF
+# Active configuration pointer
+use: $SELECTED_CONFIG
+EOF
+        echo -e "${GRAY}Updated config.yaml to point to $SELECTED_CONFIG${NC}"
     fi
     # Choice 1 (or Enter) falls through - use default config
 fi
 
-# Use default config - no need to ask
+# Use default config
 CONFIG_FILE="config.yaml"
 CONFIG_ARGS="-c $CONFIG_FILE"
 
