@@ -549,6 +549,13 @@ def prepare_runtime_config(config: dict) -> dict:
         logger.warning("No events defined - nothing will be tracked!")
         config['detection']['track_classes'] = []
 
+    # Enable temp_frames if frame_capture is needed (implied dependency)
+    consumers = _derive_consumers(config)
+    if 'frame_capture' in consumers:
+        if not config.get('temp_frames_enabled'):
+            config['temp_frames_enabled'] = True
+            logger.debug("Auto-enabled temp_frames (required by frame_capture)")
+
     return config
 
 

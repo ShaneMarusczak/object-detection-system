@@ -72,8 +72,6 @@ frame_storage:
   type: "local"
   local_dir: "frames"
 
-temp_frames_enabled: true
-
 output:
   json_dir: "data"
 
