@@ -54,11 +54,7 @@ def email_digest_consumer(json_dir: str, config: dict) -> None:
     digest_states = {}
     for i, digest_config in enumerate(digest_configs):
         digest_id = digest_config.get('id', f"digest_{i}")
-        # Get period from period_minutes or estimate from cron schedule
-        period_minutes = digest_config.get('period_minutes')
-        if not period_minutes:
-            schedule = digest_config.get('schedule', '')
-            period_minutes = _estimate_period_from_cron(schedule)
+        period_minutes = digest_config.get('period_minutes', 60)
         digest_states[digest_id] = {
             'config': digest_config,
             'period_minutes': period_minutes,
@@ -295,59 +291,3 @@ def _empty_stats() -> Dict:
     }
 
 
-def _estimate_period_from_cron(schedule: str) -> int:
-    """
-    Estimate period in minutes from a cron schedule string.
-
-    Supports common patterns:
-    - "* * * * *" = every minute = 1
-    - "*/5 * * * *" = every 5 minutes = 5
-    - "0 * * * *" = hourly = 60
-    - "0 */2 * * *" = every 2 hours = 120
-    - "0 8 * * *" = daily = 1440
-    - "0 0 * * 0" = weekly = 10080
-
-    Args:
-        schedule: Cron schedule string (5 fields)
-
-    Returns:
-        Estimated period in minutes (default: 60)
-    """
-    if not schedule:
-        return 60
-
-    try:
-        parts = schedule.strip().split()
-        if len(parts) != 5:
-            return 60
-
-        minute, hour, day, month, weekday = parts
-
-        # Check for every N minutes pattern: */N * * * *
-        if minute.startswith('*/') and hour == '*':
-            return int(minute[2:])
-
-        # Check for every minute: * * * * *
-        if minute == '*' and hour == '*':
-            return 1
-
-        # Check for hourly: 0 * * * * or specific minute
-        if hour == '*' and day == '*':
-            return 60
-
-        # Check for every N hours: 0 */N * * *
-        if hour.startswith('*/') and day == '*':
-            return int(hour[2:]) * 60
-
-        # Check for daily: 0 N * * *
-        if day == '*' and month == '*' and weekday == '*':
-            return 1440  # 24 hours
-
-        # Check for weekly: 0 0 * * N
-        if weekday != '*':
-            return 10080  # 7 days
-
-        return 60  # Default to hourly
-
-    except Exception:
-        return 60  # Default to hourly on parse error

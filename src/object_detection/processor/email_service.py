@@ -30,13 +30,7 @@ class EmailService:
         self.smtp_server = config.get('smtp_server', '')
         self.smtp_port = config.get('smtp_port', 587)
         self.username = config.get('username', '')
-
-        # Password can come from config directly or from environment variable
         self.password = config.get('password', '')
-        password_env = config.get('password_env')
-        if password_env and not self.password:
-            self.password = os.environ.get(password_env, '')
-
         self.from_address = config.get('from_address', self.username)
         self.to_addresses = config.get('to_addresses', [])
         self.use_tls = config.get('use_tls', True)

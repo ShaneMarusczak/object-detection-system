@@ -157,19 +157,19 @@ events:
 
 digests:
   - id: "hourly_traffic"
-    schedule: "0 * * * *"
+    period_minutes: 60
     subject: "Hourly Traffic Report"
     events: ["vehicle_entering", "vehicle_exiting", "loading_dock_departure"]
     photos: true
 
   - id: "daily_summary"
-    schedule: "0 8 * * *"
+    period_minutes: 1440
     subject: "Daily Parking Summary"
     events: ["parking_zone_entry", "parking_zone_exit"]
     photos: false
 
   - id: "daily_anomalies"
-    schedule: "0 18 * * *"
+    period_minutes: 1440
     subject: "Daily Anomaly Report"
     events: ["animal_in_restricted"]
     photos: true
@@ -181,7 +181,7 @@ notifications:
     smtp_port: 587
     use_tls: true
     username: "alerts@example.com"
-    password_env: "SMTP_PASSWORD"
+    password: ""
     from_address: "Object Detection <alerts@example.com>"
     to_addresses:
       - "security@example.com"
