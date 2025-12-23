@@ -179,14 +179,12 @@ digests:
 
 pdf_reports:
   - id: "hourly_traffic_pdf"
-    period_minutes: 60
     output_dir: "reports/traffic"
-    title: "Hourly Traffic Report"
+    title: "Traffic Report"
     events: ["vehicle_entering", "vehicle_exiting"]
     photos: true
 
   - id: "security_report"
-    period_minutes: 120
     output_dir: "reports/security"
     title: "Security Incident Report"
     events: ["restricted_zone_intrusion", "restricted_zone_clear"]
