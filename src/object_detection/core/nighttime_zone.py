@@ -546,8 +546,9 @@ class NighttimeCarZone:
         # Blob present (binary)
         blob_present = 1.0
 
-        # Blob duration (0-1, normalized by 30 frames)
-        blob_duration = min(1.0, blob.frames_seen / 30.0)
+        # Blob duration - binary: must be visible for at least 5 frames
+        # Filters momentary flashes without penalizing fast-moving cars
+        blob_duration = 1.0 if blob.frames_seen >= 5 else 0.0
 
         # Blob size (0-1, normalized)
         blob_size = min(1.0, blob.size / 100.0)
