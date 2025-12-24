@@ -100,6 +100,10 @@ class HeadlightDetector:
             l_channel, self.BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY
         )
 
+        # Morphological cleanup - removes noise while preserving headlight shapes
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
         # Detect blobs
         keypoints = self.blob_detector.detect(binary)
 
