@@ -226,7 +226,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                         "pdf_report": pdf_report_id,
                         "email_immediate": {"enabled": zone_config.get("email_immediate", False)},
                         "email_digest": digest_id,
-                        "frame_capture": {"enabled": bool(pdf_report_id or digest_id)},
+                        "frame_capture": {"enabled": bool(pdf_report_id or digest_id), "annotate": True},
                     }
 
                     _route_event(enriched_event, actions, consumer_queues)
