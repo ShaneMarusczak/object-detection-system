@@ -327,5 +327,3 @@ def _build_line_lookup(config: dict) -> dict[str, dict]:
         }
 
     return lookup
-
-

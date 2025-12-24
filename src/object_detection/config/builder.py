@@ -456,7 +456,9 @@ class ConfigBuilder:
                 min_blob = input("      Min blob size [100]: ").strip() or "100"
                 max_blob = input("      Max blob size [10000]: ").strip() or "10000"
                 score = input("      Score threshold [85]: ").strip() or "85"
-                taillight_str = input("      Require taillight match? (Y/n): ").strip().lower()
+                taillight_str = (
+                    input("      Require taillight match? (Y/n): ").strip().lower()
+                )
                 taillight = taillight_str != "n"
 
                 match["nighttime_detection"] = {
@@ -583,7 +585,9 @@ class ConfigBuilder:
 
             # Ask about photos if not already enabled via frame_capture
             if not has_photos:
-                photos_str = input("    Include photos in report? (Y/n): ").strip().lower()
+                photos_str = (
+                    input("    Include photos in report? (Y/n): ").strip().lower()
+                )
                 has_photos = photos_str != "n"
 
             annotate = False

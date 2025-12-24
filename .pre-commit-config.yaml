@@ -16,7 +16,7 @@ repos:
     rev: v2.3.0
     hooks:
       - id: codespell
-        args: [--quiet-level=2, --ignore-words-list=assertIn]
+        args: [--quiet-level=2, "--ignore-words-list=assertIn,nce"]
 
   # PyUpgrade - modernize Python syntax
   - repo: https://github.com/asottile/pyupgrade

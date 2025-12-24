@@ -320,7 +320,13 @@ def _validate_events(
 
         # Event type
         event_type = match.get("event_type")
-        valid_types = ["LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL", "NIGHTTIME_CAR"]
+        valid_types = [
+            "LINE_CROSS",
+            "ZONE_ENTER",
+            "ZONE_EXIT",
+            "ZONE_DWELL",
+            "NIGHTTIME_CAR",
+        ]
         if event_type and event_type not in valid_types:
             result.errors.append(
                 f"{event_ref}.match.event_type must be one of: {valid_types}"

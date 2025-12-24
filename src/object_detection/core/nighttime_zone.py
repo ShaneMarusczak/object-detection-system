@@ -283,6 +283,7 @@ class NighttimeCarZone:
         self._debug_frame_interval = 30  # Save debug frames every N frames
         if self._debug_save_frames:
             import os
+
             os.makedirs(self._debug_save_frames, exist_ok=True)
 
         # Taillight detector
@@ -350,7 +351,9 @@ class NighttimeCarZone:
         # Prime when brightness is significantly above baseline OR actively rising
         # This catches the case where headlights lit up the zone before blob detection
         brightness_elevated = self.brightness_state.delta >= 0.02  # 2% above baseline
-        if (brightness_elevated or self.brightness_state.is_rising) and not self.tracked_blobs:
+        if (
+            brightness_elevated or self.brightness_state.is_rising
+        ) and not self.tracked_blobs:
             if not self._primed:
                 self._primed = True
                 self._primed_frame = self._frame_count
@@ -360,10 +363,16 @@ class NighttimeCarZone:
             elif self._frame_count < self._primed_until_frame:
                 # Extend priming if still seeing elevated brightness
                 self._primed_until_frame = self._frame_count + 45
-        elif self._primed and self._frame_count >= self._primed_until_frame and not self.tracked_blobs:
+        elif (
+            self._primed
+            and self._frame_count >= self._primed_until_frame
+            and not self.tracked_blobs
+        ):
             # Reset primed state only after sticky period and no blobs present
             self._primed = False
-            logger.debug(f"Zone '{self.name}' primed state reset at frame {self._frame_count}")
+            logger.debug(
+                f"Zone '{self.name}' primed state reset at frame {self._frame_count}"
+            )
 
         # Detect white blobs (headlights)
         blobs = self._detect_blobs(region)
@@ -378,16 +387,20 @@ class NighttimeCarZone:
 
         # Debug logging - only when state changes or blobs are present
         if self._debug:
-            active_blobs = sum(1 for b in self.tracked_blobs.values() if not b.is_disqualified)
+            active_blobs = sum(
+                1 for b in self.tracked_blobs.values() if not b.is_disqualified
+            )
             # Create state signature to detect changes
-            current_state = f"{len(blobs)}_{active_blobs}_{len(taillights)}_{self._primed}"
+            current_state = (
+                f"{len(blobs)}_{active_blobs}_{len(taillights)}_{self._primed}"
+            )
 
             # Log immediately if blobs detected, or periodically if idle
             should_log = (
-                len(blobs) > 0 or
-                active_blobs > 0 or
-                current_state != self._last_debug_state or
-                self._frame_count % self._debug_interval == 0
+                len(blobs) > 0
+                or active_blobs > 0
+                or current_state != self._last_debug_state
+                or self._frame_count % self._debug_interval == 0
             )
 
             if should_log:
@@ -487,7 +500,10 @@ class NighttimeCarZone:
         keypoints = self._blob_detector.detect(binary)
 
         # Save debug frames periodically
-        if self._debug_save_frames and self._frame_count % self._debug_frame_interval == 0:
+        if (
+            self._debug_save_frames
+            and self._frame_count % self._debug_frame_interval == 0
+        ):
             self._save_debug_frame(region, l_channel, binary, keypoints)
 
         results = []
@@ -509,7 +525,9 @@ class NighttimeCarZone:
         """Save debug images showing detection pipeline."""
         import os
 
-        base_path = os.path.join(self._debug_save_frames, f"frame_{self._frame_count:06d}")
+        base_path = os.path.join(
+            self._debug_save_frames, f"frame_{self._frame_count:06d}"
+        )
 
         # Save original region
         cv2.imwrite(f"{base_path}_1_region.jpg", region)
@@ -523,8 +541,11 @@ class NighttimeCarZone:
         # Save with keypoints drawn
         if len(keypoints) > 0:
             with_keypoints = cv2.drawKeypoints(
-                binary, keypoints, None, (0, 0, 255),
-                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+                binary,
+                keypoints,
+                None,
+                (0, 0, 255),
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
             )
             cv2.imwrite(f"{base_path}_4_keypoints.jpg", with_keypoints)
 
@@ -589,8 +610,10 @@ class NighttimeCarZone:
                 seen_this_frame.add(new_id)
 
     def _calculate_score(
-        self, blob: TrackedBlob, taillights: list[tuple[float, float, float]],
-        log_debug: bool = False
+        self,
+        blob: TrackedBlob,
+        taillights: list[tuple[float, float, float]],
+        log_debug: bool = False,
     ) -> float:
         """Calculate detection score for a blob."""
         # Brightness delta (0-1, capped)
@@ -792,6 +815,8 @@ def create_nighttime_car_zones(
         zones.append(zone)
 
     if zones:
-        logger.info(f"Created {len(zones)} nighttime car zone(s) from NIGHTTIME_CAR events")
+        logger.info(
+            f"Created {len(zones)} nighttime car zone(s) from NIGHTTIME_CAR events"
+        )
 
     return zones

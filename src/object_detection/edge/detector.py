@@ -180,9 +180,7 @@ class EdgeDetector:
                         ),
                         event_name=nce.name,
                     )
-                    self.nighttime_car_zones.append(
-                        NighttimeCarZone(zone_config, w, h)
-                    )
+                    self.nighttime_car_zones.append(NighttimeCarZone(zone_config, w, h))
             self._nighttime_zones_initialized = True
 
         # Apply ROI crop

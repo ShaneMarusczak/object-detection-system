@@ -529,12 +529,14 @@ def generate_sample_events(config: dict) -> list[dict]:
 
         # Skip NIGHTTIME_CAR for sample generation (needs special handling)
         if event_type == "NIGHTTIME_CAR":
-            samples.append({
-                "event_type": "NIGHTTIME_CAR",
-                "object_class_name": "nighttime_car",
-                "zone_description": match.get("zone", "unknown"),
-                "track_id": f"nc_{len(samples) + 1}",
-            })
+            samples.append(
+                {
+                    "event_type": "NIGHTTIME_CAR",
+                    "object_class_name": "nighttime_car",
+                    "zone_description": match.get("zone", "unknown"),
+                    "track_id": f"nc_{len(samples) + 1}",
+                }
+            )
             continue
 
         obj_classes = match.get("object_class", [])
