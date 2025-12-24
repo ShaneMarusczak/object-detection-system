@@ -15,10 +15,8 @@ Pydantic schemas available for type-safe validation:
 from .planner import (
     # Exception
     ConfigValidationError,
-    # Config loading & preparation
+    # Config loading
     load_config_with_env,
-    prepare_runtime_config,
-    derive_track_classes,
     # Validation
     validate_config_full,
     ValidationResult,
@@ -33,6 +31,11 @@ from .planner import (
     simulate_dry_run,
     generate_sample_events,
     load_sample_events,
+)
+
+from .resolver import (
+    prepare_runtime_config,
+    derive_track_classes,
 )
 
 from .schemas import (
