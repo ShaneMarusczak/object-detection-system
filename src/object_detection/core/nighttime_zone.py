@@ -53,6 +53,7 @@ class TrackedBlob:
     frames_seen: int = 1
     is_disqualified: bool = False  # Set True after event emitted
     is_taillight: bool = False
+    last_score: int = -1  # For debug: only log when score changes
 
 
 @dataclass
@@ -509,7 +510,10 @@ class NighttimeCarZone:
             + score_taillight_match
         )
 
-        if log_debug:
+        # Only log if score changed from last frame (reduces noise)
+        score_int = int(score)
+        if log_debug and score_int != blob.last_score:
+            blob.last_score = score_int
             logger.info(
                 f"[DEBUG] '{self.name}' blob#{blob.blob_id} score={score:.0f}/{self.SCORE_THRESHOLD} | "
                 f"bright_delta={score_brightness_delta:.0f} bright_rise={score_brightness_rising:.0f} "
