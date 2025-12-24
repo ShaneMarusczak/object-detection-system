@@ -110,7 +110,6 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         # Parse zone and line lookups
         zone_lookup = _build_zone_lookup(config)
         line_lookup = _build_line_lookup(config)
-        nighttime_car_zone_lookup = _build_nighttime_car_zone_lookup(config)
 
         # All consumers are always available - they're cheap (just wait on queues)
         # Routing decides what gets sent where based on declared config
@@ -207,33 +206,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                 logger.info("Received shutdown signal")
                 break
 
-            # Handle NIGHTTIME_CAR events - route based on zone's declared outputs
-            if raw_event.get("event_type") == "NIGHTTIME_CAR":
-                enriched_event = _enrich_nighttime_car_event(raw_event)
-                zone_name = enriched_event.get("zone_name")
-                zone_config = nighttime_car_zone_lookup.get(zone_name, {})
-
-                if zone_config:
-                    event_count += 1
-                    events_by_class["nighttime_car"] += 1
-
-                    # Route based on zone's declared output wiring
-                    # If pdf_report or email_digest is declared, always capture frames
-                    pdf_report_id = zone_config.get("pdf_report")
-                    digest_id = zone_config.get("email_digest")
-
-                    actions = {
-                        "json_log": True,
-                        "pdf_report": pdf_report_id,
-                        "email_immediate": {"enabled": zone_config.get("email_immediate", False)},
-                        "email_digest": digest_id,
-                        "frame_capture": {"enabled": bool(pdf_report_id or digest_id), "annotate": True},
-                    }
-
-                    _route_event(enriched_event, actions, consumer_queues)
-                continue
-
-            # Enrich raw event with descriptions
+            # Enrich raw event with descriptions (handles all event types)
             enriched_event = _enrich_event(
                 raw_event, zone_lookup, line_lookup, model_names
             )
@@ -310,6 +283,8 @@ def _parse_event_definitions(config: dict) -> list[EventDefinition]:
 
     Actions should already be resolved by prepare_runtime_config() -
     this just creates EventDefinition objects for matching.
+
+    Also generates event definitions from nighttime_car_zones for unified handling.
     """
     event_defs = []
 
@@ -319,6 +294,30 @@ def _parse_event_definitions(config: dict) -> list[EventDefinition]:
         actions = event_config.get("actions", {})  # Already resolved
 
         event_defs.append(EventDefinition(name, match, actions))
+
+    # Generate event definitions from nighttime_car_zones
+    for ncz in config.get("nighttime_car_zones", []):
+        zone_name = ncz.get("name", "unknown")
+        pdf_report_id = ncz.get("pdf_report")
+        digest_id = ncz.get("email_digest")
+
+        # Build actions from zone's output wiring
+        actions = {
+            "json_log": True,
+            "frame_capture": {"enabled": bool(pdf_report_id or digest_id), "annotate": True},
+        }
+        if pdf_report_id:
+            actions["pdf_report"] = pdf_report_id
+        if ncz.get("email_immediate"):
+            actions["email_immediate"] = {"enabled": True}
+        if digest_id:
+            actions["email_digest"] = digest_id
+
+        event_defs.append(EventDefinition(
+            name=f"nighttime_car_{zone_name}",
+            match={"event_type": "NIGHTTIME_CAR", "zone": zone_name},
+            actions=actions,
+        ))
 
     return event_defs
 
@@ -332,7 +331,14 @@ def _enrich_event(
     # Add ISO timestamp
     enriched["timestamp"] = datetime.now(timezone.utc).isoformat()
 
-    # Add object class name
+    # Handle NIGHTTIME_CAR events (from nighttime car zone detection)
+    if raw_event.get("event_type") == "NIGHTTIME_CAR":
+        enriched["object_class_name"] = "nighttime_car"
+        # Use zone_name as zone_description for matching
+        enriched["zone_description"] = raw_event.get("zone_name", "")
+        return enriched
+
+    # Add object class name (for YOLO detections)
     obj_class = raw_event.get("object_class")
     enriched["object_class_name"] = model_names.get(obj_class, f"class_{obj_class}")
 
@@ -417,25 +423,3 @@ def _build_line_lookup(config: dict) -> dict[str, dict]:
     return lookup
 
 
-def _build_nighttime_car_zone_lookup(config: dict) -> dict[str, dict]:
-    """Build lookup from zone name to nighttime car zone config."""
-    lookup = {}
-    for zone in config.get("nighttime_car_zones", []):
-        name = zone.get("name")
-        if name:
-            lookup[name] = zone
-    return lookup
-
-
-def _enrich_nighttime_car_event(raw_event: dict) -> dict:
-    """Enrich NIGHTTIME_CAR event with timestamp and metadata."""
-    enriched = raw_event.copy()
-    enriched["timestamp"] = datetime.now(timezone.utc).isoformat()
-    enriched["object_class_name"] = "nighttime_car"  # Virtual class name
-    # Add zone_description for consistency with other events (used by frame_capture cooldowns)
-    enriched["zone_description"] = raw_event.get("zone_name", "")
-    # Add event_definition for frame_capture budgeting
-    enriched["event_definition"] = (
-        f"nighttime_car_{raw_event.get('zone_name', 'unknown')}"
-    )
-    return enriched
