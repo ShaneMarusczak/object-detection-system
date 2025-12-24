@@ -18,9 +18,11 @@ from ..models import EventDefinition
 
 # Consumers
 from .json_writer import json_writer_consumer
-from .email_notifier import email_notifier_consumer
-from .email_digest import email_digest_consumer
 from .frame_capture import frame_capture_consumer
+
+# Email handlers (fire-and-forget immediate, shutdown-time digest)
+from .email_immediate import ImmediateEmailHandler
+from .email_digest import generate_email_digest
 
 # Services
 from .email_service import EmailService
@@ -39,9 +41,10 @@ __all__ = [
     "DigestPeriodState",
     # Consumers
     "json_writer_consumer",
-    "email_notifier_consumer",
-    "email_digest_consumer",
     "frame_capture_consumer",
+    # Email handlers
+    "ImmediateEmailHandler",
+    "generate_email_digest",
     # Services
     "EmailService",
     "FrameService",

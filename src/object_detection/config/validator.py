@@ -462,7 +462,7 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
             consumers.add("json_writer")
 
         if actions.get("email_immediate"):
-            consumers.add("email_notifier")
+            consumers.add("email_immediate")
 
         digest_id = actions.get("email_digest")
         if digest_id:

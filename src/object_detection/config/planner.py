@@ -158,15 +158,15 @@ def build_plan(config: dict) -> ConfigPlan:
                     actions["frame_capture"]["annotate"] = True
                     implied.append(f"annotate (from {pdf_report_id})")
 
-        # Determine consumers
+        # Determine consumers/handlers
         if actions.get("json_log"):
             consumers.append("json_writer")
         if actions.get("email_immediate", {}).get("enabled"):
-            consumers.append("email_notifier")
+            consumers.append("email_immediate")
         if digest_id:
-            consumers.append(f"email_digest ({digest_id})")
+            consumers.append(f"email_digest:{digest_id}")
         if pdf_report_id:
-            consumers.append(f"pdf_report ({pdf_report_id})")
+            consumers.append(f"pdf_report:{pdf_report_id}")
         if actions.get("frame_capture", {}).get(
             "enabled", actions.get("frame_capture") is True
         ):
@@ -420,7 +420,7 @@ def simulate_dry_run(config: dict, sample_events: list[dict]) -> None:
                 if "json_writer" in consumer:
                     actions_taken["json_log"] += 1
                     print(f"         {Colors.GRAY}-> Write to JSON log{Colors.RESET}")
-                elif "email_notifier" in consumer:
+                elif "email_immediate" in consumer:
                     actions_taken["email_immediate"] += 1
                     print(
                         f"         {Colors.GRAY}-> Send immediate email{Colors.RESET}"
@@ -430,7 +430,7 @@ def simulate_dry_run(config: dict, sample_events: list[dict]) -> None:
                     digest_id = matched_event.digest_id
                     digest_counts[digest_id] = digest_counts.get(digest_id, 0) + 1
                     print(
-                        f"         {Colors.GRAY}-> Queue for digest: {digest_id}{Colors.RESET}"
+                        f"         {Colors.GRAY}-> Include in digest: {digest_id}{Colors.RESET}"
                     )
                 elif "pdf_report" in consumer:
                     actions_taken["pdf_report"] += 1
@@ -439,7 +439,7 @@ def simulate_dry_run(config: dict, sample_events: list[dict]) -> None:
                         pdf_report_counts.get(report_id, 0) + 1
                     )
                     print(
-                        f"         {Colors.GRAY}-> Queue for PDF report: {report_id}{Colors.RESET}"
+                        f"         {Colors.GRAY}-> Include in PDF: {report_id}{Colors.RESET}"
                     )
                 elif "frame_capture" in consumer:
                     actions_taken["frame_capture"] += 1

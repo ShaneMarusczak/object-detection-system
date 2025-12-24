@@ -1,13 +1,13 @@
 """
-Email Digest Consumer
-Sends periodic summary emails by reading from JSON log files.
+Email Digest
+
+Sends summary emails by reading from JSON log files at session end.
 Supports multiple digest configurations with independent filters and photos.
 """
 
 import json
 import logging
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from collections import Counter
 
@@ -17,143 +17,75 @@ from .frame_service import FrameService
 logger = logging.getLogger(__name__)
 
 
-def email_digest_consumer(json_dir: str, config: dict) -> None:
+def generate_email_digest(json_dir: str, config: dict, start_time: datetime) -> None:
     """
-    Send periodic digest emails by reading JSON log files.
-    Runs independently, reading from persistent JSON logs.
-    Supports multiple digest configurations with independent filters and photos.
+    Generate and send email digest(s) at session shutdown.
+    Reads from JSON log files and sends summary for each configured digest.
 
     Args:
         json_dir: Directory containing JSON log files
-        config: Consumer configuration (can contain 'digests' list or single config)
+        config: Digest configuration with notification settings
+        start_time: Session start time (for time window)
     """
     # Initialize email service
     notification_config = config.get("notification_config", {})
     email_config = notification_config.get("email", {})
     email_service = EmailService(email_config)
 
+    if not email_service.enabled:
+        logger.info("Email digest: Disabled (no email config)")
+        return
+
     # Initialize frame service (for photo linking)
     frame_service_config = config.get("frame_service_config", {})
     frame_service = FrameService(frame_service_config) if frame_service_config else None
 
-    # Support multiple digest configurations
+    # Get digest configurations
     digest_configs = config.get("digests", [])
-
-    # Backward compatibility: single config mode
     if not digest_configs:
-        period_minutes = config.get("period_minutes", 60)
-        period_label = config.get("period_label", f"Last {period_minutes} Minutes")
-        digest_configs = [
-            {
-                "period_minutes": period_minutes,
-                "period_label": period_label,
-                "filters": {},
-            }
-        ]
+        logger.debug("No digest configurations found")
+        return
 
-    # Track last digest time for each config
-    digest_states = {}
-    for i, digest_config in enumerate(digest_configs):
-        digest_id = digest_config.get("id", f"digest_{i}")
-        period_minutes = digest_config.get("period_minutes", 60)
-        digest_states[digest_id] = {
-            "config": digest_config,
-            "period_minutes": period_minutes,
-            "last_digest_time": datetime.now(),
-        }
-        logger.info(
-            f"Digest '{digest_id}': {digest_config.get('period_label', digest_id)} "
-            f"({period_minutes} min)"
-        )
+    logger.info(f"Generating {len(digest_configs)} email digest(s)...")
 
-    logger.info(f"Email Digest Notifier started with {len(digest_configs)} digest(s)")
-    logger.info(f"Reading from: {json_dir}")
-    if email_service.enabled:
-        logger.info("Digest email notifications: Enabled")
-    else:
-        logger.info("Digest email notifications: Disabled")
+    end_time = datetime.now(timezone.utc)
 
-    try:
-        while True:
-            # Sleep and check periodically
-            time.sleep(60)  # Check every minute
+    for digest_config in digest_configs:
+        digest_id = digest_config.get("id", "digest")
+        event_names = digest_config.get("events", [])
+        filters = digest_config.get("filters", {})
+        wants_photos = digest_config.get("photos", False)
 
-            current_time = datetime.now()
+        logger.info(f"  Processing digest '{digest_id}'...")
 
-            # Check each digest configuration independently
-            for digest_id, state in digest_states.items():
-                digest_config = state["config"]
-                last_digest_time = state["last_digest_time"]
-                period_minutes = state["period_minutes"]
-                elapsed = (current_time - last_digest_time).total_seconds() / 60
+        # Aggregate events from JSON logs
+        stats = _aggregate_from_json(json_dir, start_time, end_time, filters, event_names)
 
-                if elapsed >= period_minutes:
-                    # Time to send this digest
-                    period_label = digest_config.get(
-                        "period_label", f"Last {period_minutes} Minutes"
-                    )
-                    filters = digest_config.get("filters", {})
+        if stats["total_events"] == 0:
+            logger.info(f"  No events for digest '{digest_id}' - skipping")
+            continue
 
-                    logger.info(f"Generating digest '{digest_id}' from JSON logs...")
+        # Get frame data for events if photos enabled
+        frame_data_map = {}
+        if wants_photos and frame_service and stats.get("events"):
+            frame_paths = frame_service.get_frame_paths_for_events(stats["events"])
+            for event_id, _path in frame_paths.items():
+                frame_bytes = frame_service.read_frame_bytes(event_id)
+                if frame_bytes:
+                    frame_data_map[event_id] = frame_bytes
+            logger.debug(f"  Loaded {len(frame_data_map)} photos for digest")
 
-                    # Calculate time window
-                    start_time = last_digest_time
-                    end_time = current_time
+        # Build email subject
+        period_label = digest_config.get("period_label", "Session Summary")
+        email_subject = f"[Digest] {period_label}"
 
-                    # Get event definition names to filter by (from digest config)
-                    event_names = digest_config.get("events", [])
+        # Send digest email
+        if email_service.send_digest_email(period_label, stats, frame_data_map, email_subject):
+            logger.info(f"  Digest '{digest_id}' sent ({stats['total_events']} events)")
+        else:
+            logger.warning(f"  Failed to send digest '{digest_id}'")
 
-                    # Read and aggregate events from JSON logs with filters
-                    stats = _aggregate_from_json(
-                        json_dir, start_time, end_time, filters, event_names
-                    )
-
-                    if stats["total_events"] > 0:
-                        # Get frame data for events (only if photos enabled and frame service available)
-                        frame_data_map = {}
-                        wants_photos = digest_config.get("photos", False)
-                        if wants_photos and frame_service and stats.get("events"):
-                            frame_paths = frame_service.get_frame_paths_for_events(
-                                stats["events"]
-                            )
-                            # Read actual bytes for each frame
-                            for event_id, _path in frame_paths.items():
-                                frame_bytes = frame_service.read_frame_bytes(event_id)
-                                if frame_bytes:
-                                    frame_data_map[event_id] = frame_bytes
-                            logger.debug(
-                                f"Retrieved {len(frame_data_map)} frame images"
-                            )
-
-                        # Use custom subject if configured, otherwise default
-                        subject_prefix = digest_config.get("subject", "")
-                        email_subject = (
-                            subject_prefix
-                            if subject_prefix
-                            else f"Object Detection Digest: {period_label}"
-                        )
-
-                        logger.info(
-                            f"Sending digest '{digest_id}' ({stats['total_events']} events)..."
-                        )
-                        if email_service.send_digest(
-                            period_label, stats, frame_data_map, email_subject
-                        ):
-                            logger.info(f"Digest '{digest_id}' sent successfully")
-                        else:
-                            logger.warning(f"Failed to send digest '{digest_id}'")
-                    else:
-                        logger.debug(f"No events for digest '{digest_id}' - skipping")
-
-                    # Update last digest time for this config
-                    state["last_digest_time"] = current_time
-
-    except KeyboardInterrupt:
-        logger.info("Email Digest Notifier stopped by user")
-    except Exception as e:
-        logger.error(f"Error in Email Digest Notifier: {e}", exc_info=True)
-    finally:
-        logger.info("Email Digest Notifier shutdown complete")
+    logger.info("Email digest generation complete")
 
 
 def _aggregate_from_json(
