@@ -150,6 +150,9 @@ class EmailService:
                 line_desc = event.get("line_description", "line")
                 direction = event.get("direction", "")
                 message = f"A {obj_name} crossed {line_desc} ({direction})"
+            elif event_type == "NIGHTTIME_CAR":
+                zone_desc = event.get("zone_description", "zone")
+                message = f"Vehicle detected at night in {zone_desc}"
             else:
                 message = f"Event detected: {obj_name}"
 
@@ -168,6 +171,12 @@ class EmailService:
             body += f"Zone: {event.get('zone_description', 'N/A')}\n"
             if "dwell_time" in event:
                 body += f"Dwell Time: {event['dwell_time']:.1f}s\n"
+        elif event_type == "NIGHTTIME_CAR":
+            body += f"Zone: {event.get('zone_description', 'N/A')}\n"
+            if "score" in event:
+                body += f"Detection Score: {event['score']:.0f}\n"
+            if event.get("had_taillight"):
+                body += "Taillight: Confirmed\n"
 
         if frame_data:
             body += "\nSee attached photo.\n"
@@ -282,7 +291,11 @@ class EmailService:
 
             # Create attachment list with context
             for event in events:
-                event_id = f"{event['timestamp']}_{event['track_id']}"
+                # Use track_id if available, otherwise use zone_description for NIGHTTIME_CAR
+                track_id = event.get("track_id")
+                if track_id is None:
+                    track_id = event.get("zone_description", "unknown")
+                event_id = f"{event['timestamp']}_{track_id}"
                 if event_id in frame_data_map:
                     frame_bytes = frame_data_map[event_id]
                     if frame_bytes:

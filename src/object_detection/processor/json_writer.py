@@ -83,8 +83,21 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
 
     # Detailed mode
     event_type = event["event_type"]
-    track_id = event["track_id"]
     obj_name = event["object_class_name"]
+
+    # Handle NIGHTTIME_CAR first (no track_id)
+    if event_type == "NIGHTTIME_CAR":
+        zone_desc = event.get("zone_description", "zone")
+        score = event.get("score", 0)
+        had_taillight = event.get("had_taillight", False)
+        logger.info(
+            f"#{event_count:4d} | {obj_name} detected in {zone_desc} "
+            f"(score={score:.0f}{', taillight matched' if had_taillight else ''})"
+        )
+        return
+
+    # All other event types have track_id
+    track_id = event["track_id"]
 
     if event_type == "LINE_CROSS":
         line_id = event["line_id"]

@@ -76,13 +76,18 @@ class FrameService:
             self._last_cleanup = datetime.now()
 
         # Generate permanent filename
-        event_id = f"{event['timestamp']}_{event['track_id']}"
+        # Use track_id if available, otherwise use zone_name for NIGHTTIME_CAR events
+        track_id = event.get("track_id")
+        if track_id is None:
+            # For NIGHTTIME_CAR events, use zone_description as identifier
+            track_id = event.get("zone_description", "unknown")
+        event_id = f"{event['timestamp']}_{track_id}"
         event_type = event["event_type"]
         obj_class = event.get("object_class_name", "unknown")
 
         # Clean filename
         safe_timestamp = event["timestamp"].replace(":", "-").replace(".", "-")
-        filename = f"{safe_timestamp}_{event_type}_{obj_class}_{event['track_id']}.jpg"
+        filename = f"{safe_timestamp}_{event_type}_{obj_class}_{track_id}.jpg"
 
         try:
             local_path = os.path.join(self.local_dir, filename)
@@ -125,7 +130,11 @@ class FrameService:
         result = {}
 
         for event in events:
-            event_id = f"{event['timestamp']}_{event['track_id']}"
+            # Use track_id if available, otherwise use zone_description for NIGHTTIME_CAR
+            track_id = event.get("track_id")
+            if track_id is None:
+                track_id = event.get("zone_description", "unknown")
+            event_id = f"{event['timestamp']}_{track_id}"
 
             if event_id not in self.metadata:
                 continue
