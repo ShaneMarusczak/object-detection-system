@@ -320,7 +320,7 @@ class NighttimeCarZone:
         # Check for priming (brightness elevated or rising without blob)
         # Prime when brightness is significantly above baseline OR actively rising
         # This catches the case where headlights lit up the zone before blob detection
-        brightness_elevated = self.brightness_state.delta > 0.02  # 2% above baseline
+        brightness_elevated = self.brightness_state.delta >= 0.02  # 2% above baseline
         if (brightness_elevated or self.brightness_state.is_rising) and not self.tracked_blobs:
             if not self._primed:
                 self._primed = True
