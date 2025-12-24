@@ -905,12 +905,26 @@ def build_plan(config: dict) -> ConfigPlan:
             ln.get("description", f"line_{i}")
             for i, ln in enumerate(config.get("lines", []))
         ],
+        "nighttime_car_zones": [
+            ncz.get("name", f"nighttime_zone_{i}")
+            for i, ncz in enumerate(config.get("nighttime_car_zones", []))
+        ],
     }
 
     # Active consumers
     all_consumers = set()
     for e in events:
         all_consumers.update(c.split(" ")[0] for c in e.consumers)
+
+    # Add consumers from nighttime_car_zones
+    for ncz in config.get("nighttime_car_zones", []):
+        all_consumers.add("json_writer")  # Always log NIGHTTIME_CAR events
+        if ncz.get("email_immediate"):
+            all_consumers.add("email_notifier")
+        if ncz.get("email_digest"):
+            all_consumers.add("email_digest")
+        if ncz.get("pdf_report"):
+            all_consumers.add("pdf_report")
 
     return ConfigPlan(
         events=events,
@@ -968,12 +982,20 @@ def print_plan(plan: ConfigPlan) -> None:
     print("=" * 60)
 
     # Geometry summary
-    if plan.geometry["zones"] or plan.geometry["lines"]:
+    if (
+        plan.geometry["zones"]
+        or plan.geometry["lines"]
+        or plan.geometry.get("nighttime_car_zones")
+    ):
         print(f"\n{Colors.CYAN}Geometry:{Colors.RESET}")
         if plan.geometry["zones"]:
             print(f"  Zones: {', '.join(plan.geometry['zones'])}")
         if plan.geometry["lines"]:
             print(f"  Lines: {', '.join(plan.geometry['lines'])}")
+        if plan.geometry.get("nighttime_car_zones"):
+            print(
+                f"  Nighttime Car Zones: {', '.join(plan.geometry['nighttime_car_zones'])}"
+            )
 
     # Track classes
     if plan.track_classes:
