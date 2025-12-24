@@ -270,6 +270,80 @@ class TestImpliedActions(unittest.TestCase):
         self.assertIn("frame_capture", implied_str)
 
 
+class TestNighttimeCarZones(unittest.TestCase):
+    """Test nighttime car zone configuration."""
+
+    def get_nighttime_config(self):
+        """Return config with nighttime car zones."""
+        return {
+            "detection": {
+                "model_file": "yolo11n.pt",
+                "track_classes": [],
+                "confidence_threshold": 0.25,
+            },
+            "output": {"json_dir": "data"},
+            "camera": {"url": "http://test/video"},
+            "runtime": {"default_duration_hours": 1.0},
+            "nighttime_car_zones": [
+                {
+                    "name": "driveway entrance",
+                    "x1_pct": 0,
+                    "y1_pct": 50,
+                    "x2_pct": 100,
+                    "y2_pct": 100,
+                    "pdf_report": "traffic_report",
+                    "email_immediate": True,
+                    "email_digest": "daily_digest",
+                }
+            ],
+            "pdf_reports": [
+                {"id": "traffic_report", "output_dir": "reports", "events": []}
+            ],
+            "digests": [{"id": "daily_digest", "period_minutes": 1440, "events": []}],
+            "notifications": {
+                "enabled": True,
+                "email": {
+                    "enabled": True,
+                    "smtp_server": "smtp.test.com",
+                    "smtp_port": 587,
+                    "username": "test",
+                    "password": "test",
+                    "from_address": "test@test.com",
+                    "to_addresses": ["test@test.com"],
+                },
+            },
+        }
+
+    def test_nighttime_car_zones_in_geometry(self):
+        """Test that nighttime car zones appear in build_plan geometry."""
+        config = self.get_nighttime_config()
+        plan = build_plan(config)
+
+        self.assertIn("nighttime_car_zones", plan.geometry)
+        self.assertIn("driveway entrance", plan.geometry["nighttime_car_zones"])
+
+    def test_nighttime_car_zones_consumers(self):
+        """Test that nighttime car zone actions resolve to consumers."""
+        config = self.get_nighttime_config()
+        prepared = prepare_runtime_config(config)
+
+        consumers = prepared.get("_resolved_consumers", [])
+        self.assertIn("json_writer", consumers)
+        self.assertIn("email_notifier", consumers)
+        self.assertIn("email_digest", consumers)
+        self.assertIn("pdf_report", consumers)
+
+    def test_nighttime_car_zones_in_plan_consumers(self):
+        """Test that build_plan includes nighttime car zone consumers."""
+        config = self.get_nighttime_config()
+        plan = build_plan(config)
+
+        self.assertIn("json_writer", plan.consumers)
+        self.assertIn("email_notifier", plan.consumers)
+        self.assertIn("email_digest", plan.consumers)
+        self.assertIn("pdf_report", plan.consumers)
+
+
 class TestLoadConfigWithEnv(unittest.TestCase):
     """Test environment variable handling."""
 

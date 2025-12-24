@@ -112,6 +112,12 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         line_lookup = _build_line_lookup(config)
         nighttime_car_zone_lookup = _build_nighttime_car_zone_lookup(config)
 
+        # Build pdf_report and digest lookups for checking photos flag
+        pdf_report_lookup = {
+            r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")
+        }
+        digest_lookup = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
+
         # Get pre-resolved consumers from config (resolved by prepare_runtime_config)
         needed_consumers = set(config.get("_resolved_consumers", []))
         if not needed_consumers:
@@ -249,15 +255,31 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                     event_count += 1
                     events_by_class["nighttime_car"] += 1
 
+                    # Check if frame_capture is needed (pdf_report or digest has photos)
+                    needs_frame_capture = False
+                    pdf_report_id = zone_config.get("pdf_report")
+                    digest_id = zone_config.get("email_digest")
+                    if pdf_report_id and pdf_report_lookup.get(pdf_report_id, {}).get(
+                        "photos"
+                    ):
+                        needs_frame_capture = True
+                    if digest_id and digest_lookup.get(digest_id, {}).get("photos"):
+                        needs_frame_capture = True
+
                     # Route based on zone's output wiring
                     actions = {
                         "json_log": True,  # Always log NIGHTTIME_CAR events
-                        "pdf_report": zone_config.get("pdf_report"),
+                        "pdf_report": pdf_report_id,
                         "email_immediate": {
                             "enabled": zone_config.get("email_immediate", False)
                         },
-                        "email_digest": zone_config.get("email_digest"),
+                        "email_digest": digest_id,
                     }
+
+                    # Add frame_capture if photos needed
+                    if needs_frame_capture:
+                        actions["frame_capture"] = {"enabled": True}
+
                     _route_event(enriched_event, actions, consumer_queues)
                 continue
 
@@ -456,8 +478,14 @@ def _build_nighttime_car_zone_lookup(config: dict) -> dict[str, dict]:
 
 
 def _enrich_nighttime_car_event(raw_event: dict) -> dict:
-    """Enrich NIGHTTIME_CAR event with timestamp."""
+    """Enrich NIGHTTIME_CAR event with timestamp and metadata."""
     enriched = raw_event.copy()
     enriched["timestamp"] = datetime.now(timezone.utc).isoformat()
     enriched["object_class_name"] = "nighttime_car"  # Virtual class name
+    # Add zone_description for consistency with other events (used by frame_capture cooldowns)
+    enriched["zone_description"] = raw_event.get("zone_name", "")
+    # Add event_definition for frame_capture budgeting
+    enriched["event_definition"] = (
+        f"nighttime_car_{raw_event.get('zone_name', 'unknown')}"
+    )
     return enriched
