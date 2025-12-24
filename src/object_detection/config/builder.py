@@ -1029,40 +1029,41 @@ class ConfigBuilder:
 
             event["match"] = match
 
-            # Actions
-            print("  Actions:")
+            # Actions - toggle style
+            print("  Actions: [p]df [f]rame [e]mail [d]igest [j]son")
+            action_input = input("  Enable (e.g. pf) [p]: ").strip().lower() or "p"
             actions = {}
 
-            # PDF report
-            pdf = input("    Add to PDF report? (Y/n): ").strip().lower()
-            if pdf != "n":
+            # Parse action letters
+            want_pdf = "p" in action_input
+            want_frame = "f" in action_input
+            want_email = "e" in action_input
+            want_digest = "d" in action_input
+            want_json = "j" in action_input
+
+            # Configure each selected action
+            if want_pdf:
                 report_id = (
-                    input("    Report ID [traffic_report]: ").strip()
+                    input("    PDF report ID [traffic_report]: ").strip()
                     or "traffic_report"
                 )
                 actions["pdf_report"] = report_id
 
-                # Frame capture for photos
-                capture = (
-                    input("    Capture photos for report? (Y/n): ").strip().lower()
-                )
-                if capture != "n":
-                    max_photos_str = input("    Max photos [100]: ").strip() or "100"
-                    # Duration comes from runtime settings, applied later
-                    actions["frame_capture"] = {"max_photos": int(max_photos_str)}
+            if want_frame:
+                max_photos_str = input("    Max photos [100]: ").strip() or "100"
+                actions["frame_capture"] = {"max_photos": int(max_photos_str)}
 
-            # Immediate email
-            email_imm = input("    Send immediate email? (y/N): ").strip().lower()
-            if email_imm == "y":
+            if want_email:
                 actions["email_immediate"] = True
 
-            # Email digest
-            email_dig = input("    Add to email digest? (y/N): ").strip().lower()
-            if email_dig == "y":
+            if want_digest:
                 digest_id = (
                     input("    Digest ID [daily_digest]: ").strip() or "daily_digest"
                 )
                 actions["email_digest"] = digest_id
+
+            if want_json:
+                actions["json_log"] = True
 
             event["actions"] = actions
             events.append(event)
