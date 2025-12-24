@@ -17,9 +17,6 @@ from .planner import (
     ConfigValidationError,
     # Config loading
     load_config_with_env,
-    # Validation
-    validate_config_full,
-    ValidationResult,
     # Planning
     build_plan,
     ConfigPlan,
@@ -31,6 +28,11 @@ from .planner import (
     simulate_dry_run,
     generate_sample_events,
     load_sample_events,
+)
+
+from .validator import (
+    validate_config_full,
+    ValidationResult,
 )
 
 from .resolver import (
