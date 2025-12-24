@@ -53,6 +53,7 @@ class ConfigBuilder:
         self.http_server: subprocess.Popen | None = None
         self.frame_width: int = 0
         self.frame_height: int = 0
+        self.config_path: str | None = None  # Track source file for edits
 
     def run(self) -> str | None:
         """Run the config builder wizard. Returns config filename or None."""
@@ -82,6 +83,384 @@ class ConfigBuilder:
             return None
         finally:
             self._cleanup()
+
+    def run_edit(self, config_path: str) -> str | None:
+        """Run the config editor. Returns config filename or None."""
+        try:
+            # Load existing config
+            if not self._load_config(config_path):
+                return None
+
+            self._print_edit_header(config_path)
+
+            # Setup camera from loaded config
+            if not self._setup_camera_from_config():
+                return None
+
+            self._start_preview_server()
+
+            # Show edit menu loop
+            return self._edit_menu_loop()
+
+        except KeyboardInterrupt:
+            print(f"\n{Colors.YELLOW}Cancelled{Colors.RESET}")
+            return None
+        finally:
+            self._cleanup()
+
+    def _load_config(self, config_path: str) -> bool:
+        """Load an existing config file."""
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                self.config = yaml.safe_load(f) or {}
+            self.config_path = config_path
+            return True
+        except FileNotFoundError:
+            print(f"{Colors.RED}Config not found: {config_path}{Colors.RESET}")
+            return False
+        except yaml.YAMLError as e:
+            print(f"{Colors.RED}Invalid YAML: {e}{Colors.RESET}")
+            return False
+
+    def _setup_camera_from_config(self) -> bool:
+        """Setup camera from loaded config."""
+        camera_config = self.config.get("camera", {})
+        url = camera_config.get("url", "")
+
+        if not url:
+            print(f"{Colors.RED}No camera URL in config{Colors.RESET}")
+            return False
+
+        print(
+            f"{Colors.GRAY}Connecting to camera...{Colors.RESET}", end=" ", flush=True
+        )
+
+        self.cap = cv2.VideoCapture(url)
+        if not self.cap.isOpened():
+            print(f"{Colors.RED}FAILED{Colors.RESET}")
+            print(f"Could not connect to camera at {url}")
+            return False
+
+        ret, frame = self.cap.read()
+        if not ret:
+            print(f"{Colors.RED}FAILED{Colors.RESET}")
+            print("Could not read frame from camera")
+            return False
+
+        self.frame_height, self.frame_width = frame.shape[:2]
+        self.camera_url = url
+        print(
+            f"{Colors.GREEN}OK{Colors.RESET} ({self.frame_width}x{self.frame_height})"
+        )
+
+        # Capture initial preview
+        self._capture_preview(frame)
+        return True
+
+    def _print_edit_header(self, config_path: str):
+        """Print edit mode header."""
+        print(f"\n{Colors.CYAN}{Colors.BOLD}=== Config Editor ==={Colors.RESET}")
+        print(f"Editing: {Colors.GREEN}{config_path}{Colors.RESET}")
+        print()
+
+    def _get_section_summary(self, section: str) -> str:
+        """Get a short summary of a config section for the menu."""
+        if section == "camera":
+            url = self.config.get("camera", {}).get("url", "not set")
+            # Truncate long URLs
+            if len(url) > 40:
+                url = url[:37] + "..."
+            return url
+
+        elif section == "detection":
+            det = self.config.get("detection", {})
+            model = det.get("model_file", "not set")
+            conf = det.get("confidence_threshold", 0.3)
+            return f"{model}, conf={conf}"
+
+        elif section == "lines":
+            lines = self.config.get("lines", [])
+            if not lines:
+                return "none"
+            descs = [ln.get("description", "?")[:12] for ln in lines[:3]]
+            summary = ", ".join(descs)
+            if len(lines) > 3:
+                summary += f" +{len(lines)-3} more"
+            return f"{len(lines)}: {summary}"
+
+        elif section == "zones":
+            zones = self.config.get("zones", [])
+            if not zones:
+                return "none"
+            descs = [z.get("description", "?")[:12] for z in zones[:3]]
+            summary = ", ".join(descs)
+            if len(zones) > 3:
+                summary += f" +{len(zones)-3} more"
+            return f"{len(zones)}: {summary}"
+
+        elif section == "events":
+            events = self.config.get("events", [])
+            if not events:
+                return "none"
+            return f"{len(events)} defined"
+
+        elif section == "pdf_reports":
+            reports = self.config.get("pdf_reports", [])
+            if not reports:
+                return "disabled"
+            ids = [r.get("id", "?") for r in reports]
+            return ", ".join(ids)
+
+        elif section == "digests":
+            digests = self.config.get("digests", [])
+            if not digests:
+                return "disabled"
+            ids = [d.get("id", "?") for d in digests]
+            return ", ".join(ids)
+
+        elif section == "email":
+            email = self.config.get("email", {})
+            if not email:
+                return "not configured"
+            to_addrs = email.get("to_addresses", [])
+            if to_addrs:
+                return (
+                    to_addrs[0]
+                    if len(to_addrs) == 1
+                    else f"{to_addrs[0]} +{len(to_addrs)-1}"
+                )
+            return "configured"
+
+        elif section == "output":
+            output = self.config.get("output", {})
+            json_dir = output.get("json_dir", "data")
+            return json_dir
+
+        return "?"
+
+    def _edit_menu_loop(self) -> str | None:
+        """Show edit menu and handle section selection."""
+        sections = [
+            ("camera", "Camera"),
+            ("detection", "Detection"),
+            ("lines", "Lines"),
+            ("zones", "Zones"),
+            ("events", "Events"),
+            ("pdf_reports", "PDF Reports"),
+            ("digests", "Digests"),
+            ("email", "Email"),
+            ("output", "Output"),
+        ]
+
+        while True:
+            print(f"\n{Colors.BOLD}Which section to edit?{Colors.RESET}")
+            for i, (key, label) in enumerate(sections, 1):
+                summary = self._get_section_summary(key)
+                print(f"  {i}. {label} ({summary})")
+
+            print(f"  {Colors.GREEN}r. Save and run{Colors.RESET}")
+            print(f"  {Colors.CYAN}s. Save and exit{Colors.RESET}")
+            print(f"  {Colors.YELLOW}q. Quit without saving{Colors.RESET}")
+
+            choice = input("Choice: ").strip().lower()
+
+            if choice == "q":
+                confirm = input("Discard changes? (y/N): ").strip().lower()
+                if confirm == "y":
+                    print(f"{Colors.YELLOW}Changes discarded{Colors.RESET}")
+                    return None
+                continue
+
+            if choice == "s":
+                return self._save_edited_config(run_after=False)
+
+            if choice == "r":
+                return self._save_edited_config(run_after=True)
+
+            # Section edit
+            try:
+                section_idx = int(choice) - 1
+                if 0 <= section_idx < len(sections):
+                    section_key = sections[section_idx][0]
+                    self._edit_section(section_key)
+            except ValueError:
+                print(f"{Colors.RED}Invalid choice{Colors.RESET}")
+
+    def _edit_section(self, section: str):
+        """Edit a specific section."""
+        print(
+            f"\n{Colors.BOLD}--- Edit {section.replace('_', ' ').title()} ---{Colors.RESET}"
+        )
+
+        if section == "camera":
+            self._setup_camera()
+        elif section == "detection":
+            self._setup_detection()
+        elif section == "lines":
+            self._edit_lines()
+        elif section == "zones":
+            self._edit_zones()
+        elif section == "events":
+            self._edit_events()
+        elif section == "pdf_reports":
+            self._setup_pdf_reports()
+        elif section == "digests":
+            self._setup_digests()
+        elif section == "email":
+            self._setup_email()
+        elif section == "output":
+            self._setup_output()
+
+    def _edit_lines(self):
+        """Edit lines with options to keep, modify, or add."""
+        lines = self.config.get("lines", [])
+
+        if lines:
+            print(f"Current lines ({len(lines)}):")
+            for i, line in enumerate(lines, 1):
+                print(
+                    f"  {i}. {line.get('description')} ({line.get('type')}, {line.get('position_pct')}%)"
+                )
+
+            print("\nOptions:")
+            print("  1. Keep all")
+            print("  2. Delete some")
+            print("  3. Add more")
+            print("  4. Start fresh")
+            choice = input("Choice [1]: ").strip() or "1"
+
+            if choice == "1":
+                return
+            elif choice == "2":
+                to_delete = input("Line numbers to delete (comma-separated): ").strip()
+                indices = [
+                    int(x.strip()) - 1 for x in to_delete.split(",") if x.strip()
+                ]
+                self.config["lines"] = [
+                    ln for i, ln in enumerate(lines) if i not in indices
+                ]
+                print(f"{Colors.GREEN}Deleted {len(indices)} line(s){Colors.RESET}")
+                return
+            elif choice == "3":
+                # Fall through to add mode
+                pass
+            elif choice == "4":
+                self.config["lines"] = []
+                lines = []
+
+        # Add new lines (reuse existing method logic)
+        self._setup_lines()
+
+    def _edit_zones(self):
+        """Edit zones with options to keep, modify, or add."""
+        zones = self.config.get("zones", [])
+
+        if zones:
+            print(f"Current zones ({len(zones)}):")
+            for i, zone in enumerate(zones, 1):
+                print(
+                    f"  {i}. {zone.get('description')} ({zone.get('x1_pct')}-{zone.get('x2_pct')}%, {zone.get('y1_pct')}-{zone.get('y2_pct')}%)"
+                )
+
+            print("\nOptions:")
+            print("  1. Keep all")
+            print("  2. Delete some")
+            print("  3. Add more")
+            print("  4. Start fresh")
+            choice = input("Choice [1]: ").strip() or "1"
+
+            if choice == "1":
+                return
+            elif choice == "2":
+                to_delete = input("Zone numbers to delete (comma-separated): ").strip()
+                indices = [
+                    int(x.strip()) - 1 for x in to_delete.split(",") if x.strip()
+                ]
+                self.config["zones"] = [
+                    z for i, z in enumerate(zones) if i not in indices
+                ]
+                print(f"{Colors.GREEN}Deleted {len(indices)} zone(s){Colors.RESET}")
+                return
+            elif choice == "3":
+                # Fall through to add mode
+                pass
+            elif choice == "4":
+                self.config["zones"] = []
+                zones = []
+
+        # Add new zones
+        self._setup_zones()
+
+    def _edit_events(self):
+        """Edit events with options to keep, modify, or add."""
+        events = self.config.get("events", [])
+
+        if events:
+            print(f"Current events ({len(events)}):")
+            for i, event in enumerate(events, 1):
+                match = event.get("match", {})
+                event_type = match.get("event_type", "?")
+                name = event.get("name", f"event_{i}")
+                print(f"  {i}. {name} ({event_type})")
+
+            print("\nOptions:")
+            print("  1. Keep all")
+            print("  2. Delete some")
+            print("  3. Add more")
+            print("  4. Start fresh")
+            choice = input("Choice [1]: ").strip() or "1"
+
+            if choice == "1":
+                return
+            elif choice == "2":
+                to_delete = input("Event numbers to delete (comma-separated): ").strip()
+                indices = [
+                    int(x.strip()) - 1 for x in to_delete.split(",") if x.strip()
+                ]
+                self.config["events"] = [
+                    e for i, e in enumerate(events) if i not in indices
+                ]
+                print(f"{Colors.GREEN}Deleted {len(indices)} event(s){Colors.RESET}")
+                return
+            elif choice == "3":
+                # Fall through to add mode
+                pass
+            elif choice == "4":
+                self.config["events"] = []
+
+        # Add new events
+        self._setup_events()
+
+    def _save_edited_config(self, run_after: bool = False) -> str | None:
+        """Save edited config, optionally run after."""
+        print(f"\n{Colors.BOLD}--- Save Config ---{Colors.RESET}")
+
+        # Default to original path
+        default_path = self.config_path or "configs/config_edited.yaml"
+        filepath = input(f"Save to [{default_path}]: ").strip() or default_path
+
+        # Ensure directory exists
+        dir_path = os.path.dirname(filepath)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+
+        # Save
+        with open(filepath, "w", encoding="utf-8") as f:
+            yaml.dump(self.config, f, default_flow_style=False, sort_keys=False)
+
+        print(f"{Colors.GREEN}Saved:{Colors.RESET} {filepath}")
+
+        # Set as default
+        set_default = input("Set as default? (Y/n): ").strip().lower()
+        if set_default != "n":
+            self._set_as_default(filepath)
+
+        if run_after:
+            self._cleanup()
+            print(f"\n{Colors.CYAN}Starting detection...{Colors.RESET}\n")
+            os.execvp("./run.sh", ["./run.sh", "-sy"])
+
+        return filepath
 
     def _print_header(self):
         """Print welcome header."""
@@ -936,6 +1315,12 @@ def run_builder() -> str | None:
     """Run the config builder and return the config path."""
     builder = ConfigBuilder()
     return builder.run()
+
+
+def run_editor(config_path: str) -> str | None:
+    """Run the config editor and return the config path."""
+    builder = ConfigBuilder()
+    return builder.run_edit(config_path)
 
 
 if __name__ == "__main__":

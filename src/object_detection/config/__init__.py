@@ -47,6 +47,8 @@ from .schemas import (
     PDFReportConfig,
 )
 
+from .builder import run_builder, run_editor
+
 __all__ = [
     # Exception
     "ConfigValidationError",
@@ -77,4 +79,7 @@ __all__ = [
     "simulate_dry_run",
     "generate_sample_events",
     "load_sample_events",
+    # Builder
+    "run_builder",
+    "run_editor",
 ]
