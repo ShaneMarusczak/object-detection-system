@@ -15,6 +15,15 @@ import cv2
 import yaml
 
 from ..processor.coco_classes import COCO_CLASSES
+from .planner import (
+    load_config_with_env,
+    build_plan,
+    print_plan,
+    print_validation_result,
+    simulate_dry_run,
+    generate_sample_events,
+)
+from .validator import validate_config_full
 
 # Common object classes for quick selection
 COMMON_CLASSES = [
@@ -478,15 +487,15 @@ class ConfigBuilder:
 
         print(f"{Colors.GREEN}Saved:{Colors.RESET} {filepath}")
 
-        # Set as default
-        set_default = input("Set as default? (Y/n): ").strip().lower()
-        if set_default != "n":
-            self._set_as_default(filepath)
-
         if run_after:
+            # Update config.yaml to use this config
+            self._update_config_pointer(filepath)
+
+            # Run pre-flight stages (validate, plan, dry-run)
+            self._run_preflight_stages(filepath)
+
             self._cleanup()
             print(f"\n{Colors.CYAN}Starting detection...{Colors.RESET}\n")
-            # Run with the saved config directly (not the default)
             os.execvp(
                 "python", ["python", "-m", "object_detection", "-c", filepath]
             )
@@ -1165,19 +1174,43 @@ class ConfigBuilder:
             if frame_capture:
                 frame_capture["expected_duration_seconds"] = duration_seconds
 
-    def _set_as_default(self, config_path: str):
-        """Set config as default by updating config.yaml's use: pointer."""
-        pointer_content = f"""# Active configuration pointer
-# Change this to switch configs, or run: python -m object_detection --build-config
+    def _update_config_pointer(self, config_path: str):
+        """Update config.yaml to point to the specified config."""
+        pointer_content = f"""# Config pointer - specifies which config to use
 use: {config_path}
 """
         with open("config.yaml", "w", encoding="utf-8") as f:
             f.write(pointer_content)
 
-        print(
-            f"{Colors.GREEN}Set as default:{Colors.RESET} config.yaml now points to {config_path}"
-        )
-        print(f"{Colors.GRAY}Run with: ./run.sh -y{Colors.RESET}")
+        print(f"{Colors.GRAY}config.yaml -> {config_path}{Colors.RESET}")
+
+    def _run_preflight_stages(self, config_path: str):
+        """Run validate, plan, and dry-run stages before detection."""
+        # Load config from file
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        config = load_config_with_env(config)
+
+        # Stage 1: Validate
+        print(f"\n{Colors.GREEN}=== Validating ==={Colors.RESET}")
+        result = validate_config_full(config)
+        print_validation_result(result)
+        if not result.valid:
+            print(f"\n{Colors.RED}Validation failed. Fix errors before running.{Colors.RESET}")
+            sys.exit(1)
+        input("Press Enter to continue...")
+
+        # Stage 2: Plan
+        print(f"\n{Colors.GREEN}=== Planning ==={Colors.RESET}")
+        plan = build_plan(config)
+        print_plan(plan)
+        input("Press Enter to continue...")
+
+        # Stage 3: Dry Run
+        print(f"\n{Colors.GREEN}=== Dry Run ==={Colors.RESET}")
+        sample_events = generate_sample_events(config)
+        print(f"Generated {len(sample_events)} sample events from config")
+        simulate_dry_run(config, sample_events)
 
     def _capture_preview(self, frame=None):
         """Capture a raw preview frame."""

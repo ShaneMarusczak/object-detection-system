@@ -53,7 +53,7 @@ fi
 # Entry point choice (skip if -s or -y flag)
 if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
     echo "What would you like to do?"
-    echo "  1. Run with existing config"
+    echo "  1. Run"
     echo "  2. Pick a config"
     echo "  3. Build new config"
     echo "  4. Edit a config"
