@@ -335,6 +335,7 @@ class NighttimeCarZone:
                     "zone_name": self.name,
                     "score": score,
                     "blob_center": blob.center,
+                    "bbox": blob.bbox,  # For frame annotation
                     "frame_id": frame_id,
                     "timestamp_relative": relative_time,
                     "was_primed": self._primed,
