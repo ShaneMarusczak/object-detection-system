@@ -11,11 +11,13 @@ Supports Terraform-like workflow:
 import argparse
 import json
 import logging
+import signal
 import sys
 import time
 import yaml
 from multiprocessing import Process, Queue, Event
 from pathlib import Path
+from threading import Event as ThreadEvent
 
 from ultralytics import YOLO
 
@@ -35,6 +37,28 @@ from .core import run_detection
 from .processor import dispatch_events
 
 logger = logging.getLogger(__name__)
+
+# Module-level shutdown signal for SIGTERM/SIGINT handling
+_shutdown_signal = ThreadEvent()
+
+
+def _handle_shutdown_signal(signum, frame):
+    """
+    Handle SIGTERM/SIGINT for graceful shutdown.
+
+    This allows the app to shutdown cleanly when running under
+    systemd, Docker, or other process managers that send SIGTERM.
+    """
+    signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+    # Note: print is safer than logger in signal handlers
+    print(f"\nReceived {signal_name}, initiating graceful shutdown...")
+    _shutdown_signal.set()
+
+
+def _setup_signal_handlers():
+    """Register signal handlers for graceful shutdown."""
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
 
 
 def find_config_file(config_path: str) -> Path:
@@ -344,10 +368,14 @@ def monitor_processes(
         start_time: Start timestamp
 
     Returns:
-        Reason for stopping ('duration', 'detector_died', 'analyzer_died', 'interrupted')
+        Reason for stopping ('duration', 'detector_died', 'analyzer_died', 'interrupted', 'signal')
     """
     try:
         while True:
+            # Check for signal-triggered shutdown (SIGTERM/SIGINT)
+            if _shutdown_signal.is_set():
+                return "signal"
+
             elapsed = time.time() - start_time
 
             # Check if duration reached
@@ -412,7 +440,9 @@ def print_final_status(
     elif reason == "analyzer_died":
         print("Analyzer process ended unexpectedly")
     elif reason == "interrupted":
-        print("Interrupted by user")
+        print("Interrupted by user (Ctrl+C)")
+    elif reason == "signal":
+        print("Shutdown signal received (SIGTERM/SIGINT)")
 
     print("=" * 70)
     print("SYSTEM SHUTDOWN COMPLETE")
@@ -539,6 +569,9 @@ def main() -> None:
     model_names = get_model_class_names(config["detection"]["model_file"])
     # Add synthetic class for nighttime car detection
     model_names[1000] = "nighttime_car"
+
+    # Setup signal handlers for graceful shutdown (SIGTERM from systemd/Docker)
+    _setup_signal_handlers()
 
     # Create shared queue and shutdown event
     queue_size = config["runtime"].get("queue_size", DEFAULT_QUEUE_SIZE)
