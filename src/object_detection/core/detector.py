@@ -234,7 +234,7 @@ def _detection_loop(
             for ncz in nighttime_car_zones:
                 event_count += ncz.process_frame(
                     frame,
-                    data_queue,
+                    data_queue.put,  # Pass queue.put as callback
                     relative_time,
                     temp_frame_dir if temp_frame_enabled else None,
                     temp_frame_max_age,

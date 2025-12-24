@@ -15,20 +15,16 @@ Detection parameters are specified on the event's match config.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import Any
 
 import cv2
 import numpy as np
 
-if TYPE_CHECKING:
-    from multiprocessing import Queue
+from ..utils.event_schema import NIGHTTIME_CAR_CLASS_ID
 
 logger = logging.getLogger(__name__)
-
-# Synthetic COCO class ID for nighttime car detection
-# Regular COCO classes are 0-79, so 1000 is safe
-NIGHTTIME_CAR_CLASS_ID = 1000
 
 
 @dataclass
@@ -320,7 +316,7 @@ class NighttimeCarZone:
     def process_frame(
         self,
         frame: np.ndarray,
-        data_queue: "Queue",
+        on_event: Callable[[dict[str, Any]], None],
         relative_time: float,
         temp_frame_dir: str | None = None,
         temp_frame_max_age: int = 30,
@@ -330,7 +326,7 @@ class NighttimeCarZone:
 
         Args:
             frame: BGR frame from camera
-            data_queue: Queue for sending events
+            on_event: Callback to invoke when event is detected
             relative_time: Time since detection started
             temp_frame_dir: Directory for temporary frame storage
             temp_frame_max_age: Max age of temp frames in seconds
@@ -450,7 +446,7 @@ class NighttimeCarZone:
                     ),
                 }
 
-                data_queue.put(event)
+                on_event(event)
                 logger.info(
                     f"NIGHTTIME_CAR in '{self.name}' (score={score:.0f}, "
                     f"primed={self._primed}, taillight={event['had_taillight']})"

@@ -57,22 +57,6 @@ class TrackedObject:
         return self.previous_pos is None
 
 
-class _PublisherQueue:
-    """
-    Queue-like wrapper around publisher callback.
-
-    NighttimeCarZone expects a Queue.put() interface, but edge detector
-    uses a callback. This adapter bridges the two.
-    """
-
-    def __init__(self, publisher: Callable[[dict], None]):
-        self.publisher = publisher
-
-    def put(self, event: dict) -> None:
-        """Forward event to publisher callback."""
-        self.publisher(event)
-
-
 class EdgeDetector:
     """
     Minimal detector for Jetson edge deployment.
@@ -103,9 +87,6 @@ class EdgeDetector:
         # Nighttime car zones (initialized after first frame when dimensions known)
         self.nighttime_car_zones: list[NighttimeCarZone] = []
         self._nighttime_zones_initialized = False
-
-        # Publisher queue wrapper for NighttimeCarZone compatibility
-        self._publisher_queue = _PublisherQueue(publisher)
 
     def initialize(self) -> None:
         """Initialize model and camera."""
@@ -232,7 +213,7 @@ class EdgeDetector:
         for ncz in self.nighttime_car_zones:
             events = ncz.process_frame(
                 frame,
-                self._publisher_queue,
+                self.publisher,  # Pass publisher callback directly
                 relative_time,
             )
             self.event_count += events
