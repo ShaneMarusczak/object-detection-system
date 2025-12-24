@@ -54,6 +54,16 @@ class Colors:
 class ConfigBuilder:
     """Interactive config builder with live preview."""
 
+    # Wizard steps for progress indicator
+    WIZARD_STEPS = [
+        ("camera", "Camera"),
+        ("detection", "Detection"),
+        ("lines", "Lines"),
+        ("zones", "Zones"),
+        ("events", "Events"),
+        ("output", "Output"),
+    ]
+
     def __init__(self):
         self.config: dict = {}
         self.camera_url: str = ""
@@ -63,25 +73,46 @@ class ConfigBuilder:
         self.frame_width: int = 0
         self.frame_height: int = 0
         self.config_path: str | None = None  # Track source file for edits
+        self.current_step: int = 0  # For progress indicator
 
     def run(self) -> str | None:
         """Run the config builder wizard. Returns config filename or None."""
         try:
             self._print_header()
 
-            # Setup camera first, then start preview server
+            # Step 0: Camera
+            self.current_step = 0
+            self._print_progress()
             if not self._setup_camera():
                 return None
-
             self._start_preview_server()
 
+            # Step 1: Detection
+            self.current_step = 1
+            self._print_progress()
             self._setup_detection()
+
+            # Step 2: Lines
+            self.current_step = 2
+            self._print_progress()
             self._setup_lines()
+
+            # Step 3: Zones
+            self.current_step = 3
+            self._print_progress()
             self._setup_zones()
+
+            # Step 4: Events
+            self.current_step = 4
+            self._print_progress()
             self._setup_events()
             self._setup_pdf_reports()
             self._setup_digests()
             self._setup_email()
+
+            # Step 5: Output
+            self.current_step = 5
+            self._print_progress()
             self._setup_output()
 
             # Final review - show edit menu to allow tweaks before saving
@@ -252,6 +283,51 @@ class ConfigBuilder:
 
         return "?"
 
+    def _get_config_warnings(self) -> list[str]:
+        """Check config for common issues and return warnings."""
+        warnings = []
+        events = self.config.get("events", [])
+        lines = self.config.get("lines", [])
+        zones = self.config.get("zones", [])
+
+        # Check for events with no actions
+        for event in events:
+            if not event.get("actions"):
+                warnings.append(f"Event '{event.get('name')}' has no actions")
+
+        # Check for events referencing non-existent lines/zones
+        line_names = {ln.get("description") for ln in lines}
+        zone_names = {z.get("description") for z in zones}
+
+        for event in events:
+            match = event.get("match", {})
+            ref_line = match.get("line")
+            ref_zone = match.get("zone")
+
+            if ref_line and ref_line not in line_names:
+                warnings.append(
+                    f"Event '{event.get('name')}' references missing line '{ref_line}'"
+                )
+            if ref_zone and ref_zone not in zone_names:
+                warnings.append(
+                    f"Event '{event.get('name')}' references missing zone '{ref_zone}'"
+                )
+
+        # Check for email actions without email config
+        has_email_action = any(
+            e.get("actions", {}).get("email_immediate")
+            or e.get("actions", {}).get("email_digest")
+            for e in events
+        )
+        if has_email_action and not self.config.get("email"):
+            warnings.append("Email actions configured but email settings missing")
+
+        # Check for no events
+        if not events and (lines or zones):
+            warnings.append("Lines/zones defined but no events to use them")
+
+        return warnings
+
     def _edit_menu_loop(self) -> str | None:
         """Show edit menu and handle section selection."""
         sections = [
@@ -267,6 +343,13 @@ class ConfigBuilder:
         ]
 
         while True:
+            # Show warnings if any
+            warnings = self._get_config_warnings()
+            if warnings:
+                print(f"\n{Colors.YELLOW}Warnings:{Colors.RESET}")
+                for w in warnings:
+                    print(f"  {Colors.YELLOW}! {w}{Colors.RESET}")
+
             print(f"\n{Colors.BOLD}Which section to edit?{Colors.RESET}")
             for i, (key, label) in enumerate(sections, 1):
                 summary = self._get_section_summary(key)
@@ -510,6 +593,19 @@ class ConfigBuilder:
         print(
             f"{Colors.GRAY}Interactive wizard for creating detection configs{Colors.RESET}"
         )
+        print()
+
+    def _print_progress(self):
+        """Print wizard progress indicator."""
+        parts = []
+        for i, (key, label) in enumerate(self.WIZARD_STEPS):
+            if i < self.current_step:
+                parts.append(f"{Colors.GREEN}[✓] {label}{Colors.RESET}")
+            elif i == self.current_step:
+                parts.append(f"{Colors.CYAN}[•] {label}{Colors.RESET}")
+            else:
+                parts.append(f"{Colors.GRAY}[ ] {label}{Colors.RESET}")
+        print("  ".join(parts))
         print()
 
     def _get_local_ip(self) -> str:
@@ -972,6 +1068,12 @@ class ConfigBuilder:
             events.append(event)
 
             print(f"  {Colors.GREEN}Event '{name}' added{Colors.RESET}")
+
+            # Inline validation warning
+            if not actions:
+                print(
+                    f"  {Colors.YELLOW}Warning: No actions defined - event won't do anything{Colors.RESET}"
+                )
 
         if events:
             self.config["events"] = events
