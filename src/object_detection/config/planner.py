@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from ..processor.coco_classes import COCO_NAME_TO_ID
@@ -21,13 +21,6 @@ from ..utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
 # Import from new modules
 from .validator import (
     ValidationResult,
-    validate_config_full,
-    _derive_track_classes_from_events,
-    _derive_consumers_for_validation,
-)
-from .resolver import (
-    derive_track_classes,
-    prepare_runtime_config,
 )
 
 logger = logging.getLogger(__name__)

@@ -12,7 +12,6 @@ import logging
 from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
-from typing import Any
 
 from ..core.event_definition import EventDefinition
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
