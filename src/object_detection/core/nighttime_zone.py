@@ -531,6 +531,12 @@ class NighttimeCarZone:
                 blob = self.tracked_blobs[best_blob_id]
                 blob.center = (cx, cy)
                 blob.size = size
+                blob.bbox = (
+                    int(cx - size / 2),
+                    int(cy - size / 2),
+                    int(cx + size / 2),
+                    int(cy + size / 2),
+                )
                 blob.frames_seen += 1
                 seen_this_frame.add(best_blob_id)
             else:
