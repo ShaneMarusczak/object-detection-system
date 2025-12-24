@@ -43,17 +43,30 @@ class ZoneConfig:
 
 
 @dataclass
-class NighttimeCarZoneConfig:
-    """Nighttime car detection zone configuration."""
+class NighttimeDetectionParams:
+    """Detection parameters for nighttime car detection."""
 
-    name: str
+    brightness_threshold: int = 30
+    min_blob_size: int = 100
+    max_blob_size: int = 10000
+    score_threshold: int = 85
+    taillight_color_match: bool = True
+
+
+@dataclass
+class NighttimeCarEventConfig:
+    """Nighttime car detection event configuration (from events with event_type=NIGHTTIME_CAR)."""
+
+    name: str  # Event name
+    zone_id: str  # Zone identifier (e.g., "Z1")
+    zone_description: str  # Zone description for matching
     x1_pct: float
     y1_pct: float
     x2_pct: float
     y2_pct: float
-    pdf_report: str | None = None
-    email_immediate: bool = False
-    email_digest: str | None = None
+    detection_params: NighttimeDetectionParams = field(
+        default_factory=NighttimeDetectionParams
+    )
 
 
 @dataclass
@@ -80,7 +93,7 @@ class EdgeConfig:
     # Geometry
     lines: list[LineConfig] = field(default_factory=list)
     zones: list[ZoneConfig] = field(default_factory=list)
-    nighttime_car_zones: list[NighttimeCarZoneConfig] = field(default_factory=list)
+    nighttime_car_events: list[NighttimeCarEventConfig] = field(default_factory=list)
     roi: ROIConfig = field(default_factory=ROIConfig)
 
     # Output
@@ -156,19 +169,53 @@ class EdgeConfig:
                 )
             )
 
-        # Parse nighttime car zones
-        nighttime_car_zones = []
-        for ncz_data in data.get("nighttime_car_zones", []):
-            nighttime_car_zones.append(
-                NighttimeCarZoneConfig(
-                    name=ncz_data["name"],
-                    x1_pct=ncz_data["x1_pct"],
-                    y1_pct=ncz_data["y1_pct"],
-                    x2_pct=ncz_data["x2_pct"],
-                    y2_pct=ncz_data["y2_pct"],
-                    pdf_report=ncz_data.get("pdf_report"),
-                    email_immediate=ncz_data.get("email_immediate", False),
-                    email_digest=ncz_data.get("email_digest"),
+        # Build zone lookup for NIGHTTIME_CAR events
+        zone_lookup = {}
+        for i, zone_data in enumerate(data.get("zones", []), 1):
+            zone_id = f"Z{i}"
+            zone_desc = zone_data.get("description", zone_id)
+            zone_lookup[zone_desc] = {
+                "zone_id": zone_id,
+                "x1_pct": zone_data["x1_pct"],
+                "y1_pct": zone_data["y1_pct"],
+                "x2_pct": zone_data["x2_pct"],
+                "y2_pct": zone_data["y2_pct"],
+            }
+
+        # Parse NIGHTTIME_CAR events
+        nighttime_car_events = []
+        for event in data.get("events", []):
+            match = event.get("match", {})
+            if match.get("event_type") != "NIGHTTIME_CAR":
+                continue
+
+            zone_desc = match.get("zone")
+            if not zone_desc or zone_desc not in zone_lookup:
+                continue
+
+            zone_geo = zone_lookup[zone_desc]
+            nighttime_config = match.get("nighttime_detection", {})
+
+            nighttime_car_events.append(
+                NighttimeCarEventConfig(
+                    name=event.get("name", ""),
+                    zone_id=zone_geo["zone_id"],
+                    zone_description=zone_desc,
+                    x1_pct=zone_geo["x1_pct"],
+                    y1_pct=zone_geo["y1_pct"],
+                    x2_pct=zone_geo["x2_pct"],
+                    y2_pct=zone_geo["y2_pct"],
+                    detection_params=NighttimeDetectionParams(
+                        brightness_threshold=nighttime_config.get(
+                            "brightness_threshold", 30
+                        ),
+                        min_blob_size=nighttime_config.get("min_blob_size", 100),
+                        max_blob_size=nighttime_config.get("max_blob_size", 10000),
+                        score_threshold=nighttime_config.get("score_threshold", 85),
+                        taillight_color_match=nighttime_config.get(
+                            "taillight_color_match", True
+                        ),
+                    ),
                 )
             )
 
@@ -179,7 +226,7 @@ class EdgeConfig:
             camera_url=camera["url"],
             lines=lines,
             zones=zones,
-            nighttime_car_zones=nighttime_car_zones,
+            nighttime_car_events=nighttime_car_events,
             roi=roi,
             redis_url=output.get("redis_url", "redis://localhost:6379"),
             redis_stream=output.get("stream", "detections"),

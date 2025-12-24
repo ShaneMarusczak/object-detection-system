@@ -29,7 +29,11 @@ import torch
 from ultralytics import YOLO
 
 from .config import EdgeConfig, LineConfig
-from ..core.nighttime_zone import create_nighttime_car_zones, NighttimeCarZone
+from ..core.nighttime_zone import (
+    NighttimeCarZone,
+    NighttimeCarZoneConfig,
+    NighttimeDetectionParams,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,27 +178,30 @@ class EdgeDetector:
         # Initialize nighttime car zones on first frame
         if not self._nighttime_zones_initialized:
             if (
-                hasattr(self.config, "nighttime_car_zones")
-                and self.config.nighttime_car_zones
+                hasattr(self.config, "nighttime_car_events")
+                and self.config.nighttime_car_events
             ):
-                # Convert dataclass objects to dicts for create_nighttime_car_zones
-                zone_dicts = []
-                for ncz in self.config.nighttime_car_zones:
-                    zone_dicts.append(
-                        {
-                            "name": ncz.name,
-                            "x1_pct": ncz.x1_pct,
-                            "y1_pct": ncz.y1_pct,
-                            "x2_pct": ncz.x2_pct,
-                            "y2_pct": ncz.y2_pct,
-                            "pdf_report": ncz.pdf_report,
-                            "email_immediate": ncz.email_immediate,
-                            "email_digest": ncz.email_digest,
-                        }
+                # Create NighttimeCarZone instances from parsed config
+                for nce in self.config.nighttime_car_events:
+                    zone_config = NighttimeCarZoneConfig(
+                        name=nce.zone_description,
+                        zone_id=nce.zone_id,
+                        x1_pct=nce.x1_pct,
+                        y1_pct=nce.y1_pct,
+                        x2_pct=nce.x2_pct,
+                        y2_pct=nce.y2_pct,
+                        detection_params=NighttimeDetectionParams(
+                            brightness_threshold=nce.detection_params.brightness_threshold,
+                            min_blob_size=nce.detection_params.min_blob_size,
+                            max_blob_size=nce.detection_params.max_blob_size,
+                            score_threshold=nce.detection_params.score_threshold,
+                            taillight_color_match=nce.detection_params.taillight_color_match,
+                        ),
+                        event_name=nce.name,
                     )
-                self.nighttime_car_zones = create_nighttime_car_zones(
-                    {"nighttime_car_zones": zone_dicts}, w, h
-                )
+                    self.nighttime_car_zones.append(
+                        NighttimeCarZone(zone_config, w, h)
+                    )
             self._nighttime_zones_initialized = True
 
         # Apply ROI crop

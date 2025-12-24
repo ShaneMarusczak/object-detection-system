@@ -64,18 +64,6 @@ def generate_pdf_reports(json_dir: str, config: dict, start_time: datetime) -> N
     pdf_report_configs = config.get("pdf_reports", [])
 
     if not pdf_report_configs:
-        # This is only a warning if we expected PDF reports
-        # Check if any nighttime_car_zones reference pdf_reports
-        ncz_pdf_refs = [
-            ncz.get("pdf_report")
-            for ncz in config.get("nighttime_car_zones", [])
-            if ncz.get("pdf_report")
-        ]
-        if ncz_pdf_refs:
-            logger.warning(
-                f"Nighttime car zones reference pdf_report(s) {ncz_pdf_refs} but no 'pdf_reports' "
-                "section defined in config. Add a pdf_reports section to generate reports."
-            )
         return
 
     end_time = datetime.now(timezone.utc)

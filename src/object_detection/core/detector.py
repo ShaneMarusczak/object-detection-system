@@ -186,7 +186,8 @@ def _detection_loop(
             frame_height, frame_width = frame.shape[:2]
 
             # Initialize nighttime car zones on first frame (need dimensions)
-            if frame_count == 1 and config.get("nighttime_car_zones"):
+            # Now reads from events with event_type=NIGHTTIME_CAR
+            if frame_count == 1:
                 nighttime_car_zones = create_nighttime_car_zones(
                     config, frame_width, frame_height
                 )
