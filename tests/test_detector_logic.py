@@ -3,7 +3,7 @@ Tests for detector logic (line crossing, zone detection)
 """
 
 import unittest
-from src.object_detection.detector import _detect_line_crossing
+from src.object_detection.core.detector import _detect_line_crossing
 from src.object_detection.models import LineConfig
 
 

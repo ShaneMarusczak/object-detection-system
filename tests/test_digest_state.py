@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from src.object_detection.consumers.digest_state import (
+from src.object_detection.processor.digest_state import (
     DigestPeriodState,
     DigestStateManager,
 )
