@@ -204,7 +204,7 @@ class NighttimeCarZone:
     WEIGHT_PRIMED_BONUS = 25
     WEIGHT_TAILLIGHT_MATCH = 30
 
-    SCORE_THRESHOLD = 100
+    SCORE_THRESHOLD = 85
 
     # Blob detection parameters
     BRIGHTNESS_THRESHOLD = 180
@@ -554,7 +554,7 @@ class NighttimeCarZone:
 
         # Primed bonus (zone was primed before blob appeared)
         primed_bonus = 0.0
-        if self._primed and blob.first_seen_frame > self._primed_frame:
+        if self._primed and blob.first_seen_frame >= self._primed_frame:
             primed_bonus = 1.0
 
         # Taillight match
