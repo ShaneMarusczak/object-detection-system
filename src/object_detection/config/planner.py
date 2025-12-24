@@ -383,7 +383,9 @@ def _validate_events(
         return
 
     if not events:
-        result.warnings.append("No events defined - nothing will be tracked")
+        # Only warn if there are also no nighttime_car_zones
+        if not config.get("nighttime_car_zones"):
+            result.warnings.append("No events defined - nothing will be tracked")
         return
 
     event_names = set()
@@ -660,7 +662,9 @@ def prepare_runtime_config(config: dict) -> dict:
     if derived_classes:
         config["detection"]["track_classes"] = derived_classes
     else:
-        logger.warning("No events defined - nothing will be tracked!")
+        # Only warn if there are also no nighttime_car_zones
+        if not config.get("nighttime_car_zones"):
+            logger.warning("No events defined - nothing will be tracked!")
         config["detection"]["track_classes"] = []
 
     # Resolve all implied actions and determine consumers
