@@ -270,9 +270,8 @@ class ConfigBuilder:
             choice = input("Choice: ").strip().lower()
 
             if choice == "q":
-                confirm = input("Discard changes? (y/N): ").strip().lower()
+                confirm = input("Are you sure? (y/N): ").strip().lower()
                 if confirm == "y":
-                    print(f"{Colors.YELLOW}Changes discarded{Colors.RESET}")
                     return None
                 continue
 
