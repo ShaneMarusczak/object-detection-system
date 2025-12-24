@@ -75,8 +75,10 @@ class ConfigBuilder:
             self._setup_email()
             self._setup_output()
 
-            # Save and optionally run
-            return self._save_config()
+            # Final review - show edit menu to allow tweaks before saving
+            print(f"\n{Colors.CYAN}{Colors.BOLD}=== Final Review ==={Colors.RESET}")
+            print(f"{Colors.GRAY}Review your config and make any adjustments{Colors.RESET}")
+            return self._edit_menu_loop()
 
         except KeyboardInterrupt:
             print(f"\n{Colors.YELLOW}Cancelled{Colors.RESET}")
@@ -458,8 +460,15 @@ class ConfigBuilder:
         """Save edited config, optionally run after."""
         print(f"\n{Colors.BOLD}--- Save Config ---{Colors.RESET}")
 
-        # Default to original path
-        default_path = self.config_path or "configs/config_edited.yaml"
+        # Default: original path for edits, timestamped name for new configs
+        if self.config_path:
+            default_path = self.config_path
+        else:
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            default_path = f"configs/config_{timestamp}.yaml"
+
         filepath = input(f"Save to [{default_path}]: ").strip() or default_path
 
         # Ensure directory exists
@@ -643,7 +652,7 @@ class ConfigBuilder:
             # Adjust option
             while True:
                 action = (
-                    input("  [c] Capture again  [a] Adjust position  [n] Next: ")
+                    input("  [c] Capture  [a] Adjust  [d] Delete  [n] Next: ")
                     .strip()
                     .lower()
                 )
@@ -663,6 +672,13 @@ class ConfigBuilder:
                     lines[-1]["position_pct"] = position
                     self._capture_annotated_preview(lines=lines, zones=zones)
                     print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
+                elif action == "d":
+                    deleted = lines.pop()
+                    print(
+                        f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
+                    )
+                    self._capture_annotated_preview(lines=lines, zones=zones)
+                    break  # Go back to "Add a line?" prompt
                 elif action == "n" or action == "":
                     break
 
@@ -726,7 +742,7 @@ class ConfigBuilder:
             # Adjust option
             while True:
                 action = (
-                    input("  [c] Capture again  [a] Adjust bounds  [n] Next: ")
+                    input("  [c] Capture  [a] Adjust  [d] Delete  [n] Next: ")
                     .strip()
                     .lower()
                 )
@@ -773,6 +789,13 @@ class ConfigBuilder:
                     }
                     self._capture_annotated_preview(lines=lines, zones=zones)
                     print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
+                elif action == "d":
+                    deleted = zones.pop()
+                    print(
+                        f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
+                    )
+                    self._capture_annotated_preview(lines=lines, zones=zones)
+                    break  # Go back to "Add a zone?" prompt
                 elif action == "n" or action == "":
                     break
 
