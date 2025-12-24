@@ -76,11 +76,7 @@ class FrameService:
             self._last_cleanup = datetime.now()
 
         # Generate permanent filename
-        # Use track_id if available, otherwise use zone_name for NIGHTTIME_CAR events
-        track_id = event.get("track_id")
-        if track_id is None:
-            # For NIGHTTIME_CAR events, use zone_description as identifier
-            track_id = event.get("zone_description", "unknown")
+        track_id = event.get("track_id", "unknown")
         event_id = f"{event['timestamp']}_{track_id}"
         event_type = event["event_type"]
         obj_class = event.get("object_class_name", "unknown")
@@ -130,10 +126,7 @@ class FrameService:
         result = {}
 
         for event in events:
-            # Use track_id if available, otherwise use zone_description for NIGHTTIME_CAR
-            track_id = event.get("track_id")
-            if track_id is None:
-                track_id = event.get("zone_description", "unknown")
+            track_id = event.get("track_id", "unknown")
             event_id = f"{event['timestamp']}_{track_id}"
 
             if event_id not in self.metadata:

@@ -174,7 +174,6 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             "storage": frame_storage_config,
             "lines": config.get("lines", []),
             "zones": config.get("zones", []),
-            "nighttime_car_zones": config.get("nighttime_car_zones", []),
             "roi": config.get("roi", {}),
         }
         frame_process = Process(
@@ -191,7 +190,6 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             pdf_shutdown_config = {
                 "pdf_reports": pdf_report_list,
                 "frame_service_config": {"storage": frame_storage_config},
-                "nighttime_car_zones": config.get("nighttime_car_zones", []),
             }
 
         logger.info(f"Dispatcher initialized with {len(consumers)} consumer(s)")
@@ -283,8 +281,6 @@ def _parse_event_definitions(config: dict) -> list[EventDefinition]:
 
     Actions should already be resolved by prepare_runtime_config() -
     this just creates EventDefinition objects for matching.
-
-    Also generates event definitions from nighttime_car_zones for unified handling.
     """
     event_defs = []
 
@@ -294,30 +290,6 @@ def _parse_event_definitions(config: dict) -> list[EventDefinition]:
         actions = event_config.get("actions", {})  # Already resolved
 
         event_defs.append(EventDefinition(name, match, actions))
-
-    # Generate event definitions from nighttime_car_zones
-    for ncz in config.get("nighttime_car_zones", []):
-        zone_name = ncz.get("name", "unknown")
-        pdf_report_id = ncz.get("pdf_report")
-        digest_id = ncz.get("email_digest")
-
-        # Build actions from zone's output wiring
-        actions = {
-            "json_log": True,
-            "frame_capture": {"enabled": bool(pdf_report_id or digest_id), "annotate": True},
-        }
-        if pdf_report_id:
-            actions["pdf_report"] = pdf_report_id
-        if ncz.get("email_immediate"):
-            actions["email_immediate"] = {"enabled": True}
-        if digest_id:
-            actions["email_digest"] = digest_id
-
-        event_defs.append(EventDefinition(
-            name=f"nighttime_car_{zone_name}",
-            match={"event_type": "NIGHTTIME_CAR", "zone": zone_name},
-            actions=actions,
-        ))
 
     return event_defs
 
@@ -331,16 +303,10 @@ def _enrich_event(
     # Add ISO timestamp
     enriched["timestamp"] = datetime.now(timezone.utc).isoformat()
 
-    # Handle NIGHTTIME_CAR events (from nighttime car zone detection)
-    if raw_event.get("event_type") == "NIGHTTIME_CAR":
-        enriched["object_class_name"] = "nighttime_car"
-        # Use zone_name as zone_description for matching
-        enriched["zone_description"] = raw_event.get("zone_name", "")
-        return enriched
-
-    # Add object class name (for YOLO detections)
+    # Add object class name
     obj_class = raw_event.get("object_class")
-    enriched["object_class_name"] = model_names.get(obj_class, f"class_{obj_class}")
+    if obj_class is not None:
+        enriched["object_class_name"] = model_names.get(obj_class, f"class_{obj_class}")
 
     # Add zone description
     if "zone_id" in raw_event:

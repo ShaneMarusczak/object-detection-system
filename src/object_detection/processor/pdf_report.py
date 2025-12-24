@@ -508,10 +508,7 @@ def _generate_pdf(
                 except Exception:
                     time_str = timestamp
 
-                # Use track_id if available, otherwise use zone_description for NIGHTTIME_CAR
-                track_id = event.get("track_id")
-                if track_id is None:
-                    track_id = event.get("zone_description", "unknown")
+                track_id = event.get("track_id", "unknown")
                 event_id = f"{event['timestamp']}_{track_id}"
 
                 if event_id in frame_data_map:

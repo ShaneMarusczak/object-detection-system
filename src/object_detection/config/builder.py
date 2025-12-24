@@ -68,7 +68,8 @@ class ConfigBuilder:
             self._setup_detection()
             self._setup_lines()
             self._setup_zones()
-            self._setup_nighttime_car_zones()
+            # TODO: Add NIGHTTIME_CAR event setup to _setup_events()
+            # Old nighttime_car_zones config was removed - now use events with event_type=NIGHTTIME_CAR
             self._setup_events()
             self._setup_pdf_reports()
             self._setup_digests()

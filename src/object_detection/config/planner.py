@@ -383,9 +383,7 @@ def _validate_events(
         return
 
     if not events:
-        # Only warn if there are also no nighttime_car_zones
-        if not config.get("nighttime_car_zones"):
-            result.warnings.append("No events defined - nothing will be tracked")
+        result.warnings.append("No events defined - nothing will be tracked")
         return
 
     event_names = set()
@@ -564,24 +562,6 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
         if actions.get("frame_capture"):
             consumers.add("frame_capture")
 
-    # Also check nighttime_car_zones (they have their own output wiring)
-    for ncz in config.get("nighttime_car_zones", []):
-        # NIGHTTIME_CAR events always log to JSON
-        consumers.add("json_writer")
-
-        if ncz.get("email_immediate"):
-            consumers.add("email_notifier")
-
-        digest_id = ncz.get("email_digest")
-        if digest_id:
-            consumers.add("email_digest")
-            consumers.add("frame_capture")  # Always capture frames for digests
-
-        pdf_report_id = ncz.get("pdf_report")
-        if pdf_report_id:
-            consumers.add("pdf_report")
-            consumers.add("frame_capture")  # Always capture frames for reports
-
     return sorted(consumers)
 
 
@@ -643,7 +623,6 @@ def prepare_runtime_config(config: dict) -> dict:
     This is the single place where all inference happens:
     - Derive track_classes from events
     - Resolve implied actions (json_log, frame_capture, annotate cascade)
-    - Link nighttime_car_zones to pdf_reports/digests
     - Determine which consumers are needed
 
     After this function, the config is fully resolved and the dispatcher
@@ -661,16 +640,17 @@ def prepare_runtime_config(config: dict) -> dict:
     if derived_classes:
         config["detection"]["track_classes"] = derived_classes
     else:
-        # Only warn if there are also no nighttime_car_zones
-        if not config.get("nighttime_car_zones"):
+        # Check if there are NIGHTTIME_CAR events (don't need YOLO classes)
+        has_nighttime_events = any(
+            e.get("match", {}).get("event_type") == "NIGHTTIME_CAR"
+            for e in config.get("events", [])
+        )
+        if not has_nighttime_events:
             logger.warning("No events defined - nothing will be tracked!")
         config["detection"]["track_classes"] = []
 
     # Resolve all implied actions (e.g., pdf_report → json_log)
     _resolve_implied_actions(config)
-
-    # Link nighttime_car_zones to their referenced pdf_reports and digests
-    _link_nighttime_car_zones(config)
 
     # Always enable temp_frames - consumers are always available
     config["temp_frames_enabled"] = True
@@ -756,51 +736,6 @@ def _resolve_implied_actions(config: dict) -> None:
             elif isinstance(frame_capture, dict) and "enabled" not in frame_capture:
                 actions["frame_capture"]["enabled"] = True
 
-
-def _link_nighttime_car_zones(config: dict) -> None:
-    """
-    Link nighttime_car_zones to their referenced pdf_reports and digests.
-
-    For each nighttime_car_zone that references a pdf_report or digest,
-    add the auto-generated event definition name to that report/digest's
-    events filter list so it will be included.
-
-    The auto-generated event name format is: nighttime_car_{zone_name}
-    """
-    pdf_reports = config.get("pdf_reports", [])
-    digests = config.get("digests", [])
-
-    # Build lookup by id
-    pdf_report_lookup = {r["id"]: r for r in pdf_reports if r.get("id")}
-    digest_lookup = {d["id"]: d for d in digests if d.get("id")}
-
-    for ncz in config.get("nighttime_car_zones", []):
-        zone_name = ncz.get("name", "unknown")
-        event_def_name = f"nighttime_car_{zone_name}"
-
-        # Link to pdf_report
-        pdf_report_id = ncz.get("pdf_report")
-        if pdf_report_id and pdf_report_id in pdf_report_lookup:
-            report = pdf_report_lookup[pdf_report_id]
-            if "events" not in report:
-                report["events"] = []
-            if event_def_name not in report["events"]:
-                report["events"].append(event_def_name)
-                logger.debug(
-                    f"Auto-added '{event_def_name}' to pdf_report '{pdf_report_id}'"
-                )
-
-        # Link to email_digest
-        digest_id = ncz.get("email_digest")
-        if digest_id and digest_id in digest_lookup:
-            digest = digest_lookup[digest_id]
-            if "events" not in digest:
-                digest["events"] = []
-            if event_def_name not in digest["events"]:
-                digest["events"].append(event_def_name)
-                logger.debug(
-                    f"Auto-added '{event_def_name}' to digest '{digest_id}'"
-                )
 
 
 def build_plan(config: dict) -> ConfigPlan:
@@ -905,26 +840,12 @@ def build_plan(config: dict) -> ConfigPlan:
             ln.get("description", f"line_{i}")
             for i, ln in enumerate(config.get("lines", []))
         ],
-        "nighttime_car_zones": [
-            ncz.get("name", f"nighttime_zone_{i}")
-            for i, ncz in enumerate(config.get("nighttime_car_zones", []))
-        ],
     }
 
     # Active consumers
     all_consumers = set()
     for e in events:
         all_consumers.update(c.split(" ")[0] for c in e.consumers)
-
-    # Add consumers from nighttime_car_zones
-    for ncz in config.get("nighttime_car_zones", []):
-        all_consumers.add("json_writer")  # Always log NIGHTTIME_CAR events
-        if ncz.get("email_immediate"):
-            all_consumers.add("email_notifier")
-        if ncz.get("email_digest"):
-            all_consumers.add("email_digest")
-        if ncz.get("pdf_report"):
-            all_consumers.add("pdf_report")
 
     return ConfigPlan(
         events=events,
@@ -982,20 +903,12 @@ def print_plan(plan: ConfigPlan) -> None:
     print("=" * 60)
 
     # Geometry summary
-    if (
-        plan.geometry["zones"]
-        or plan.geometry["lines"]
-        or plan.geometry.get("nighttime_car_zones")
-    ):
+    if plan.geometry["zones"] or plan.geometry["lines"]:
         print(f"\n{Colors.CYAN}Geometry:{Colors.RESET}")
         if plan.geometry["zones"]:
             print(f"  Zones: {', '.join(plan.geometry['zones'])}")
         if plan.geometry["lines"]:
             print(f"  Lines: {', '.join(plan.geometry['lines'])}")
-        if plan.geometry.get("nighttime_car_zones"):
-            print(
-                f"  Nighttime Car Zones: {', '.join(plan.geometry['nighttime_car_zones'])}"
-            )
 
     # Track classes
     if plan.track_classes:

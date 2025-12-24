@@ -96,37 +96,28 @@ class ZoneConfig(BaseModel):
         return self
 
 
-class NighttimeCarZoneConfig(BaseModel):
+class NighttimeDetectionConfig(BaseModel):
     """
-    Nighttime car detection zone configuration.
+    Nighttime car detection parameters.
 
-    Uses brightness + blob scoring to detect vehicles at night.
-    Separate from regular zones - different detection mechanism.
+    Used when event_type is NIGHTTIME_CAR to configure blob detection.
     """
 
-    name: str = Field(..., min_length=1, description="Zone name for identification")
-    x1_pct: float = Field(..., ge=0, le=100)
-    y1_pct: float = Field(..., ge=0, le=100)
-    x2_pct: float = Field(..., ge=0, le=100)
-    y2_pct: float = Field(..., ge=0, le=100)
-    # Output wiring (no event/line primitive needed)
-    pdf_report: str | None = Field(
-        default=None, description="PDF report ID to include events"
+    brightness_threshold: int = Field(
+        default=30, ge=0, le=255, description="Max brightness for nighttime mode"
     )
-    email_immediate: bool = Field(
-        default=False, description="Send immediate email on detection"
+    min_blob_size: int = Field(
+        default=100, ge=10, description="Minimum blob size in pixels"
     )
-    email_digest: str | None = Field(
-        default=None, description="Email digest ID to include events"
+    max_blob_size: int = Field(
+        default=10000, ge=100, description="Maximum blob size in pixels"
     )
-
-    @model_validator(mode="after")
-    def validate_coordinates(self):
-        if self.x2_pct <= self.x1_pct:
-            raise ValueError("x2_pct must be > x1_pct")
-        if self.y2_pct <= self.y1_pct:
-            raise ValueError("y2_pct must be > y1_pct")
-        return self
+    score_threshold: int = Field(
+        default=85, ge=0, le=200, description="Minimum score to trigger detection"
+    )
+    taillight_color_match: bool = Field(
+        default=True, description="Require red/orange color match"
+    )
 
 
 class EventMatch(BaseModel):
@@ -142,9 +133,10 @@ class EventMatch(BaseModel):
     ) = None
     line: str | None = None
     zone: str | None = None
-    nighttime_car_zone: str | None = None  # For NIGHTTIME_CAR events
     object_class: str | list[str] | None = None
     direction: Literal["LTR", "RTL", "TTB", "BTT"] | None = None
+    # Nighttime detection parameters (only used when event_type is NIGHTTIME_CAR)
+    nighttime_detection: NighttimeDetectionConfig | None = None
 
 
 class EmailImmediateAction(BaseModel):
@@ -289,7 +281,6 @@ class Config(StrictModel):
     roi: ROIConfig = Field(default_factory=ROIConfig)
     lines: list[LineConfig] = Field(default_factory=list)
     zones: list[ZoneConfig] = Field(default_factory=list)
-    nighttime_car_zones: list[NighttimeCarZoneConfig] = Field(default_factory=list)
     events: list[EventConfig] = Field(default_factory=list)
     digests: list[DigestConfig] = Field(default_factory=list)
     pdf_reports: list[PDFReportConfig] = Field(default_factory=list)
@@ -309,10 +300,9 @@ class Config(StrictModel):
 
     @model_validator(mode="after")
     def validate_references(self):
-        """Validate that events reference existing lines/zones/nighttime_car_zones."""
+        """Validate that events reference existing lines/zones."""
         line_names = {line.description for line in self.lines}
         zone_names = {zone.description for zone in self.zones}
-        nighttime_car_zone_names = {z.name for z in self.nighttime_car_zones}
         digest_ids = {digest.id for digest in self.digests}
         pdf_report_ids = {report.id for report in self.pdf_reports}
 
@@ -325,12 +315,10 @@ class Config(StrictModel):
                 raise ValueError(
                     f"Event '{event.name}' references non-existent zone: '{event.match.zone}'"
                 )
-            if (
-                event.match.nighttime_car_zone
-                and event.match.nighttime_car_zone not in nighttime_car_zone_names
-            ):
+            # NIGHTTIME_CAR events must reference a zone
+            if event.match.event_type == "NIGHTTIME_CAR" and not event.match.zone:
                 raise ValueError(
-                    f"Event '{event.name}' references non-existent nighttime_car_zone: '{event.match.nighttime_car_zone}'"
+                    f"Event '{event.name}' with event_type NIGHTTIME_CAR must specify a zone"
                 )
             if (
                 event.actions.email_digest
@@ -345,17 +333,6 @@ class Config(StrictModel):
             ):
                 raise ValueError(
                     f"Event '{event.name}' references non-existent pdf_report: '{event.actions.pdf_report}'"
-                )
-
-        # Validate nighttime_car_zone output wiring
-        for ncz in self.nighttime_car_zones:
-            if ncz.pdf_report and ncz.pdf_report not in pdf_report_ids:
-                raise ValueError(
-                    f"Nighttime car zone '{ncz.name}' references non-existent pdf_report: '{ncz.pdf_report}'"
-                )
-            if ncz.email_digest and ncz.email_digest not in digest_ids:
-                raise ValueError(
-                    f"Nighttime car zone '{ncz.name}' references non-existent digest: '{ncz.email_digest}'"
                 )
 
         return self

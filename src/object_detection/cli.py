@@ -537,6 +537,8 @@ def main() -> None:
 
     # Get model class names before spawning processes
     model_names = get_model_class_names(config["detection"]["model_file"])
+    # Add synthetic class for nighttime car detection
+    model_names[1000] = "nighttime_car"
 
     # Create shared queue and shutdown event
     queue_size = config["runtime"].get("queue_size", DEFAULT_QUEUE_SIZE)

@@ -9,6 +9,9 @@ Detects vehicles at night using a scoring-based system that combines:
 
 Unlike line/zone crossings, nighttime car zones use mathematical
 scoring to confirm detections rather than simple thresholds.
+
+NIGHTTIME_CAR is now a standard event type that uses regular zones.
+Detection parameters are specified on the event's match config.
 """
 
 import logging
@@ -23,20 +26,38 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Synthetic COCO class ID for nighttime car detection
+# Regular COCO classes are 0-79, so 1000 is safe
+NIGHTTIME_CAR_CLASS_ID = 1000
+
+
+@dataclass
+class NighttimeDetectionParams:
+    """Detection parameters for nighttime car detection."""
+
+    brightness_threshold: int = 30
+    min_blob_size: int = 100
+    max_blob_size: int = 10000
+    score_threshold: int = 85
+    taillight_color_match: bool = True
+
 
 @dataclass
 class NighttimeCarZoneConfig:
     """Configuration for a nighttime car detection zone."""
 
-    name: str
+    name: str  # Zone description (from regular zone)
+    zone_id: str  # Zone identifier for event routing
     x1_pct: float
     y1_pct: float
     x2_pct: float
     y2_pct: float
-    # Output wiring
-    pdf_report: str | None = None
-    email_immediate: bool = False
-    email_digest: str | None = None
+    # Detection parameters
+    detection_params: NighttimeDetectionParams = field(
+        default_factory=NighttimeDetectionParams
+    )
+    # Event name for routing
+    event_name: str = ""
     # Debug mode - logs scoring details every N frames
     debug: bool = False
     # Debug save frames - saves zone images to debug detection issues
@@ -234,12 +255,20 @@ class NighttimeCarZone:
         """
         self.config = config
         self.name = config.name
+        self.zone_id = config.zone_id
+        self.event_name = config.event_name
 
         # Calculate pixel bounds
         self.x1 = int(frame_width * config.x1_pct / 100)
         self.y1 = int(frame_height * config.y1_pct / 100)
         self.x2 = int(frame_width * config.x2_pct / 100)
         self.y2 = int(frame_height * config.y2_pct / 100)
+
+        # Apply detection parameters from config
+        params = config.detection_params
+        self.SCORE_THRESHOLD = params.score_threshold
+        self.MIN_BLOB_AREA = params.min_blob_size
+        self.MAX_BLOB_AREA = params.max_blob_size
 
         # State
         self.brightness_state = ZoneBrightnessState()
@@ -263,7 +292,7 @@ class NighttimeCarZone:
         # Taillight detector
         self.taillight_detector = TaillightDetector()
 
-        # Blob detector
+        # Blob detector (needs to be recreated after setting blob size params)
         self._blob_detector = self._create_blob_detector()
 
         log_msg = f"NighttimeCarZone '{self.name}' initialized: ({self.x1},{self.y1})-({self.x2},{self.y2})"
@@ -401,14 +430,20 @@ class NighttimeCarZone:
                         frame, temp_frame_dir, temp_frame_max_age
                     )
 
+                # Generate track_id with prefix to avoid collision with YOLO tracks
+                track_id = f"nc_{blob.blob_id}"
+
+                # Standard event format - same as YOLO events
                 event = {
                     "event_type": "NIGHTTIME_CAR",
-                    "zone_name": self.name,
-                    "score": score,
-                    "blob_center": blob.center,
+                    "zone_id": self.zone_id,  # Standard field for zone reference
+                    "object_class": NIGHTTIME_CAR_CLASS_ID,  # Synthetic class
+                    "track_id": track_id,  # Unique identifier
                     "bbox": blob.bbox,  # For frame annotation
                     "frame_id": frame_id,
                     "timestamp_relative": relative_time,
+                    # Extra fields for NIGHTTIME_CAR (optional, for debugging/display)
+                    "score": score,
                     "was_primed": self._primed,
                     "had_taillight": any(
                         self._taillight_matches(blob, t) for t in taillights
@@ -690,7 +725,10 @@ def create_nighttime_car_zones(
     config: dict, frame_width: int, frame_height: int
 ) -> list[NighttimeCarZone]:
     """
-    Create NighttimeCarZone instances from config.
+    Create NighttimeCarZone instances from events with event_type=NIGHTTIME_CAR.
+
+    Reads NIGHTTIME_CAR events from config, looks up the referenced zone geometry,
+    and applies detection parameters from the event's match config.
 
     Args:
         config: Full configuration dictionary
@@ -700,20 +738,57 @@ def create_nighttime_car_zones(
     Returns:
         List of NighttimeCarZone instances
     """
+    # Build zone lookup by description
+    zone_lookup = {}
+    for i, zone in enumerate(config.get("zones", [])):
+        zone_id = f"Z{i + 1}"
+        zone_desc = zone.get("description", zone_id)
+        zone_lookup[zone_desc] = {
+            "zone_id": zone_id,
+            "x1_pct": zone["x1_pct"],
+            "y1_pct": zone["y1_pct"],
+            "x2_pct": zone["x2_pct"],
+            "y2_pct": zone["y2_pct"],
+        }
+
     zones = []
-    for zone_config in config.get("nighttime_car_zones", []):
+    for event in config.get("events", []):
+        match = event.get("match", {})
+        if match.get("event_type") != "NIGHTTIME_CAR":
+            continue
+
+        zone_desc = match.get("zone")
+        if not zone_desc or zone_desc not in zone_lookup:
+            logger.warning(
+                f"NIGHTTIME_CAR event '{event.get('name')}' references "
+                f"unknown zone '{zone_desc}', skipping"
+            )
+            continue
+
+        zone_geo = zone_lookup[zone_desc]
+
+        # Extract detection parameters from match config
+        nighttime_config = match.get("nighttime_detection", {})
+        detection_params = NighttimeDetectionParams(
+            brightness_threshold=nighttime_config.get("brightness_threshold", 30),
+            min_blob_size=nighttime_config.get("min_blob_size", 100),
+            max_blob_size=nighttime_config.get("max_blob_size", 10000),
+            score_threshold=nighttime_config.get("score_threshold", 85),
+            taillight_color_match=nighttime_config.get("taillight_color_match", True),
+        )
+
         zone = NighttimeCarZone(
             NighttimeCarZoneConfig(
-                name=zone_config["name"],
-                x1_pct=zone_config["x1_pct"],
-                y1_pct=zone_config["y1_pct"],
-                x2_pct=zone_config["x2_pct"],
-                y2_pct=zone_config["y2_pct"],
-                pdf_report=zone_config.get("pdf_report"),
-                email_immediate=zone_config.get("email_immediate", False),
-                email_digest=zone_config.get("email_digest"),
-                debug=zone_config.get("debug", False),
-                debug_save_frames=zone_config.get("debug_save_frames"),
+                name=zone_desc,
+                zone_id=zone_geo["zone_id"],
+                x1_pct=zone_geo["x1_pct"],
+                y1_pct=zone_geo["y1_pct"],
+                x2_pct=zone_geo["x2_pct"],
+                y2_pct=zone_geo["y2_pct"],
+                detection_params=detection_params,
+                event_name=event.get("name", ""),
+                debug=nighttime_config.get("debug", False),
+                debug_save_frames=nighttime_config.get("debug_save_frames"),
             ),
             frame_width,
             frame_height,
@@ -721,6 +796,6 @@ def create_nighttime_car_zones(
         zones.append(zone)
 
     if zones:
-        logger.info(f"Created {len(zones)} nighttime car zone(s)")
+        logger.info(f"Created {len(zones)} nighttime car zone(s) from NIGHTTIME_CAR events")
 
     return zones
