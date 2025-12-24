@@ -243,6 +243,7 @@ class NighttimeCarZone:
         self._next_blob_id = 0
         self._primed = False  # Zone was primed by rising brightness
         self._primed_frame = 0
+        self._primed_until_frame = 0  # Keep primed for at least this many frames
         self._frame_count = 0
 
         # Debug mode
@@ -324,9 +325,14 @@ class NighttimeCarZone:
             if not self._primed:
                 self._primed = True
                 self._primed_frame = self._frame_count
+                # Stay primed for at least 45 frames (~1.5s at 30fps) to handle brightness fluctuations
+                self._primed_until_frame = self._frame_count + 45
                 logger.debug(f"Zone '{self.name}' primed at frame {self._frame_count}")
-        elif self._primed and not brightness_elevated and not self.tracked_blobs:
-            # Reset primed state when brightness returns to baseline and no blobs
+            elif self._frame_count < self._primed_until_frame:
+                # Extend priming if still seeing elevated brightness
+                self._primed_until_frame = self._frame_count + 45
+        elif self._primed and self._frame_count >= self._primed_until_frame and not self.tracked_blobs:
+            # Reset primed state only after sticky period and no blobs present
             self._primed = False
             logger.debug(f"Zone '{self.name}' primed state reset at frame {self._frame_count}")
 
