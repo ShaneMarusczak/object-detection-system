@@ -177,8 +177,23 @@ class EdgeDetector:
                 hasattr(self.config, "nighttime_car_zones")
                 and self.config.nighttime_car_zones
             ):
+                # Convert dataclass objects to dicts for create_nighttime_car_zones
+                zone_dicts = []
+                for ncz in self.config.nighttime_car_zones:
+                    zone_dicts.append(
+                        {
+                            "name": ncz.name,
+                            "x1_pct": ncz.x1_pct,
+                            "y1_pct": ncz.y1_pct,
+                            "x2_pct": ncz.x2_pct,
+                            "y2_pct": ncz.y2_pct,
+                            "pdf_report": ncz.pdf_report,
+                            "email_immediate": ncz.email_immediate,
+                            "email_digest": ncz.email_digest,
+                        }
+                    )
                 self.nighttime_car_zones = create_nighttime_car_zones(
-                    {"nighttime_car_zones": self.config.nighttime_car_zones}, w, h
+                    {"nighttime_car_zones": zone_dicts}, w, h
                 )
             self._nighttime_zones_initialized = True
 

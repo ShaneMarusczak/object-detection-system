@@ -43,6 +43,20 @@ class ZoneConfig:
 
 
 @dataclass
+class NighttimeCarZoneConfig:
+    """Nighttime car detection zone configuration."""
+
+    name: str
+    x1_pct: float
+    y1_pct: float
+    x2_pct: float
+    y2_pct: float
+    pdf_report: str | None = None
+    email_immediate: bool = False
+    email_digest: str | None = None
+
+
+@dataclass
 class EdgeConfig:
     """
     Minimal configuration for edge detector.
@@ -66,6 +80,7 @@ class EdgeConfig:
     # Geometry
     lines: list[LineConfig] = field(default_factory=list)
     zones: list[ZoneConfig] = field(default_factory=list)
+    nighttime_car_zones: list[NighttimeCarZoneConfig] = field(default_factory=list)
     roi: ROIConfig = field(default_factory=ROIConfig)
 
     # Output
@@ -141,6 +156,22 @@ class EdgeConfig:
                 )
             )
 
+        # Parse nighttime car zones
+        nighttime_car_zones = []
+        for ncz_data in data.get("nighttime_car_zones", []):
+            nighttime_car_zones.append(
+                NighttimeCarZoneConfig(
+                    name=ncz_data["name"],
+                    x1_pct=ncz_data["x1_pct"],
+                    y1_pct=ncz_data["y1_pct"],
+                    x2_pct=ncz_data["x2_pct"],
+                    y2_pct=ncz_data["y2_pct"],
+                    pdf_report=ncz_data.get("pdf_report"),
+                    email_immediate=ncz_data.get("email_immediate", False),
+                    email_digest=ncz_data.get("email_digest"),
+                )
+            )
+
         return cls(
             model_file=detection["model_file"],
             confidence_threshold=detection.get("confidence_threshold", 0.25),
@@ -148,6 +179,7 @@ class EdgeConfig:
             camera_url=camera["url"],
             lines=lines,
             zones=zones,
+            nighttime_car_zones=nighttime_car_zones,
             roi=roi,
             redis_url=output.get("redis_url", "redis://localhost:6379"),
             redis_stream=output.get("stream", "detections"),

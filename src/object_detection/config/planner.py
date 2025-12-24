@@ -562,6 +562,26 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
         if actions.get("frame_capture"):
             consumers.add("frame_capture")
 
+    # Also check nighttime_car_zones (they have their own output wiring)
+    for ncz in config.get("nighttime_car_zones", []):
+        # NIGHTTIME_CAR events always log to JSON
+        consumers.add("json_writer")
+
+        if ncz.get("email_immediate"):
+            consumers.add("email_notifier")
+
+        digest_id = ncz.get("email_digest")
+        if digest_id:
+            consumers.add("email_digest")
+            if digests.get(digest_id, {}).get("photos"):
+                consumers.add("frame_capture")
+
+        pdf_report_id = ncz.get("pdf_report")
+        if pdf_report_id:
+            consumers.add("pdf_report")
+            if pdf_reports.get(pdf_report_id, {}).get("photos"):
+                consumers.add("frame_capture")
+
     return sorted(consumers)
 
 
@@ -763,6 +783,22 @@ def _resolve_implied_actions(config: dict) -> list[str]:
                 needed_consumers.add("frame_capture")
             elif frame_capture is True:
                 needed_consumers.add("frame_capture")
+
+    # Also resolve consumers for nighttime_car_zones (they have their own output wiring)
+    for ncz in config.get("nighttime_car_zones", []):
+        # NIGHTTIME_CAR events always log to JSON
+        needed_consumers.add("json_writer")
+
+        if ncz.get("email_immediate"):
+            needed_consumers.add("email_notifier")
+
+        digest_id = ncz.get("email_digest")
+        if digest_id:
+            needed_consumers.add("email_digest")
+
+        pdf_report_id = ncz.get("pdf_report")
+        if pdf_report_id:
+            needed_consumers.add("pdf_report")
 
     return sorted(needed_consumers)
 
