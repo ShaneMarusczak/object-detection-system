@@ -109,18 +109,20 @@ pdf_reports:
 ```
 src/object_detection/
 ├── cli.py                 # Entry point
+├── models/                # Consolidated data models
+│   ├── tracking.py        # TrackedObject, LineConfig, ZoneConfig
+│   ├── events.py          # EventDefinition
+│   └── detector.py        # Detector protocol interface
 ├── core/
-│   ├── detector.py        # YOLO detection + tracking
-│   ├── nighttime_zone.py  # Blob-based nighttime car detection
-│   ├── event_definition.py # EventDefinition class
-│   └── models.py          # TrackedObject, LineConfig, ZoneConfig
+│   ├── detector.py        # YOLO detection loop
+│   ├── camera.py          # Camera init with retry
+│   ├── frame_saver.py     # Temp + annotated frame saving
+│   └── nighttime_zone.py  # Blob-based nighttime detection
 ├── processor/
 │   ├── dispatcher.py      # Event routing to consumers
 │   ├── json_writer.py     # JSONL logging + console output
-│   ├── frame_capture.py   # Annotated frame saves
 │   ├── pdf_report.py      # PDF generation on shutdown
-│   ├── email_digest.py    # Periodic email summaries
-│   └── coco_classes.py    # COCO class ID mappings
+│   └── email_digest.py    # Periodic email summaries
 ├── config/
 │   ├── planner.py         # validate/plan/dry-run logic
 │   ├── schemas.py         # Pydantic config validation
@@ -128,8 +130,8 @@ src/object_detection/
 ├── utils/
 │   ├── event_schema.py    # Event format documentation
 │   └── queue_protocol.py  # Queue abstraction for distributed mode
-└── edge/
-    ├── detector.py        # Minimal detector for Jetson
+└── edge/                  # Self-contained for Jetson deployment
+    ├── detector.py        # Minimal edge detector
     └── config.py          # Edge-specific config parsing
 ```
 
