@@ -818,45 +818,62 @@ class ConfigBuilder:
             self.config["lines"] = lines
         print(f"{Colors.GRAY}Done - {len(lines)} line(s){Colors.RESET}")
 
+    def _parse_zone_input(self, zone_input: str) -> dict | None:
+        """Parse shorthand zone input like '0 0 50 100 Left Half'."""
+        parts = zone_input.split(maxsplit=4)
+        if len(parts) < 4:
+            return None
+
+        try:
+            result = {
+                "x1_pct": int(parts[0]),
+                "y1_pct": int(parts[1]),
+                "x2_pct": int(parts[2]),
+                "y2_pct": int(parts[3]),
+            }
+            if len(parts) >= 5:
+                result["description"] = parts[4]
+            return result
+        except ValueError:
+            return None
+
     def _setup_zones(self):
         """Setup detection zones with visual preview."""
         print(f"\n{Colors.BOLD}--- Zones Setup ---{Colors.RESET}")
-        print(
-            f"{Colors.GRAY}Zones detect objects entering/dwelling in an area{Colors.RESET}"
-        )
+        print(f"{Colors.GRAY}Zones detect objects entering/dwelling in an area{Colors.RESET}")
+        print(f"{Colors.GRAY}Format: left% top% right% bottom% [name]{Colors.RESET}")
+        print(f"{Colors.GRAY}  e.g. '0 0 50 100 Left Half' or '25 25 75 75 Center'{Colors.RESET}")
 
         # Start with existing zones and lines (for edit mode)
         zones = list(self.config.get("zones", []))
         lines = self.config.get("lines", [])
 
         while True:
-            add = input("\nAdd a zone? (y/N): ").strip().lower()
-            if add != "y":
+            zone_input = input("\nAdd zone (or Enter when done): ").strip()
+            if not zone_input:
                 break
 
-            # Zone bounds with validation
-            while True:
-                print("  Zone bounds (percentages):")
-                x1 = int(input("    Left edge % [0]: ").strip() or "0")
-                y1 = int(input("    Top edge % [0]: ").strip() or "0")
-                x2 = int(input("    Right edge % [100]: ").strip() or "100")
-                y2 = int(input("    Bottom edge % [100]: ").strip() or "100")
+            # Parse shorthand input
+            parsed = self._parse_zone_input(zone_input)
+            if not parsed:
+                print(f"  {Colors.RED}Invalid format. Use: left top right bottom [name]{Colors.RESET}")
+                continue
 
-                # Validate bounds
-                if x2 <= x1:
-                    print(
-                        f"  {Colors.RED}Error: Right edge ({x2}%) must be greater than left edge ({x1}%){Colors.RESET}"
-                    )
-                    continue
-                if y2 <= y1:
-                    print(
-                        f"  {Colors.RED}Error: Bottom edge ({y2}%) must be greater than top edge ({y1}%){Colors.RESET}"
-                    )
-                    continue
-                break
+            x1, y1, x2, y2 = parsed["x1_pct"], parsed["y1_pct"], parsed["x2_pct"], parsed["y2_pct"]
+            desc = parsed.get("description")
 
-            # Description
-            desc = input("  Description: ").strip() or f"Zone {len(zones) + 1}"
+            # Validate bounds
+            if x2 <= x1:
+                print(f"  {Colors.RED}Error: right ({x2}%) must be > left ({x1}%){Colors.RESET}")
+                continue
+            if y2 <= y1:
+                print(f"  {Colors.RED}Error: bottom ({y2}%) must be > top ({y1}%){Colors.RESET}")
+                continue
+
+            # Prompt for missing description
+            if not desc:
+                default_desc = f"Zone {len(zones) + 1}"
+                desc = input(f"  Description [{default_desc}]: ").strip() or default_desc
 
             zones.append(
                 {
@@ -868,51 +885,30 @@ class ConfigBuilder:
                 }
             )
 
-            # Capture annotated preview
+            # Show confirmation and capture preview
+            print(f"  {Colors.GREEN}✓ {x1},{y1} to {x2},{y2} \"{desc}\"{Colors.RESET}")
             self._capture_annotated_preview(lines=lines, zones=zones)
-            print(f"  {Colors.GREEN}Preview updated{Colors.RESET} - refresh browser")
 
-            # Adjust option
+            # Quick adjust option
             while True:
-                action = (
-                    input("  [c] Capture  [a] Adjust  [d] Delete  [n] Next: ")
-                    .strip()
-                    .lower()
-                )
-                if action == "c":
-                    self._capture_annotated_preview(lines=lines, zones=zones)
-                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
-                elif action == "a":
-                    while True:
-                        x1 = int(
-                            input(f"    Left edge % [{zones[-1]['x1_pct']}]: ").strip()
-                            or str(zones[-1]["x1_pct"])
-                        )
-                        y1 = int(
-                            input(f"    Top edge % [{zones[-1]['y1_pct']}]: ").strip()
-                            or str(zones[-1]["y1_pct"])
-                        )
-                        x2 = int(
-                            input(f"    Right edge % [{zones[-1]['x2_pct']}]: ").strip()
-                            or str(zones[-1]["x2_pct"])
-                        )
-                        y2 = int(
-                            input(
-                                f"    Bottom edge % [{zones[-1]['y2_pct']}]: "
-                            ).strip()
-                            or str(zones[-1]["y2_pct"])
-                        )
-                        if x2 <= x1:
-                            print(
-                                f"  {Colors.RED}Error: Right ({x2}%) must be > left ({x1}%){Colors.RESET}"
-                            )
-                            continue
-                        if y2 <= y1:
-                            print(
-                                f"  {Colors.RED}Error: Bottom ({y2}%) must be > top ({y1}%){Colors.RESET}"
-                            )
-                            continue
-                        break
+                action = input("  [a]djust [d]elete [Enter] continue: ").strip().lower()
+                if action == "a":
+                    print("  Adjust bounds (press Enter to keep current):")
+                    new_x1 = input(f"    Left % [{x1}]: ").strip()
+                    new_y1 = input(f"    Top % [{y1}]: ").strip()
+                    new_x2 = input(f"    Right % [{x2}]: ").strip()
+                    new_y2 = input(f"    Bottom % [{y2}]: ").strip()
+
+                    x1 = int(new_x1) if new_x1 else x1
+                    y1 = int(new_y1) if new_y1 else y1
+                    x2 = int(new_x2) if new_x2 else x2
+                    y2 = int(new_y2) if new_y2 else y2
+
+                    # Validate adjusted bounds
+                    if x2 <= x1 or y2 <= y1:
+                        print(f"  {Colors.RED}Invalid bounds{Colors.RESET}")
+                        continue
+
                     zones[-1] = {
                         "x1_pct": x1,
                         "y1_pct": y1,
@@ -921,19 +917,18 @@ class ConfigBuilder:
                         "description": desc,
                     }
                     self._capture_annotated_preview(lines=lines, zones=zones)
-                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
+                    print(f"  {Colors.GREEN}✓ Updated to {x1},{y1} to {x2},{y2}{Colors.RESET}")
                 elif action == "d":
                     deleted = zones.pop()
-                    print(
-                        f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
-                    )
+                    print(f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}")
                     self._capture_annotated_preview(lines=lines, zones=zones)
-                    break  # Go back to "Add a zone?" prompt
-                elif action == "n" or action == "":
+                    break
+                else:
                     break
 
         if zones:
             self.config["zones"] = zones
+        print(f"{Colors.GRAY}Done - {len(zones)} zone(s){Colors.RESET}")
 
     def _setup_events(self):
         """Setup event definitions."""
