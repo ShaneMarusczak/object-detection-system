@@ -153,8 +153,11 @@ class ConfigBuilder:
             f"{Colors.GREEN}OK{Colors.RESET} ({self.frame_width}x{self.frame_height})"
         )
 
-        # Capture initial preview
-        self._capture_preview(frame)
+        # Capture initial preview with existing annotations
+        self._capture_annotated_preview(
+            lines=self.config.get("lines", []),
+            zones=self.config.get("zones", [])
+        )
         return True
 
     def _print_edit_header(self, config_path: str):
@@ -340,6 +343,11 @@ class ConfigBuilder:
                     ln for i, ln in enumerate(lines) if i not in indices
                 ]
                 print(f"{Colors.GREEN}Deleted {len(indices)} line(s){Colors.RESET}")
+                # Refresh preview with updated annotations
+                self._capture_annotated_preview(
+                    lines=self.config.get("lines", []),
+                    zones=self.config.get("zones", [])
+                )
                 return
             elif choice == "3":
                 # Fall through to add mode
@@ -347,6 +355,11 @@ class ConfigBuilder:
             elif choice == "4":
                 self.config["lines"] = []
                 lines = []
+                # Refresh preview with zones only
+                self._capture_annotated_preview(
+                    lines=[],
+                    zones=self.config.get("zones", [])
+                )
 
         # Add new lines (reuse existing method logic)
         self._setup_lines()
@@ -380,6 +393,11 @@ class ConfigBuilder:
                     z for i, z in enumerate(zones) if i not in indices
                 ]
                 print(f"{Colors.GREEN}Deleted {len(indices)} zone(s){Colors.RESET}")
+                # Refresh preview with updated annotations
+                self._capture_annotated_preview(
+                    lines=self.config.get("lines", []),
+                    zones=self.config.get("zones", [])
+                )
                 return
             elif choice == "3":
                 # Fall through to add mode
@@ -387,6 +405,11 @@ class ConfigBuilder:
             elif choice == "4":
                 self.config["zones"] = []
                 zones = []
+                # Refresh preview with lines only
+                self._capture_annotated_preview(
+                    lines=self.config.get("lines", []),
+                    zones=[]
+                )
 
         # Add new zones
         self._setup_zones()
@@ -583,7 +606,9 @@ class ConfigBuilder:
         print(f"\n{Colors.BOLD}--- Lines Setup ---{Colors.RESET}")
         print(f"{Colors.GRAY}Lines detect objects crossing a boundary{Colors.RESET}")
 
-        lines = []
+        # Start with existing lines (for edit mode)
+        lines = list(self.config.get("lines", []))
+        zones = self.config.get("zones", [])
 
         while True:
             add = input("\nAdd a line? (Y/n): ").strip().lower()
@@ -612,7 +637,7 @@ class ConfigBuilder:
             )
 
             # Capture annotated preview
-            self._capture_annotated_preview(lines=lines)
+            self._capture_annotated_preview(lines=lines, zones=zones)
             print(f"  {Colors.GREEN}Preview updated{Colors.RESET} - refresh browser")
 
             # Adjust option
@@ -623,7 +648,7 @@ class ConfigBuilder:
                     .lower()
                 )
                 if action == "c":
-                    self._capture_annotated_preview(lines=lines)
+                    self._capture_annotated_preview(lines=lines, zones=zones)
                     print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
                 elif action == "a":
                     if line_type == "vertical":
@@ -636,7 +661,7 @@ class ConfigBuilder:
                         ).strip() or str(position)
                     position = int(pos_str)
                     lines[-1]["position_pct"] = position
-                    self._capture_annotated_preview(lines=lines)
+                    self._capture_annotated_preview(lines=lines, zones=zones)
                     print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
                 elif action == "n" or action == "":
                     break
@@ -651,7 +676,8 @@ class ConfigBuilder:
             f"{Colors.GRAY}Zones detect objects entering/dwelling in an area{Colors.RESET}"
         )
 
-        zones = []
+        # Start with existing zones and lines (for edit mode)
+        zones = list(self.config.get("zones", []))
         lines = self.config.get("lines", [])
 
         while True:
