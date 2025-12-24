@@ -399,12 +399,12 @@ def _process_headlight_detections(
     if not detections:
         return 0
 
-    # Associate detections with tracks
+    # Associate detections with tracks (includes temporal confirmation status)
     track_associations = headlight_detector.detections_to_tracks(
         detections, tracked_objects, current_time
     )
 
-    for track_id, detection in track_associations:
+    for track_id, detection, is_confirmed in track_associations:
         center_x, center_y = detection.center
         bbox = detection.bbox
 
@@ -421,8 +421,9 @@ def _process_headlight_detections(
         else:
             tracked_objects[track_id].update_position(center_x, center_y, bbox)
 
-        # Only check for events if emit_events is True
-        if not emit_events:
+        # Only emit events if enabled AND track is confirmed (seen for 5+ frames)
+        # This filters out brief reflections and noise
+        if not emit_events or not is_confirmed:
             continue
 
         tracked_obj = tracked_objects[track_id]

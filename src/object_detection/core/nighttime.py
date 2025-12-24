@@ -45,9 +45,13 @@ class HeadlightDetector:
     MAX_BLOB_AREA = 15000  # Larger to catch close headlights
     MIN_CIRCULARITY = 0.1  # Lower to allow LED light bars and non-circular lights
 
+    # Temporal filtering - require N consecutive frames before confirming
+    MIN_FRAMES_TO_CONFIRM = 5
+
     def __init__(self):
         """Initialize headlight detector with blob detection parameters."""
         self.blob_detector = self._create_blob_detector()
+        self._track_frame_counts: dict[int, int] = {}  # track_id -> consecutive frames seen
         logger.debug("HeadlightDetector initialized")
 
     def _create_blob_detector(self) -> cv2.SimpleBlobDetector:
@@ -131,12 +135,14 @@ class HeadlightDetector:
         existing_tracks: dict,
         current_time: float,
         max_distance: float = 50.0,
-    ) -> list[tuple[int, BlobDetection]]:
+    ) -> list[tuple[int, BlobDetection, bool]]:
         """
         Associate blob detections with track IDs.
 
         Simple nearest-neighbor association with existing headlight tracks.
         Creates new tracks for unmatched detections.
+        Tracks must be seen for MIN_FRAMES_TO_CONFIRM consecutive frames
+        before being confirmed (to filter out reflections/noise).
 
         Args:
             detections: List of blob detections
@@ -145,14 +151,15 @@ class HeadlightDetector:
             max_distance: Max pixels to associate with existing track
 
         Returns:
-            List of (track_id, detection) tuples
+            List of (track_id, detection, is_confirmed) tuples.
+            is_confirmed is True only after track seen for MIN_FRAMES_TO_CONFIRM frames.
         """
         # Track IDs for headlights start at 10000 to avoid collision with YOLO
         if not hasattr(self, "_next_track_id"):
             self._next_track_id = 10000
 
         results = []
-        used_tracks = set()
+        seen_this_frame = set()
 
         for detection in detections:
             cx, cy = detection.center
@@ -161,7 +168,7 @@ class HeadlightDetector:
 
             # Find nearest existing track
             for track_id, tracked_obj in existing_tracks.items():
-                if track_id in used_tracks:
+                if track_id in seen_this_frame:
                     continue
                 if tracked_obj.object_class != HEADLIGHT_CLASS_ID:
                     continue
@@ -174,12 +181,28 @@ class HeadlightDetector:
                     best_track_id = track_id
 
             if best_track_id is not None:
-                # Associate with existing track
-                used_tracks.add(best_track_id)
-                results.append((best_track_id, detection))
+                # Associate with existing track - increment frame count
+                seen_this_frame.add(best_track_id)
+                self._track_frame_counts[best_track_id] = (
+                    self._track_frame_counts.get(best_track_id, 0) + 1
+                )
+                is_confirmed = (
+                    self._track_frame_counts[best_track_id] >= self.MIN_FRAMES_TO_CONFIRM
+                )
+                results.append((best_track_id, detection, is_confirmed))
             else:
-                # Create new track
-                results.append((self._next_track_id, detection))
+                # Create new track - starts at frame 1
+                new_id = self._next_track_id
                 self._next_track_id += 1
+                self._track_frame_counts[new_id] = 1
+                seen_this_frame.add(new_id)
+                results.append((new_id, detection, False))  # New tracks not confirmed
+
+        # Clean up stale tracks not seen this frame (reset their counts)
+        stale_tracks = [
+            tid for tid in self._track_frame_counts if tid not in seen_this_frame
+        ]
+        for tid in stale_tracks:
+            del self._track_frame_counts[tid]
 
         return results
