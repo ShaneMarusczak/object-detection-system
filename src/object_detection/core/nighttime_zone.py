@@ -39,6 +39,8 @@ class NighttimeCarZoneConfig:
     email_digest: str | None = None
     # Debug mode - logs scoring details every N frames
     debug: bool = False
+    # Debug save frames - saves zone images to debug detection issues
+    debug_save_frames: str | None = None  # Directory to save debug frames
 
 
 @dataclass
@@ -247,6 +249,11 @@ class NighttimeCarZone:
         self._debug = config.debug
         self._debug_interval = 150  # Log status every N frames (5s at 30fps) when idle
         self._last_debug_state = ""  # Track state changes to reduce noise
+        self._debug_save_frames = config.debug_save_frames
+        self._debug_frame_interval = 30  # Save debug frames every N frames
+        if self._debug_save_frames:
+            import os
+            os.makedirs(self._debug_save_frames, exist_ok=True)
 
         # Taillight detector
         self.taillight_detector = TaillightDetector()
@@ -257,7 +264,9 @@ class NighttimeCarZone:
         log_msg = f"NighttimeCarZone '{self.name}' initialized: ({self.x1},{self.y1})-({self.x2},{self.y2})"
         if self._debug:
             logger.info(f"{log_msg} [DEBUG MODE ENABLED]")
-        else:
+        if self._debug_save_frames:
+            logger.info(f"  Debug frames will be saved to: {self._debug_save_frames}")
+        if not self._debug and not self._debug_save_frames:
             logger.debug(log_msg)
 
     def _create_blob_detector(self) -> cv2.SimpleBlobDetector:
@@ -429,6 +438,10 @@ class NighttimeCarZone:
         # Detect blobs
         keypoints = self._blob_detector.detect(binary)
 
+        # Save debug frames periodically
+        if self._debug_save_frames and self._frame_count % self._debug_frame_interval == 0:
+            self._save_debug_frame(region, l_channel, binary, keypoints)
+
         results = []
         for kp in keypoints:
             # Convert to frame coordinates
@@ -437,6 +450,43 @@ class NighttimeCarZone:
             results.append((cx, cy, kp.size))
 
         return results
+
+    def _save_debug_frame(
+        self,
+        region: np.ndarray,
+        l_channel: np.ndarray,
+        binary: np.ndarray,
+        keypoints: list,
+    ) -> None:
+        """Save debug images showing detection pipeline."""
+        import os
+
+        base_path = os.path.join(self._debug_save_frames, f"frame_{self._frame_count:06d}")
+
+        # Save original region
+        cv2.imwrite(f"{base_path}_1_region.jpg", region)
+
+        # Save L channel (brightness)
+        cv2.imwrite(f"{base_path}_2_brightness.jpg", l_channel)
+
+        # Save binary threshold result
+        cv2.imwrite(f"{base_path}_3_binary.jpg", binary)
+
+        # Save with keypoints drawn
+        if len(keypoints) > 0:
+            with_keypoints = cv2.drawKeypoints(
+                binary, keypoints, None, (0, 0, 255),
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+            )
+            cv2.imwrite(f"{base_path}_4_keypoints.jpg", with_keypoints)
+
+        # Log max brightness in region for debugging threshold
+        max_brightness = int(l_channel.max())
+        avg_brightness = int(l_channel.mean())
+        logger.info(
+            f"[DEBUG FRAME] '{self.name}' saved to {base_path}_*.jpg | "
+            f"brightness: max={max_brightness}, avg={avg_brightness}, threshold={self.BRIGHTNESS_THRESHOLD}"
+        )
 
     def _update_blob_tracking(self, blobs: list[tuple[float, float, float]]) -> None:
         """Associate detected blobs with tracked blobs."""
@@ -637,6 +687,7 @@ def create_nighttime_car_zones(
                 email_immediate=zone_config.get("email_immediate", False),
                 email_digest=zone_config.get("email_digest"),
                 debug=zone_config.get("debug", False),
+                debug_save_frames=zone_config.get("debug_save_frames"),
             ),
             frame_width,
             frame_height,
