@@ -486,7 +486,10 @@ class ConfigBuilder:
         if run_after:
             self._cleanup()
             print(f"\n{Colors.CYAN}Starting detection...{Colors.RESET}\n")
-            os.execvp("./run.sh", ["./run.sh", "-sy"])
+            # Run with the saved config directly (not the default)
+            os.execvp(
+                "python", ["python", "-m", "object_detection", "-c", filepath]
+            )
 
         return filepath
 
