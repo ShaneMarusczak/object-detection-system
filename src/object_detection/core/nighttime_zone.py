@@ -325,6 +325,10 @@ class NighttimeCarZone:
                 self._primed = True
                 self._primed_frame = self._frame_count
                 logger.debug(f"Zone '{self.name}' primed at frame {self._frame_count}")
+        elif self._primed and not brightness_elevated and not self.tracked_blobs:
+            # Reset primed state when brightness returns to baseline and no blobs
+            self._primed = False
+            logger.debug(f"Zone '{self.name}' primed state reset at frame {self._frame_count}")
 
         # Detect white blobs (headlights)
         blobs = self._detect_blobs(region)
@@ -493,7 +497,9 @@ class NighttimeCarZone:
 
     def _update_blob_tracking(self, blobs: list[tuple[float, float, float]]) -> None:
         """Associate detected blobs with tracked blobs."""
-        max_distance = 50.0
+        # Increased from 50 to 100 for faster-moving cars
+        # At 42 FPS, a car can move 60+ pixels per frame
+        max_distance = 100.0
         seen_this_frame = set()
 
         for cx, cy, size in blobs:
