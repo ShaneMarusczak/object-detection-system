@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 
+from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .email_service import EmailService
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def email_notifier_consumer(event_queue, config: dict) -> None:
     email_service = EmailService(email_config)
 
     # Temp frame directory for include_frame feature
-    temp_frame_dir = config.get("temp_frame_dir", "/tmp/frames")
+    temp_frame_dir = config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR)
 
     # Initialize cooldown tracker
     notifier = EventNotifier()

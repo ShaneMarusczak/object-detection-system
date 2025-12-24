@@ -15,6 +15,7 @@ from multiprocessing import Process, Queue
 from typing import Any
 
 from ..core.event_definition import EventDefinition
+from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .json_writer import json_writer_consumer
 from .email_notifier import email_notifier_consumer
 from .email_digest import email_digest_consumer
@@ -81,7 +82,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         consumer_queues["email_immediate"] = email_queue
         email_consumer_config = {
             "notification_config": notification_config,
-            "temp_frame_dir": config.get("temp_frame_dir", "/tmp/frames"),
+            "temp_frame_dir": config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR),
         }
         email_process = Process(
             target=email_notifier_consumer,
@@ -110,7 +111,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         frame_queue = Queue()
         consumer_queues["frame_capture"] = frame_queue
         frame_consumer_config = {
-            "temp_frame_dir": config.get("temp_frame_dir", "/tmp/frames"),
+            "temp_frame_dir": config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR),
             "storage": frame_storage_config,
             "lines": config.get("lines", []),
             "zones": config.get("zones", []),

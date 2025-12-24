@@ -11,6 +11,7 @@ from multiprocessing import Queue
 
 import cv2
 
+from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .frame_service import FrameService
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     frame_service = FrameService(config)
 
     # Temp frame directory
-    temp_frame_dir = config.get("temp_frame_dir", "/tmp/frames")
+    temp_frame_dir = config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR)
 
     # Lines/zones/ROI config for annotation
     lines_config = config.get("lines", [])

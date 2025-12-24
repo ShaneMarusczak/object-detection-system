@@ -24,6 +24,7 @@ from ..utils.constants import (
     MIN_TRACKING_TIME,
     MAX_CAMERA_RECONNECT_ATTEMPTS,
     CAMERA_RECONNECT_DELAY,
+    DEFAULT_TEMP_FRAME_DIR,
 )
 from .models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
 from .nighttime_zone import create_nighttime_car_zones, NighttimeCarZone
@@ -155,7 +156,7 @@ def _detection_loop(
     start_time = time.time()
 
     # Temp frame saving configuration
-    temp_frame_dir = config.get("temp_frame_dir", "/tmp/frames")
+    temp_frame_dir = config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR)
     temp_frame_enabled = config.get("temp_frames_enabled", True)
     temp_frame_max_age = config.get("temp_frame_max_age_seconds", 30)  # Keep last 30s
 

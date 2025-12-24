@@ -7,6 +7,8 @@ Provides type-safe, declarative validation with clear error messages.
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..utils.constants import DEFAULT_TEMP_FRAME_DIR, DEFAULT_TEMP_FRAME_MAX_AGE
+
 
 class StrictModel(BaseModel):
     """Base model that rejects unknown fields."""
@@ -294,9 +296,9 @@ class Config(StrictModel):
         default_factory=SpeedCalculationConfig
     )
     temp_frames_enabled: bool = False
-    temp_frame_dir: str = "/tmp/frames"
+    temp_frame_dir: str = DEFAULT_TEMP_FRAME_DIR
     temp_frame_interval: int = 5
-    temp_frame_max_age_seconds: int = 30
+    temp_frame_max_age_seconds: int = DEFAULT_TEMP_FRAME_MAX_AGE
 
     @model_validator(mode="after")
     def validate_references(self):
