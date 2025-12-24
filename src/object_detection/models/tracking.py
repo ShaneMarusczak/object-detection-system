@@ -1,5 +1,5 @@
 """
-Data models for object detection
+Tracking data models - objects, lines, zones, and ROI configuration.
 """
 
 from dataclasses import dataclass, field

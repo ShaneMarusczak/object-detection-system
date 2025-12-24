@@ -14,7 +14,7 @@ In distributed mode: receives events via Redis Streams
 from .coco_classes import COCO_CLASSES, COCO_NAME_TO_ID, get_class_name
 from .digest_state import DigestStateManager, DigestPeriodState
 from .dispatcher import dispatch_events
-from ..core.event_definition import EventDefinition
+from ..models import EventDefinition
 
 # Consumers
 from .json_writer import json_writer_consumer

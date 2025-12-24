@@ -10,24 +10,22 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import logging
 import time
-import uuid
-from datetime import datetime
-from multiprocessing import Queue, Event
+from multiprocessing import Event, Queue
 
 import cv2
 import torch
 from ultralytics import YOLO
 
+from ..models import LineConfig, ROIConfig, TrackedObject, ZoneConfig
 from ..utils.constants import (
+    DEFAULT_TEMP_FRAME_DIR,
     FPS_REPORT_INTERVAL,
     FPS_WINDOW_SIZE,
     MIN_TRACKING_TIME,
-    MAX_CAMERA_RECONNECT_ATTEMPTS,
-    CAMERA_RECONNECT_DELAY,
-    DEFAULT_TEMP_FRAME_DIR,
 )
-from .models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
-from .nighttime_zone import create_nighttime_car_zones, NighttimeCarZone
+from .camera import initialize_camera
+from .frame_saver import save_annotated_frame, save_temp_frame
+from .nighttime_zone import NighttimeCarZone, create_nighttime_car_zones
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +44,7 @@ def run_detection(
     try:
         # Initialize components
         model = _initialize_model(config)
-        cap = _initialize_camera(config)
+        cap = initialize_camera(config["camera"]["url"])
 
         # Parse configuration
         lines = _parse_lines(config)
@@ -96,40 +94,6 @@ def _initialize_model(config: dict) -> YOLO:
         logger.warning("Running on CPU - performance will be slow")
 
     return model
-
-
-def _initialize_camera(config: dict) -> cv2.VideoCapture:
-    """
-    Initialize camera with retry logic.
-
-    Returns:
-        OpenCV VideoCapture object
-
-    Raises:
-        RuntimeError: If camera cannot be opened after retries
-    """
-    camera_url = config["camera"]["url"]
-
-    for attempt in range(MAX_CAMERA_RECONNECT_ATTEMPTS + 1):
-        logger.info(f"Connecting to camera: {camera_url} (attempt {attempt + 1})")
-        cap = cv2.VideoCapture(camera_url)
-
-        if cap.isOpened():
-            logger.info("Camera connected successfully")
-            return cap
-
-        if attempt < MAX_CAMERA_RECONNECT_ATTEMPTS:
-            logger.warning(
-                f"Failed to connect, retrying in {CAMERA_RECONNECT_DELAY}s..."
-            )
-            time.sleep(CAMERA_RECONNECT_DELAY)
-        else:
-            logger.error(
-                f"Failed to connect to camera after {MAX_CAMERA_RECONNECT_ATTEMPTS + 1} attempts"
-            )
-            raise RuntimeError(f"Cannot connect to camera: {camera_url}")
-
-    raise RuntimeError(f"Cannot connect to camera: {camera_url}")
 
 
 def _detection_loop(
@@ -245,7 +209,7 @@ def _detection_loop(
                 frame_config.get("enabled")
                 and frame_count % frame_config.get("interval", 500) == 0
             ):
-                _save_annotated_frame(
+                save_annotated_frame(
                     frame,
                     lines,
                     zones,
@@ -254,7 +218,7 @@ def _detection_loop(
                     event_count,
                     fps_list[-1] if fps_list else 0,
                     frame_count,
-                    frame_config,
+                    frame_config.get("output_dir", "output_frames"),
                 )
 
             # Periodic status update
@@ -401,7 +365,7 @@ def _check_line_crossings(
             # Save frame on-demand for this event
             frame_id = None
             if frame is not None and temp_frame_dir:
-                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
 
             event = {
                 "event_type": "LINE_CROSS",
@@ -514,7 +478,7 @@ def _check_zone_events(
             # Save frame on-demand for this event
             frame_id = None
             if frame is not None and temp_frame_dir:
-                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
 
             data_queue.put(
                 {
@@ -538,7 +502,7 @@ def _check_zone_events(
             # Save frame on-demand for this event
             frame_id = None
             if frame is not None and temp_frame_dir:
-                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
 
             data_queue.put(
                 {
@@ -639,168 +603,6 @@ def _parse_roi(config: dict) -> ROIConfig:
         v_from=v_roi.get("crop_from_top_pct", 0),
         v_to=v_roi.get("crop_to_bottom_pct", 100),
     )
-
-
-def _save_temp_frame(frame, temp_dir: str, max_age_seconds: int) -> str | None:
-    """
-    Save temporary frame for event capture with UUID filename.
-    Cleans up old frames beyond max_age_seconds.
-
-    Args:
-        frame: Raw frame to save
-        temp_dir: Directory for temp frames
-        max_age_seconds: Maximum age of temp frames to retain
-
-    Returns:
-        Frame ID (UUID) if saved successfully, None otherwise
-    """
-    try:
-        # Generate UUID-based filename
-        frame_id = str(uuid.uuid4())
-        filename = f"{frame_id}.jpg"
-        filepath = os.path.join(temp_dir, filename)
-
-        # Save frame
-        cv2.imwrite(filepath, frame)
-
-        # Cleanup old frames (UUID-based filenames)
-        import glob
-
-        temp_frames = glob.glob(os.path.join(temp_dir, "*.jpg"))
-        current_time = time.time()
-
-        for temp_frame_path in temp_frames:
-            try:
-                file_age = current_time - os.path.getmtime(temp_frame_path)
-                if file_age > max_age_seconds:
-                    os.remove(temp_frame_path)
-            except Exception as e:
-                logger.debug(f"Error cleaning up temp frame {temp_frame_path}: {e}")
-
-        return frame_id
-
-    except Exception as e:
-        logger.debug(f"Error saving temp frame: {e}")
-        return None
-
-
-def _save_annotated_frame(
-    frame,
-    lines: list[LineConfig],
-    zones: list[ZoneConfig],
-    roi_config: ROIConfig,
-    frame_size: tuple,
-    event_count: int,
-    fps: float,
-    frame_count: int,
-    frame_config: dict,
-) -> None:
-    """Save annotated frame to disk."""
-    annotated_frame = _annotate_frame(
-        frame.copy(), lines, zones, roi_config, frame_size, event_count, fps
-    )
-
-    timestamp = datetime.now().strftime("%H%M%S")
-    output_dir = frame_config.get("output_dir", "output_frames")
-    os.makedirs(output_dir, exist_ok=True)
-
-    filename = f"{output_dir}/frame_{frame_count:06d}_{timestamp}.jpg"
-    cv2.imwrite(filename, annotated_frame)
-
-
-def _annotate_frame(
-    frame,
-    lines: list[LineConfig],
-    zones: list[ZoneConfig],
-    roi_config: ROIConfig,
-    frame_size: tuple,
-    event_count: int,
-    fps: float,
-):
-    """Add visual annotations to frame."""
-    frame_width, frame_height = frame_size
-
-    # Calculate ROI boundaries
-    if roi_config.enabled:
-        roi_x1 = int(frame_width * roi_config.h_from / 100)
-        roi_x2 = int(frame_width * roi_config.h_to / 100)
-        roi_y1 = int(frame_height * roi_config.v_from / 100)
-        roi_y2 = int(frame_height * roi_config.v_to / 100)
-        roi_width = roi_x2 - roi_x1
-        roi_height = roi_y2 - roi_y1
-
-        # Draw ROI boundary
-        cv2.rectangle(frame, (roi_x1, roi_y1), (roi_x2, roi_y2), (255, 0, 0), 2)
-    else:
-        roi_x1, roi_y1 = 0, 0
-        roi_width, roi_height = frame_width, frame_height
-
-    # Draw lines
-    for line in lines:
-        if line.type == "vertical":
-            line_x = roi_x1 + int(roi_width * line.position_pct / 100)
-            cv2.line(frame, (line_x, roi_y1), (line_x, roi_y2), (0, 255, 0), 2)
-            cv2.putText(
-                frame,
-                line.line_id,
-                (line_x + 5, roi_y1 + 20),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 255, 0),
-                2,
-            )
-        else:
-            line_y = roi_y1 + int(roi_height * line.position_pct / 100)
-            cv2.line(frame, (roi_x1, line_y), (roi_x2, line_y), (0, 255, 0), 2)
-            cv2.putText(
-                frame,
-                line.line_id,
-                (roi_x1 + 5, line_y - 5),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 255, 0),
-                2,
-            )
-
-    # Draw zones
-    for zone in zones:
-        zone_x1 = roi_x1 + int(roi_width * zone.x1_pct / 100)
-        zone_x2 = roi_x1 + int(roi_width * zone.x2_pct / 100)
-        zone_y1 = roi_y1 + int(roi_height * zone.y1_pct / 100)
-        zone_y2 = roi_y1 + int(roi_height * zone.y2_pct / 100)
-
-        cv2.rectangle(frame, (zone_x1, zone_y1), (zone_x2, zone_y2), (255, 255, 0), 2)
-        cv2.putText(
-            frame,
-            zone.zone_id,
-            (zone_x1 + 5, zone_y1 + 20),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 0),
-            2,
-        )
-
-    # Overlay stats
-    cv2.putText(
-        frame,
-        f"Events: {event_count}",
-        (10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 255, 0),
-        2,
-    )
-    cv2.putText(
-        frame,
-        f"FPS: {fps:.1f}",
-        (10, 60),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (0, 255, 0),
-        2,
-    )
-
-    return frame
 
 
 def _log_detection_config(

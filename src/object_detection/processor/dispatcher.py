@@ -13,7 +13,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 
-from ..core.event_definition import EventDefinition
+from ..models import EventDefinition
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .json_writer import json_writer_consumer
 from .email_notifier import email_notifier_consumer
