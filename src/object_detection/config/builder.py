@@ -68,8 +68,6 @@ class ConfigBuilder:
             self._setup_detection()
             self._setup_lines()
             self._setup_zones()
-            # TODO: Add NIGHTTIME_CAR event setup to _setup_events()
-            # Old nighttime_car_zones config was removed - now use events with event_type=NIGHTTIME_CAR
             self._setup_events()
             self._setup_pdf_reports()
             self._setup_digests()
@@ -376,246 +374,6 @@ class ConfigBuilder:
         if zones:
             self.config["zones"] = zones
 
-    def _setup_nighttime_car_zones(self):
-        """Setup nighttime car detection zones with visual preview."""
-        print(f"\n{Colors.BOLD}--- Nighttime Car Zones Setup ---{Colors.RESET}")
-        print(
-            f"{Colors.GRAY}Nighttime car zones detect vehicles at night using brightness + blob scoring{Colors.RESET}"
-        )
-        print(
-            f"{Colors.GRAY}(Separate from regular zones - uses headlight/taillight detection){Colors.RESET}"
-        )
-
-        nighttime_zones = []
-        lines = self.config.get("lines", [])
-        zones = self.config.get("zones", [])
-
-        while True:
-            add = input("\nAdd a nighttime car zone? (y/N): ").strip().lower()
-            if add != "y":
-                break
-
-            # Zone bounds with validation
-            while True:
-                print("  Zone bounds (percentages):")
-                x1 = int(input("    Left edge % [0]: ").strip() or "0")
-                y1 = int(input("    Top edge % [50]: ").strip() or "50")
-                x2 = int(input("    Right edge % [100]: ").strip() or "100")
-                y2 = int(input("    Bottom edge % [100]: ").strip() or "100")
-
-                # Validate bounds
-                if x2 <= x1:
-                    print(
-                        f"  {Colors.RED}Error: Right edge ({x2}%) must be greater than left edge ({x1}%){Colors.RESET}"
-                    )
-                    continue
-                if y2 <= y1:
-                    print(
-                        f"  {Colors.RED}Error: Bottom edge ({y2}%) must be greater than top edge ({y1}%){Colors.RESET}"
-                    )
-                    continue
-                break
-
-            # Zone name
-            name = (
-                input("  Zone name: ").strip()
-                or f"Nighttime Zone {len(nighttime_zones) + 1}"
-            )
-
-            zone_config = {
-                "name": name,
-                "x1_pct": x1,
-                "y1_pct": y1,
-                "x2_pct": x2,
-                "y2_pct": y2,
-            }
-
-            # Output wiring
-            print("  Output wiring:")
-
-            # PDF report
-            pdf = input("    Add to PDF report? (Y/n): ").strip().lower()
-            if pdf != "n":
-                report_id = (
-                    input("    Report ID [traffic_report]: ").strip()
-                    or "traffic_report"
-                )
-                zone_config["pdf_report"] = report_id
-
-            # Immediate email
-            email_imm = (
-                input("    Send immediate email on detection? (y/N): ").strip().lower()
-            )
-            if email_imm == "y":
-                zone_config["email_immediate"] = True
-
-            # Email digest
-            email_dig = input("    Add to email digest? (y/N): ").strip().lower()
-            if email_dig == "y":
-                digest_id = (
-                    input("    Digest ID [daily_digest]: ").strip() or "daily_digest"
-                )
-                zone_config["email_digest"] = digest_id
-
-            nighttime_zones.append(zone_config)
-
-            # Capture annotated preview (reuse zones preview, add nighttime zones)
-            self._capture_nighttime_zone_preview(lines, zones, nighttime_zones)
-            print(f"  {Colors.GREEN}Preview updated{Colors.RESET} - refresh browser")
-
-            # Adjust option
-            while True:
-                action = (
-                    input("  [c] Capture again  [a] Adjust bounds  [n] Next: ")
-                    .strip()
-                    .lower()
-                )
-                if action == "c":
-                    self._capture_nighttime_zone_preview(lines, zones, nighttime_zones)
-                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
-                elif action == "a":
-                    while True:
-                        x1 = int(
-                            input(
-                                f"    Left edge % [{nighttime_zones[-1]['x1_pct']}]: "
-                            ).strip()
-                            or str(nighttime_zones[-1]["x1_pct"])
-                        )
-                        y1 = int(
-                            input(
-                                f"    Top edge % [{nighttime_zones[-1]['y1_pct']}]: "
-                            ).strip()
-                            or str(nighttime_zones[-1]["y1_pct"])
-                        )
-                        x2 = int(
-                            input(
-                                f"    Right edge % [{nighttime_zones[-1]['x2_pct']}]: "
-                            ).strip()
-                            or str(nighttime_zones[-1]["x2_pct"])
-                        )
-                        y2 = int(
-                            input(
-                                f"    Bottom edge % [{nighttime_zones[-1]['y2_pct']}]: "
-                            ).strip()
-                            or str(nighttime_zones[-1]["y2_pct"])
-                        )
-                        if x2 <= x1:
-                            print(
-                                f"  {Colors.RED}Error: Right ({x2}%) must be > left ({x1}%){Colors.RESET}"
-                            )
-                            continue
-                        if y2 <= y1:
-                            print(
-                                f"  {Colors.RED}Error: Bottom ({y2}%) must be > top ({y1}%){Colors.RESET}"
-                            )
-                            continue
-                        break
-                    nighttime_zones[-1]["x1_pct"] = x1
-                    nighttime_zones[-1]["y1_pct"] = y1
-                    nighttime_zones[-1]["x2_pct"] = x2
-                    nighttime_zones[-1]["y2_pct"] = y2
-                    self._capture_nighttime_zone_preview(lines, zones, nighttime_zones)
-                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
-                elif action == "n" or action == "":
-                    break
-
-            print(f"  {Colors.GREEN}Nighttime car zone '{name}' added{Colors.RESET}")
-
-        if nighttime_zones:
-            self.config["nighttime_car_zones"] = nighttime_zones
-
-    def _capture_nighttime_zone_preview(
-        self,
-        lines: list[dict] | None = None,
-        zones: list[dict] | None = None,
-        nighttime_zones: list[dict] | None = None,
-    ):
-        """Capture preview with nighttime car zones (magenta color)."""
-        if self.cap is None:
-            return
-
-        ret, frame = self.cap.read()
-        if not ret:
-            return
-
-        height, width = frame.shape[:2]
-
-        # Draw lines (yellow)
-        if lines:
-            for line in lines:
-                line_type = line.get("type", "vertical")
-                position_pct = line.get("position_pct", 50)
-                description = line.get("description", "")
-
-                if line_type == "vertical":
-                    x = int(width * position_pct / 100)
-                    cv2.line(frame, (x, 0), (x, height), (0, 255, 255), 2)
-                    cv2.putText(
-                        frame,
-                        description,
-                        (x + 5, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 255),
-                        2,
-                    )
-                else:
-                    y = int(height * position_pct / 100)
-                    cv2.line(frame, (0, y), (width, y), (0, 255, 255), 2)
-                    cv2.putText(
-                        frame,
-                        description,
-                        (10, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 255),
-                        2,
-                    )
-
-        # Draw regular zones (cyan)
-        if zones:
-            for zone in zones:
-                x1 = int(width * zone.get("x1_pct", 0) / 100)
-                y1 = int(height * zone.get("y1_pct", 0) / 100)
-                x2 = int(width * zone.get("x2_pct", 100) / 100)
-                y2 = int(height * zone.get("y2_pct", 100) / 100)
-                description = zone.get("description", "")
-
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                cv2.putText(
-                    frame,
-                    description,
-                    (x1 + 5, y1 + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (255, 255, 0),
-                    2,
-                )
-
-        # Draw nighttime car zones (magenta)
-        if nighttime_zones:
-            for nz in nighttime_zones:
-                x1 = int(width * nz.get("x1_pct", 0) / 100)
-                y1 = int(height * nz.get("y1_pct", 0) / 100)
-                x2 = int(width * nz.get("x2_pct", 100) / 100)
-                y2 = int(height * nz.get("y2_pct", 100) / 100)
-                name = nz.get("name", "")
-
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
-                cv2.putText(
-                    frame,
-                    f"[Night] {name}",
-                    (x1 + 5, y1 + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (255, 0, 255),
-                    2,
-                )
-
-        # Save
-        preview_path = os.path.join(self.preview_dir, "preview.jpg")
-        cv2.imwrite(preview_path, frame)
-
     def _setup_events(self):
         """Setup event definitions."""
         print(f"\n{Colors.BOLD}--- Events Setup ---{Colors.RESET}")
@@ -654,7 +412,10 @@ class ConfigBuilder:
             if zones:
                 print("      2. ZONE_ENTER (object enters a zone)")
                 print("      3. ZONE_DWELL (object stays in zone)")
+                print("      4. NIGHTTIME_CAR (headlight blob detection in zone)")
             type_choice = input("    Choice [1]: ").strip() or "1"
+
+            is_nighttime_event = False
 
             if type_choice == "1":
                 match["event_type"] = "LINE_CROSS"
@@ -680,31 +441,57 @@ class ConfigBuilder:
                         print(f"      {i}. {zone['description']}")
                     zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
                     match["zone"] = zones[zone_choice]["description"]
+            elif type_choice == "4" and zones:
+                match["event_type"] = "NIGHTTIME_CAR"
+                is_nighttime_event = True
+                print("    Which zone to monitor for headlights?")
+                for i, zone in enumerate(zones, 1):
+                    print(f"      {i}. {zone['description']}")
+                zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                match["zone"] = zones[zone_choice]["description"]
 
-            # Object classes with validation
-            valid_classes = set(COCO_CLASSES.values())
-            while True:
-                print("    Object classes (comma-separated):")
-                print(f"    Common: {', '.join(COMMON_CLASSES)}")
-                classes_str = (
-                    input("    Classes [car, truck, bus]: ").strip()
-                    or "car, truck, bus"
-                )
-                classes = [c.strip() for c in classes_str.split(",") if c.strip()]
+                # Nighttime detection parameters
+                print("    Nighttime detection settings (press Enter for defaults):")
+                brightness = input("      Brightness threshold [30]: ").strip() or "30"
+                min_blob = input("      Min blob size [100]: ").strip() or "100"
+                max_blob = input("      Max blob size [10000]: ").strip() or "10000"
+                score = input("      Score threshold [85]: ").strip() or "85"
+                taillight_str = input("      Require taillight match? (Y/n): ").strip().lower()
+                taillight = taillight_str != "n"
 
-                # Validate all classes
-                invalid = [c for c in classes if c not in valid_classes]
-                if invalid:
-                    print(
-                        f"    {Colors.RED}Invalid class(es): {', '.join(invalid)}{Colors.RESET}"
+                match["nighttime_detection"] = {
+                    "brightness_threshold": int(brightness),
+                    "min_blob_size": int(min_blob),
+                    "max_blob_size": int(max_blob),
+                    "score_threshold": int(score),
+                    "taillight_color_match": taillight,
+                }
+
+            # Object classes with validation (skip for NIGHTTIME_CAR)
+            if not is_nighttime_event:
+                valid_classes = set(COCO_CLASSES.values())
+                while True:
+                    print("    Object classes (comma-separated):")
+                    print(f"    Common: {', '.join(COMMON_CLASSES)}")
+                    classes_str = (
+                        input("    Classes [car, truck, bus]: ").strip()
+                        or "car, truck, bus"
                     )
-                    print(
-                        f"    {Colors.GRAY}Valid classes: {', '.join(sorted(valid_classes))}{Colors.RESET}"
-                    )
-                    continue
-                break
+                    classes = [c.strip() for c in classes_str.split(",") if c.strip()]
 
-            match["object_class"] = classes if len(classes) > 1 else classes[0]
+                    # Validate all classes
+                    invalid = [c for c in classes if c not in valid_classes]
+                    if invalid:
+                        print(
+                            f"    {Colors.RED}Invalid class(es): {', '.join(invalid)}{Colors.RESET}"
+                        )
+                        print(
+                            f"    {Colors.GRAY}Valid classes: {', '.join(sorted(valid_classes))}{Colors.RESET}"
+                        )
+                        continue
+                    break
+
+                match["object_class"] = classes if len(classes) > 1 else classes[0]
 
             event["match"] = match
 
@@ -754,7 +541,6 @@ class ConfigBuilder:
     def _setup_pdf_reports(self):
         """Setup PDF report configurations."""
         events = self.config.get("events", [])
-        nighttime_car_zones = self.config.get("nighttime_car_zones", [])
 
         # Collect unique report IDs from events
         report_ids = set()
@@ -762,14 +548,6 @@ class ConfigBuilder:
             report_id = event.get("actions", {}).get("pdf_report")
             if report_id:
                 report_ids.add(report_id)
-
-        # Also collect from nighttime_car_zones
-        ncz_report_ids = set()
-        for ncz in nighttime_car_zones:
-            report_id = ncz.get("pdf_report")
-            if report_id:
-                report_ids.add(report_id)
-                ncz_report_ids.add(report_id)
 
         if not report_ids:
             return
@@ -780,26 +558,13 @@ class ConfigBuilder:
         for report_id in report_ids:
             print(f"\n  Report: {report_id}")
 
-            # Get events for this report (regular events)
+            # Get events for this report
             report_events = [
                 e["name"]
                 for e in events
                 if e.get("actions", {}).get("pdf_report") == report_id
             ]
-
-            # Add nighttime_car_zone event definitions
-            for ncz in nighttime_car_zones:
-                if ncz.get("pdf_report") == report_id:
-                    # Nighttime car events use event_definition format
-                    report_events.append(f"nighttime_car_{ncz['name']}")
-
-            # Show what's included
-            is_ncz_only = report_id in ncz_report_ids and not any(
-                e.get("actions", {}).get("pdf_report") == report_id for e in events
-            )
-            if is_ncz_only:
-                ncz_names = [ncz["name"] for ncz in nighttime_car_zones if ncz.get("pdf_report") == report_id]
-                print(f"    (Nighttime car zone{'s' if len(ncz_names) > 1 else ''}: {', '.join(ncz_names)})")
+            print(f"    Events: {', '.join(report_events)}")
 
             title = input(
                 f"    Title [{report_id.replace('_', ' ').title()}]: "
@@ -809,18 +574,17 @@ class ConfigBuilder:
 
             output_dir = input("    Output directory [reports]: ").strip() or "reports"
 
-            # Check if any event has frame_capture or if nighttime zones want photos
+            # Check if any event has frame_capture
             has_photos = any(
                 e.get("actions", {}).get("frame_capture")
                 for e in events
                 if e.get("actions", {}).get("pdf_report") == report_id
             )
 
-            # For nighttime_car_zones, ask about photos
-            if report_id in ncz_report_ids:
+            # Ask about photos if not already enabled via frame_capture
+            if not has_photos:
                 photos_str = input("    Include photos in report? (Y/n): ").strip().lower()
-                if photos_str != "n":
-                    has_photos = True
+                has_photos = photos_str != "n"
 
             annotate = False
             if has_photos:
@@ -847,7 +611,6 @@ class ConfigBuilder:
     def _setup_digests(self):
         """Setup email digest configurations."""
         events = self.config.get("events", [])
-        nighttime_car_zones = self.config.get("nighttime_car_zones", [])
 
         # Collect unique digest IDs from events
         digest_ids = set()
@@ -855,14 +618,6 @@ class ConfigBuilder:
             digest_id = event.get("actions", {}).get("email_digest")
             if digest_id:
                 digest_ids.add(digest_id)
-
-        # Also collect from nighttime_car_zones
-        ncz_digest_ids = set()
-        for ncz in nighttime_car_zones:
-            digest_id = ncz.get("email_digest")
-            if digest_id:
-                digest_ids.add(digest_id)
-                ncz_digest_ids.add(digest_id)
 
         if not digest_ids:
             return
@@ -873,21 +628,13 @@ class ConfigBuilder:
         for digest_id in digest_ids:
             print(f"\n  Digest: {digest_id}")
 
-            # Get events for this digest (regular events)
+            # Get events for this digest
             digest_events = [
                 e["name"]
                 for e in events
                 if e.get("actions", {}).get("email_digest") == digest_id
             ]
-
-            # Add nighttime_car_zone event definitions
-            for ncz in nighttime_car_zones:
-                if ncz.get("email_digest") == digest_id:
-                    digest_events.append(f"nighttime_car_{ncz['name']}")
-
-            # Show what's included
-            if digest_events:
-                print(f"    {Colors.GRAY}Events: {', '.join(digest_events)}{Colors.RESET}")
+            print(f"    Events: {', '.join(digest_events)}")
 
             # Schedule
             print("    Schedule type:")

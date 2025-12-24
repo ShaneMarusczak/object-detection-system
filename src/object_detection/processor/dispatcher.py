@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 from typing import Any
 
+from ..core.event_definition import EventDefinition
 from .json_writer import json_writer_consumer
 from .email_notifier import email_notifier_consumer
 from .email_digest import email_digest_consumer
@@ -21,67 +22,6 @@ from .pdf_report import generate_pdf_reports
 from .frame_capture import frame_capture_consumer
 
 logger = logging.getLogger(__name__)
-
-
-class EventDefinition:
-    """Declarative event definition - specifies what to match and what actions to take."""
-
-    def __init__(self, name: str, match: dict[str, Any], actions: dict[str, Any]):
-        """
-        Create event definition from pre-resolved config.
-
-        Actions should already be resolved by prepare_runtime_config() -
-        no inference happens here at runtime.
-        """
-        self.name = name
-        self.match = match
-        self.actions = actions  # Already resolved - no inference needed
-
-        # Parse match criteria
-        self.event_type = match.get("event_type")
-        self.zone = match.get("zone")
-        self.line = match.get("line")
-        self.direction = match.get("direction")
-
-        # Handle single class or list of classes
-        obj_class = match.get("object_class")
-        if isinstance(obj_class, list):
-            self.object_classes = set(obj_class)
-        elif obj_class:
-            self.object_classes = {obj_class}
-        else:
-            self.object_classes = None  # Match any class
-
-    def matches(self, event: dict[str, Any]) -> bool:
-        """Check if raw event matches this definition."""
-        # Check event type
-        if self.event_type and event.get("event_type") != self.event_type:
-            return False
-
-        # Check zone
-        if self.zone and event.get("zone_description") != self.zone:
-            return False
-
-        # Check line
-        if self.line and event.get("line_description") != self.line:
-            return False
-
-        # Check direction (for LINE_CROSS events)
-        if self.direction and event.get("direction") != self.direction:
-            return False
-
-        # Check object class
-        if (
-            self.object_classes
-            and event.get("object_class_name") not in self.object_classes
-        ):
-            return False
-
-        return True
-
-    def get_object_classes(self) -> set[str]:
-        """Get all object classes this event definition matches."""
-        return self.object_classes if self.object_classes else set()
 
 
 def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]):

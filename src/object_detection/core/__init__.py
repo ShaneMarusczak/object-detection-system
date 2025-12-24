@@ -2,11 +2,12 @@
 Core detection components.
 
 NOTE: dispatcher has moved to processor/ module.
-This module now only contains the detector (for local/legacy mode).
+This module contains the detector and foundational classes.
 """
 
 from .detector import run_detection
 from .models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
+from .event_definition import EventDefinition
 
 __all__ = [
     "run_detection",
@@ -14,4 +15,5 @@ __all__ = [
     "LineConfig",
     "ZoneConfig",
     "ROIConfig",
+    "EventDefinition",
 ]
