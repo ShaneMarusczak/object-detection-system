@@ -1,11 +1,11 @@
 # Object Detection System
 
-GPU-accelerated object detection for tracking movement across lines and through zones. YOLO + ByteTrack with headlight detection for nighttime coverage.
+GPU-accelerated object detection for tracking movement across lines and through zones. YOLO + ByteTrack with blob-based nighttime detection.
 
 ## Features
 
-- **Event-driven**: Define what you care about, system routes automatically
-- **Headlight detection**: Blob detection fallback when YOLO can't see (darkness)
+- **Event-driven**: Define events declaratively, system routes automatically
+- **Nighttime detection**: Headlight/taillight blob scoring when YOLO can't see
 - **PDF reports**: Generated on shutdown with event summaries and photos
 - **Email digests**: Periodic summaries with optional frame captures
 - **Terraform workflow**: `--validate`, `--plan`, `--dry-run` before running
@@ -74,14 +74,26 @@ zones:
     y1_pct: 60
     x2_pct: 25
     y2_pct: 100
-    description: "loading dock"
+    description: "driveway"
 
 events:
+  # Daytime: YOLO detects cars
   - name: "vehicle_entering"
     match:
-      event_type: "LINE_CROSS"
+      event_type: LINE_CROSS
       line: "entrance gate"
-      object_class: ["car", "truck", "headlight"]
+      object_class: [car, truck]
+    actions:
+      json_log: true
+      pdf_report: "traffic_report"
+
+  # Nighttime: Blob detection for headlights/taillights
+  - name: "nighttime_car"
+    match:
+      event_type: NIGHTTIME_CAR
+      zone: "driveway"
+      nighttime_detection:
+        score_threshold: 85
     actions:
       json_log: true
       pdf_report: "traffic_report"
@@ -92,29 +104,33 @@ pdf_reports:
     photos: true
 ```
 
-Headlight is just another class - use it anywhere you'd use `car` or `truck`.
-
 ## Project Structure
 
 ```
 src/object_detection/
 ├── cli.py                 # Entry point
 ├── core/
-│   ├── detector.py        # YOLO + headlight detection
-│   ├── nighttime.py       # HeadlightDetector (blob detection)
+│   ├── detector.py        # YOLO detection + tracking
+│   ├── nighttime_zone.py  # Blob-based nighttime car detection
+│   ├── event_definition.py # EventDefinition class
 │   └── models.py          # TrackedObject, LineConfig, ZoneConfig
 ├── processor/
-│   ├── dispatcher.py      # Event routing
+│   ├── dispatcher.py      # Event routing to consumers
 │   ├── json_writer.py     # JSONL logging + console output
 │   ├── frame_capture.py   # Annotated frame saves
-│   ├── pdf_report.py      # PDF generation
+│   ├── pdf_report.py      # PDF generation on shutdown
 │   ├── email_digest.py    # Periodic email summaries
-│   └── coco_classes.py    # Class ID mappings (includes headlight)
+│   └── coco_classes.py    # COCO class ID mappings
 ├── config/
-│   ├── planner.py         # validate/plan/dry-run
-│   └── schemas.py         # Config validation
+│   ├── planner.py         # validate/plan/dry-run logic
+│   ├── schemas.py         # Pydantic config validation
+│   └── builder.py         # Interactive config wizard
+├── utils/
+│   ├── event_schema.py    # Event format documentation
+│   └── queue_protocol.py  # Queue abstraction for distributed mode
 └── edge/
-    └── detector.py        # Jetson edge deployment
+    ├── detector.py        # Minimal detector for Jetson
+    └── config.py          # Edge-specific config parsing
 ```
 
 ## Output
@@ -122,14 +138,15 @@ src/object_detection/
 **JSONL** (`data/events_*.jsonl`):
 ```json
 {"event_type":"LINE_CROSS","track_id":42,"object_class_name":"car","line_description":"entrance gate","direction":"LTR","timestamp":"2025-12-23T04:11:17Z"}
+{"event_type":"NIGHTTIME_CAR","track_id":"nc_1","zone_description":"driveway","score":92,"timestamp":"2025-12-23T22:45:03Z"}
 ```
 
 **PDF**: Generated on shutdown with event tables and captured frames.
 
 **Console**:
 ```
-od.processor.json_writer INFO #   1 | Track 42 (car) crossed V1 (entrance gate) LTR
-od.processor.json_writer INFO #   2 | Track 10005 (headlight) crossed V1 (entrance gate) LTR
+json_writer INFO #   1 | Track 42 (car) crossed V1 (entrance gate) LTR
+json_writer INFO #   2 | NIGHTTIME_CAR in driveway (score=92)
 ```
 
 ## License
