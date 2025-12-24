@@ -33,6 +33,7 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     # Lines/zones/ROI config for annotation
     lines_config = config.get("lines", [])
     zones_config = config.get("zones", [])
+    nighttime_car_zones_config = config.get("nighttime_car_zones", [])
     roi_config = config.get("roi", {})
 
     # Track cooldowns per (track_id, zone/line)
@@ -132,7 +133,8 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
 
                 if should_annotate:
                     annotated = _annotate_frame(
-                        temp_frame, event, lines_config, zones_config, roi_config
+                        temp_frame, event, lines_config, zones_config,
+                        nighttime_car_zones_config, roi_config
                     )
                     if annotated:
                         frame_to_save = annotated
@@ -238,6 +240,7 @@ def _annotate_frame(
     event: dict,
     lines_config: list[dict],
     zones_config: list[dict],
+    nighttime_car_zones_config: list[dict],
     roi_config: dict,
 ) -> str | None:
     """
@@ -248,6 +251,7 @@ def _annotate_frame(
         event: Event data containing bbox and object info
         lines_config: List of line configurations
         zones_config: List of zone configurations
+        nighttime_car_zones_config: List of nighttime car zone configurations
         roi_config: ROI configuration for coordinate mapping
 
     Returns:
@@ -316,6 +320,25 @@ def _annotate_frame(
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (255, 255, 0),
+                1,
+            )
+
+        # Draw nighttime car zones (magenta rectangles)
+        for ncz in nighttime_car_zones_config:
+            x1 = int(width * ncz.get("x1_pct", 0) / 100)
+            y1 = int(height * ncz.get("y1_pct", 0) / 100)
+            x2 = int(width * ncz.get("x2_pct", 100) / 100)
+            y2 = int(height * ncz.get("y2_pct", 100) / 100)
+            name = ncz.get("name", "")
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+            cv2.putText(
+                frame,
+                name,
+                (x1 + 5, y1 + 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 255),
                 1,
             )
 

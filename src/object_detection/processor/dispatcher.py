@@ -175,6 +175,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             "storage": frame_storage_config,
             "lines": config.get("lines", []),
             "zones": config.get("zones", []),
+            "nighttime_car_zones": config.get("nighttime_car_zones", []),
             "roi": config.get("roi", {}),
         }
         frame_process = Process(
