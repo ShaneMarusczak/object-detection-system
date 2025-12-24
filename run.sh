@@ -21,7 +21,20 @@ while getopts "ys" opt; do
 done
 shift $((OPTIND-1))
 
-source ~/traffic-analysis/venv/bin/activate
+# Activate virtual environment
+# Use .run.local for machine-specific venv (e.g., Jetson with custom torch/numpy)
+if [ -f ".run.local" ]; then
+    source .run.local
+elif [ -n "$VIRTUAL_ENV" ]; then
+    : # Already in a venv
+elif [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+elif [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+else
+    echo -e "${YELLOW}Warning: No virtual environment found${NC}"
+    echo "Create .run.local with: source /path/to/your/venv/bin/activate"
+fi
 
 echo -e "${CYAN}Object Detection System${NC}"
 echo ""
