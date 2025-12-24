@@ -322,17 +322,6 @@ class TestNighttimeCarZones(unittest.TestCase):
         self.assertIn("nighttime_car_zones", plan.geometry)
         self.assertIn("driveway entrance", plan.geometry["nighttime_car_zones"])
 
-    def test_nighttime_car_zones_consumers(self):
-        """Test that nighttime car zone actions resolve to consumers."""
-        config = self.get_nighttime_config()
-        prepared = prepare_runtime_config(config)
-
-        consumers = prepared.get("_resolved_consumers", [])
-        self.assertIn("json_writer", consumers)
-        self.assertIn("email_notifier", consumers)
-        self.assertIn("email_digest", consumers)
-        self.assertIn("pdf_report", consumers)
-
     def test_nighttime_car_zones_in_plan_consumers(self):
         """Test that build_plan includes nighttime car zone consumers."""
         config = self.get_nighttime_config()
@@ -342,6 +331,7 @@ class TestNighttimeCarZones(unittest.TestCase):
         self.assertIn("email_notifier", plan.consumers)
         self.assertIn("email_digest", plan.consumers)
         self.assertIn("pdf_report", plan.consumers)
+        self.assertIn("frame_capture", plan.consumers)  # Always captured for reports
 
 
 class TestLoadConfigWithEnv(unittest.TestCase):

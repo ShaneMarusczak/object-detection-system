@@ -112,126 +112,87 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         line_lookup = _build_line_lookup(config)
         nighttime_car_zone_lookup = _build_nighttime_car_zone_lookup(config)
 
-        # Build pdf_report and digest lookups for checking photos flag
-        pdf_report_lookup = {
-            r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")
-        }
-        digest_lookup = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
-
-        # Get pre-resolved consumers from config (resolved by prepare_runtime_config)
-        needed_consumers = set(config.get("_resolved_consumers", []))
-        if not needed_consumers:
-            logger.warning("No consumers resolved - config may not have been prepared")
-        logger.info(f"Consumers: {sorted(needed_consumers)}")
-
-        # Initialize only the consumers that are needed
+        # All consumers are always available - they're cheap (just wait on queues)
+        # Routing decides what gets sent where based on declared config
         consumers = []
         consumer_queues = {}
         notification_config = config.get("notifications", {})
+        output_config = config.get("output", {})
+        frame_storage_config = config.get("frame_storage", {})
 
-        # JSON Writer - if any event has json_log: true
-        if "json_writer" in needed_consumers:
-            json_queue = Queue()
-            consumer_queues["json_log"] = json_queue
+        # JSON Writer - always available
+        json_queue = Queue()
+        consumer_queues["json_log"] = json_queue
+        console_config = config.get("console_output", {})
+        json_consumer_config = {
+            "json_dir": output_config.get("json_dir", "data"),
+            "console_enabled": console_config.get("enabled", True),
+            "console_level": console_config.get("level", "detailed"),
+        }
+        json_process = Process(
+            target=json_writer_consumer,
+            args=(json_queue, json_consumer_config),
+            name="JSONWriter",
+        )
+        json_process.start()
+        consumers.append(json_process)
 
-            output_config = config.get("output", {})
-            console_config = config.get("console_output", {})
+        # Email Notifier - always available
+        email_queue = Queue()
+        consumer_queues["email_immediate"] = email_queue
+        email_consumer_config = {
+            "notification_config": notification_config,
+            "temp_frame_dir": config.get("temp_frame_dir", "/tmp/frames"),
+        }
+        email_process = Process(
+            target=email_notifier_consumer,
+            args=(email_queue, email_consumer_config),
+            name="EmailNotifier",
+        )
+        email_process.start()
+        consumers.append(email_process)
 
-            json_consumer_config = {
-                "json_dir": output_config.get("json_dir", "data"),
-                "console_enabled": console_config.get("enabled", True),
-                "console_level": console_config.get("level", "detailed"),
-            }
+        # Email Digest - always available
+        digest_config = config.get("digests", [])
+        digest_consumer_config = {
+            "digests": digest_config,
+            "notification_config": notification_config,
+            "frame_service_config": {"storage": frame_storage_config},
+        }
+        digest_process = Process(
+            target=email_digest_consumer,
+            args=(output_config.get("json_dir", "data"), digest_consumer_config),
+            name="EmailDigest",
+        )
+        digest_process.start()
+        consumers.append(digest_process)
 
-            json_process = Process(
-                target=json_writer_consumer,
-                args=(json_queue, json_consumer_config),
-                name="JSONWriter",
-            )
-            json_process.start()
-            consumers.append(json_process)
-            logger.info("Started JSON Writer consumer")
+        # Frame Capture - always available
+        frame_queue = Queue()
+        consumer_queues["frame_capture"] = frame_queue
+        frame_consumer_config = {
+            "temp_frame_dir": config.get("temp_frame_dir", "/tmp/frames"),
+            "storage": frame_storage_config,
+            "lines": config.get("lines", []),
+            "zones": config.get("zones", []),
+            "roi": config.get("roi", {}),
+        }
+        frame_process = Process(
+            target=frame_capture_consumer,
+            args=(frame_queue, frame_consumer_config),
+            name="FrameCapture",
+        )
+        frame_process.start()
+        consumers.append(frame_process)
 
-        # Email Notifier - if any event has email_immediate action
-        if "email_notifier" in needed_consumers:
-            email_queue = Queue()
-            consumer_queues["email_immediate"] = email_queue
-
-            email_consumer_config = {
-                "notification_config": notification_config,
-                "temp_frame_dir": config.get("temp_frame_dir", "/tmp/frames"),
-            }
-
-            email_process = Process(
-                target=email_notifier_consumer,
-                args=(email_queue, email_consumer_config),
-                name="EmailNotifier",
-            )
-            email_process.start()
-            consumers.append(email_process)
-            logger.info("Started Email Notifier consumer")
-
-        # Email Digest - if any event has email_digest action
-        if "email_digest" in needed_consumers:
-            digest_config = config.get("digests", [])
-            json_dir = config.get("output", {}).get("json_dir", "data")
-            frame_storage_config = config.get("frame_storage", {})
-
-            digest_consumer_config = {
-                "digests": digest_config,
-                "notification_config": notification_config,
-                "frame_service_config": {"storage": frame_storage_config},
-            }
-
-            digest_process = Process(
-                target=email_digest_consumer,
-                args=(json_dir, digest_consumer_config),
-                name="EmailDigest",
-            )
-            digest_process.start()
-            consumers.append(digest_process)
-            logger.info(
-                f"Started Email Digest consumer with {len(digest_config)} digest(s)"
-            )
-
-        # PDF Report - stored for synchronous generation at shutdown
-        if "pdf_report" in needed_consumers:
-            pdf_report_list = config.get("pdf_reports", [])
-            frame_storage_config = config.get("frame_storage", {})
-
+        # PDF Report config - generates synchronously at shutdown
+        pdf_report_list = config.get("pdf_reports", [])
+        if pdf_report_list:
             pdf_shutdown_config = {
                 "pdf_reports": pdf_report_list,
                 "frame_service_config": {"storage": frame_storage_config},
+                "nighttime_car_zones": config.get("nighttime_car_zones", []),
             }
-            logger.info(
-                f"PDF report(s) will generate on shutdown: {len(pdf_report_list)}"
-            )
-
-        # Frame Capture - if any event has frame_capture action
-        if "frame_capture" in needed_consumers:
-            frame_queue = Queue()
-            consumer_queues["frame_capture"] = frame_queue
-
-            frame_storage_config = config.get("frame_storage", {})
-            frame_consumer_config = {
-                "temp_frame_dir": config.get("temp_frame_dir", "/tmp/frames"),
-                "storage": frame_storage_config,
-                "lines": config.get("lines", []),
-                "zones": config.get("zones", []),
-                "roi": config.get("roi", {}),
-            }
-
-            frame_process = Process(
-                target=frame_capture_consumer,
-                args=(frame_queue, frame_consumer_config),
-                name="FrameCapture",
-            )
-            frame_process.start()
-            consumers.append(frame_process)
-            logger.info("Started Frame Capture consumer")
-
-        if not consumers and not pdf_shutdown_config:
-            logger.warning("No consumers needed - no events define any actions!")
 
         logger.info(f"Dispatcher initialized with {len(consumers)} consumer(s)")
 
@@ -245,7 +206,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                 logger.info("Received shutdown signal")
                 break
 
-            # Handle NIGHTTIME_CAR events specially (have their own output wiring)
+            # Handle NIGHTTIME_CAR events - route based on zone's declared outputs
             if raw_event.get("event_type") == "NIGHTTIME_CAR":
                 enriched_event = _enrich_nighttime_car_event(raw_event)
                 zone_name = enriched_event.get("zone_name")
@@ -255,30 +216,18 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                     event_count += 1
                     events_by_class["nighttime_car"] += 1
 
-                    # Check if frame_capture is needed (pdf_report or digest has photos)
-                    needs_frame_capture = False
+                    # Route based on zone's declared output wiring
+                    # If pdf_report or email_digest is declared, always capture frames
                     pdf_report_id = zone_config.get("pdf_report")
                     digest_id = zone_config.get("email_digest")
-                    if pdf_report_id and pdf_report_lookup.get(pdf_report_id, {}).get(
-                        "photos"
-                    ):
-                        needs_frame_capture = True
-                    if digest_id and digest_lookup.get(digest_id, {}).get("photos"):
-                        needs_frame_capture = True
 
-                    # Route based on zone's output wiring
                     actions = {
-                        "json_log": True,  # Always log NIGHTTIME_CAR events
+                        "json_log": True,
                         "pdf_report": pdf_report_id,
-                        "email_immediate": {
-                            "enabled": zone_config.get("email_immediate", False)
-                        },
+                        "email_immediate": {"enabled": zone_config.get("email_immediate", False)},
                         "email_digest": digest_id,
+                        "frame_capture": {"enabled": bool(pdf_report_id or digest_id)},
                     }
-
-                    # Add frame_capture if photos needed
-                    if needs_frame_capture:
-                        actions["frame_capture"] = {"enabled": True}
 
                     _route_event(enriched_event, actions, consumer_queues)
                 continue

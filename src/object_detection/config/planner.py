@@ -575,14 +575,12 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
         digest_id = ncz.get("email_digest")
         if digest_id:
             consumers.add("email_digest")
-            if digests.get(digest_id, {}).get("photos"):
-                consumers.add("frame_capture")
+            consumers.add("frame_capture")  # Always capture frames for digests
 
         pdf_report_id = ncz.get("pdf_report")
         if pdf_report_id:
             consumers.add("pdf_report")
-            if pdf_reports.get(pdf_report_id, {}).get("photos"):
-                consumers.add("frame_capture")
+            consumers.add("frame_capture")  # Always capture frames for reports
 
     return sorted(consumers)
 
@@ -667,20 +665,16 @@ def prepare_runtime_config(config: dict) -> dict:
             logger.warning("No events defined - nothing will be tracked!")
         config["detection"]["track_classes"] = []
 
-    # Resolve all implied actions and determine consumers
-    consumers = _resolve_implied_actions(config)
-    config["_resolved_consumers"] = consumers
+    # Resolve all implied actions (e.g., pdf_report → json_log)
+    _resolve_implied_actions(config)
 
-    # Enable temp_frames if frame_capture is needed
-    if "frame_capture" in consumers:
-        if not config.get("temp_frames_enabled"):
-            config["temp_frames_enabled"] = True
-            logger.debug("Auto-enabled temp_frames (required by frame_capture)")
+    # Always enable temp_frames - consumers are always available
+    config["temp_frames_enabled"] = True
 
     return config
 
 
-def _resolve_implied_actions(config: dict) -> list[str]:
+def _resolve_implied_actions(config: dict) -> None:
     """
     Resolve all implied actions and modify event configs in place.
 
@@ -689,14 +683,10 @@ def _resolve_implied_actions(config: dict) -> list[str]:
     - pdf_report with annotate=true → frame_capture.annotate=true
     - email_digest with photos=true → frame_capture enabled
     - pdf_report/email_digest → json_log=true
-
-    Returns list of needed consumers.
     """
     events = config.get("events", [])
     digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
     pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
-
-    needed_consumers = set()
 
     for event in events:
         actions = event.get("actions", {})
@@ -761,58 +751,6 @@ def _resolve_implied_actions(config: dict) -> list[str]:
                 actions["frame_capture"] = {"enabled": frame_capture}
             elif isinstance(frame_capture, dict) and "enabled" not in frame_capture:
                 actions["frame_capture"]["enabled"] = True
-
-        # --- Determine consumers for this event ---
-        if actions.get("json_log"):
-            needed_consumers.add("json_writer")
-
-        email_immediate = actions.get("email_immediate")
-        if email_immediate:
-            if isinstance(email_immediate, dict) and email_immediate.get(
-                "enabled", True
-            ):
-                needed_consumers.add("email_notifier")
-            elif email_immediate is True:
-                needed_consumers.add("email_notifier")
-
-        if digest_id:
-            needed_consumers.add("email_digest")
-
-        if pdf_report_id:
-            needed_consumers.add("pdf_report")
-
-        frame_capture = actions.get("frame_capture")
-        if frame_capture:
-            if isinstance(frame_capture, dict) and frame_capture.get("enabled", True):
-                needed_consumers.add("frame_capture")
-            elif frame_capture is True:
-                needed_consumers.add("frame_capture")
-
-    # Also resolve consumers for nighttime_car_zones (they have their own output wiring)
-    for ncz in config.get("nighttime_car_zones", []):
-        # NIGHTTIME_CAR events always log to JSON
-        needed_consumers.add("json_writer")
-
-        if ncz.get("email_immediate"):
-            needed_consumers.add("email_notifier")
-
-        digest_id = ncz.get("email_digest")
-        if digest_id:
-            needed_consumers.add("email_digest")
-            # Check if digest wants photos
-            digest = digests.get(digest_id, {})
-            if digest.get("photos"):
-                needed_consumers.add("frame_capture")
-
-        pdf_report_id = ncz.get("pdf_report")
-        if pdf_report_id:
-            needed_consumers.add("pdf_report")
-            # Check if report wants photos
-            report = pdf_reports.get(pdf_report_id, {})
-            if report.get("photos"):
-                needed_consumers.add("frame_capture")
-
-    return sorted(needed_consumers)
 
 
 def build_plan(config: dict) -> ConfigPlan:
