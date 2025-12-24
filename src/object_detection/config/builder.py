@@ -714,80 +714,109 @@ class ConfigBuilder:
 
         self.config["detection"] = {"model_file": model, "confidence_threshold": conf}
 
+    def _parse_line_input(self, line_input: str, line_count: int) -> dict | None:
+        """Parse shorthand line input like 'v 50 Driveway' or 'h 30'."""
+        parts = line_input.split(maxsplit=2)
+        if not parts:
+            return None
+
+        result = {}
+
+        # First part: type (v/h)
+        type_char = parts[0].lower()
+        if type_char in ("v", "vertical"):
+            result["type"] = "vertical"
+        elif type_char in ("h", "horizontal"):
+            result["type"] = "horizontal"
+        else:
+            return None  # Invalid type
+
+        # Second part: position (optional)
+        if len(parts) >= 2:
+            try:
+                result["position_pct"] = int(parts[1])
+            except ValueError:
+                # Second part might be description, not position
+                result["description"] = " ".join(parts[1:])
+
+        # Third part: description (optional)
+        if len(parts) >= 3:
+            result["description"] = parts[2]
+
+        return result
+
     def _setup_lines(self):
         """Setup detection lines with visual preview."""
         print(f"\n{Colors.BOLD}--- Lines Setup ---{Colors.RESET}")
         print(f"{Colors.GRAY}Lines detect objects crossing a boundary{Colors.RESET}")
+        print(f"{Colors.GRAY}Format: h/v [position%] [name]  (e.g. 'v 50 Driveway'){Colors.RESET}")
 
         # Start with existing lines (for edit mode)
         lines = list(self.config.get("lines", []))
         zones = self.config.get("zones", [])
 
         while True:
-            add = input("\nAdd a line? (Y/n): ").strip().lower()
-            if add == "n":
+            line_input = input("\nAdd line (or Enter when done): ").strip()
+            if not line_input:
                 break
 
-            # Line type
-            print("  Line type:")
-            print("    1. vertical (left-right crossing)")
-            print("    2. horizontal (top-bottom crossing)")
-            type_choice = input("  Choice [1]: ").strip() or "1"
-            line_type = "vertical" if type_choice == "1" else "horizontal"
+            # Parse shorthand input
+            parsed = self._parse_line_input(line_input, len(lines))
+            if not parsed:
+                print(f"  {Colors.RED}Invalid format. Use: h/v [%] [name]{Colors.RESET}")
+                continue
 
-            # Position
-            if line_type == "vertical":
-                pos_str = input("  Position % from left [50]: ").strip() or "50"
-            else:
-                pos_str = input("  Position % from top [50]: ").strip() or "50"
-            position = int(pos_str)
+            line_type = parsed["type"]
+            position = parsed.get("position_pct")
+            desc = parsed.get("description")
 
-            # Description
-            desc = input("  Description: ").strip() or f"Line {len(lines) + 1}"
+            # Prompt for missing position
+            if position is None:
+                default_pos = "50"
+                if line_type == "vertical":
+                    pos_str = input(f"  Position % from left [{default_pos}]: ").strip()
+                else:
+                    pos_str = input(f"  Position % from top [{default_pos}]: ").strip()
+                position = int(pos_str) if pos_str else int(default_pos)
+
+            # Prompt for missing description
+            if not desc:
+                default_desc = f"Line {len(lines) + 1}"
+                desc = input(f"  Description [{default_desc}]: ").strip() or default_desc
 
             lines.append(
                 {"type": line_type, "position_pct": position, "description": desc}
             )
 
-            # Capture annotated preview
+            # Show confirmation and capture preview
+            type_label = "vertical" if line_type == "vertical" else "horizontal"
+            print(f"  {Colors.GREEN}✓ {type_label} at {position}% \"{desc}\"{Colors.RESET}")
             self._capture_annotated_preview(lines=lines, zones=zones)
-            print(f"  {Colors.GREEN}Preview updated{Colors.RESET} - refresh browser")
 
-            # Adjust option
+            # Quick adjust option
             while True:
-                action = (
-                    input("  [c] Capture  [a] Adjust  [d] Delete  [n] Next: ")
-                    .strip()
-                    .lower()
-                )
-                if action == "c":
-                    self._capture_annotated_preview(lines=lines, zones=zones)
-                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
-                elif action == "a":
+                action = input("  [a]djust [d]elete [Enter] continue: ").strip().lower()
+                if action == "a":
                     if line_type == "vertical":
-                        pos_str = input(
-                            f"  New position % from left [{position}]: "
-                        ).strip() or str(position)
+                        pos_str = input(f"  Position % [{position}]: ").strip()
                     else:
-                        pos_str = input(
-                            f"  New position % from top [{position}]: "
-                        ).strip() or str(position)
-                    position = int(pos_str)
-                    lines[-1]["position_pct"] = position
-                    self._capture_annotated_preview(lines=lines, zones=zones)
-                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
+                        pos_str = input(f"  Position % [{position}]: ").strip()
+                    if pos_str:
+                        position = int(pos_str)
+                        lines[-1]["position_pct"] = position
+                        self._capture_annotated_preview(lines=lines, zones=zones)
+                        print(f"  {Colors.GREEN}✓ Updated to {position}%{Colors.RESET}")
                 elif action == "d":
                     deleted = lines.pop()
-                    print(
-                        f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
-                    )
+                    print(f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}")
                     self._capture_annotated_preview(lines=lines, zones=zones)
-                    break  # Go back to "Add a line?" prompt
-                elif action == "n" or action == "":
+                    break
+                else:
                     break
 
         if lines:
             self.config["lines"] = lines
+        print(f"{Colors.GRAY}Done - {len(lines)} line(s){Colors.RESET}")
 
     def _setup_zones(self):
         """Setup detection zones with visual preview."""
@@ -1029,27 +1058,64 @@ class ConfigBuilder:
 
             event["match"] = match
 
-            # Actions - toggle style
-            print("  Actions: [p]df [f]rame [e]mail [d]igest [j]son")
-            action_input = input("  Enable (e.g. pf) [p]: ").strip().lower() or "p"
+            # Actions - outcome based selection
+            print("  Actions:")
+            print("    1. PDF with photos")
+            print("    2. PDF stats only")
+            print("    3. Email alert")
+            print("    4. Email digest")
+            print("    5. JSON only")
+            action_input = input("  Choose (e.g. 1,3) [1]: ").strip() or "1"
+
+            # Parse choices
+            choices = {c.strip() for c in action_input.replace(" ", ",").split(",")}
             actions = {}
 
-            # Parse action letters
-            want_pdf = "p" in action_input
-            want_frame = "f" in action_input
-            want_email = "e" in action_input
-            want_digest = "d" in action_input
-            want_json = "j" in action_input
+            want_pdf_photos = "1" in choices
+            want_pdf_only = "2" in choices
+            want_email = "3" in choices
+            want_digest = "4" in choices
+            want_json_only = "5" in choices
+
+            # Build enabled list for display
+            enabled = []
+
+            # PDF with photos (implies json)
+            if want_pdf_photos:
+                enabled.extend(["pdf_report", "frame_capture", "json_log"])
+            # PDF only (implies json)
+            if want_pdf_only:
+                if "pdf_report" not in enabled:
+                    enabled.append("pdf_report")
+                if "json_log" not in enabled:
+                    enabled.append("json_log")
+            # Email alert (implies json)
+            if want_email:
+                enabled.append("email_immediate")
+                if "json_log" not in enabled:
+                    enabled.append("json_log")
+            # Digest (implies json)
+            if want_digest:
+                enabled.append("email_digest")
+                if "json_log" not in enabled:
+                    enabled.append("json_log")
+            # JSON only
+            if want_json_only:
+                if "json_log" not in enabled:
+                    enabled.append("json_log")
+
+            if enabled:
+                print(f"    {Colors.GRAY}→ Enables: {', '.join(enabled)}{Colors.RESET}")
 
             # Configure each selected action
-            if want_pdf:
+            if want_pdf_photos or want_pdf_only:
                 report_id = (
                     input("    PDF report ID [traffic_report]: ").strip()
                     or "traffic_report"
                 )
                 actions["pdf_report"] = report_id
 
-            if want_frame:
+            if want_pdf_photos:
                 max_photos_str = input("    Max photos [100]: ").strip() or "100"
                 actions["frame_capture"] = {"max_photos": int(max_photos_str)}
 
@@ -1062,7 +1128,8 @@ class ConfigBuilder:
                 )
                 actions["email_digest"] = digest_id
 
-            if want_json:
+            # JSON is implicit for all except json-only where it's explicit
+            if enabled:
                 actions["json_log"] = True
 
             event["actions"] = actions
