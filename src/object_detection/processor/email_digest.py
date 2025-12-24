@@ -1,7 +1,8 @@
 """
 Email Digest
 
-Sends summary emails by reading from JSON log files at session end.
+Sends summary emails by reading from JSON log files.
+Can be called on schedule (via DigestScheduler) or at session end.
 Supports multiple digest configurations with independent filters and photos.
 """
 
@@ -19,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 def generate_email_digest(json_dir: str, config: dict, start_time: datetime) -> None:
     """
-    Generate and send email digest(s) at session shutdown.
+    Generate and send email digest(s).
     Reads from JSON log files and sends summary for each configured digest.
 
     Args:
         json_dir: Directory containing JSON log files
         config: Digest configuration with notification settings
-        start_time: Session start time (for time window)
+        start_time: Start of time window (events from start_time to now)
     """
     # Initialize email service
     notification_config = config.get("notification_config", {})
@@ -59,7 +60,9 @@ def generate_email_digest(json_dir: str, config: dict, start_time: datetime) -> 
         logger.info(f"  Processing digest '{digest_id}'...")
 
         # Aggregate events from JSON logs
-        stats = _aggregate_from_json(json_dir, start_time, end_time, filters, event_names)
+        stats = _aggregate_from_json(
+            json_dir, start_time, end_time, filters, event_names
+        )
 
         if stats["total_events"] == 0:
             logger.info(f"  No events for digest '{digest_id}' - skipping")
@@ -80,7 +83,10 @@ def generate_email_digest(json_dir: str, config: dict, start_time: datetime) -> 
         email_subject = f"[Digest] {period_label}"
 
         # Send digest email
-        if email_service.send_digest_email(period_label, stats, frame_data_map, email_subject):
+        sent = email_service.send_digest_email(
+            period_label, stats, frame_data_map, email_subject
+        )
+        if sent:
             logger.info(f"  Digest '{digest_id}' sent ({stats['total_events']} events)")
         else:
             logger.warning(f"  Failed to send digest '{digest_id}'")
@@ -102,7 +108,7 @@ def _aggregate_from_json(
         json_dir: Directory containing JSON log files
         start_time: Start of time window
         end_time: End of time window
-        filters: Optional filters (event_types, zone_descriptions, line_descriptions, object_classes)
+        filters: Optional filters (event_types, zone/line_descriptions, object_classes)
         event_names: Optional list of event definition names to include (primary filter)
 
     Returns:

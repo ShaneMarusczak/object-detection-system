@@ -2,7 +2,8 @@
 Event Dispatcher
 
 Routes events from detector to consumers based on declarative event definitions.
-Event definitions are the single source of truth for what events fire and what actions they trigger.
+Event definitions are the single source of truth for what events fire
+and what actions they trigger.
 
 In local mode: receives from multiprocessing.Queue
 In distributed mode: receives from Redis Streams (swap Queue for RedisConsumer)
@@ -18,6 +19,7 @@ from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .json_writer import json_writer_consumer
 from .email_immediate import ImmediateEmailHandler
 from .email_digest import generate_email_digest
+from .digest_scheduler import DigestScheduler
 from .pdf_report import generate_pdf_reports
 from .frame_capture import frame_capture_consumer
 
@@ -89,14 +91,30 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                 config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR),
             )
 
-        # Email Digest - runs at shutdown (like PDF), config saved for later
+        # Email Digest - scheduled and/or on shutdown
+        digest_scheduler = None
         digest_shutdown_config = None
         if "email_digest" in needed_actions:
-            digest_shutdown_config = {
-                "digests": config.get("digests", []),
-                "notification_config": notification_config,
-                "frame_service_config": {"storage": frame_storage_config},
-            }
+            digest_configs = config.get("digests", [])
+
+            # Start scheduler for digests with interval_hours
+            json_dir = output_config.get("json_dir", "data")
+            digest_scheduler = DigestScheduler(
+                json_dir=json_dir,
+                digest_configs=digest_configs,
+                notification_config=notification_config,
+                frame_storage_config=frame_storage_config,
+            )
+            digest_scheduler.start()
+
+            # Track digests that should run on shutdown
+            shutdown_digests = [d for d in digest_configs if d.get("on_shutdown", True)]
+            if shutdown_digests:
+                digest_shutdown_config = {
+                    "digests": shutdown_digests,
+                    "notification_config": notification_config,
+                    "frame_service_config": {"storage": frame_storage_config},
+                }
 
         # Frame Capture - start if frame_capture action is used
         if "frame_capture" in needed_actions:
@@ -118,7 +136,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             consumers.append(frame_process)
             logger.info("Started FrameCapture consumer")
 
-        # PDF Report config - generates synchronously at shutdown if pdf_report action is used
+        # PDF Report config - generates synchronously at shutdown
         if "pdf_report" in needed_actions:
             pdf_report_list = config.get("pdf_reports", [])
             if pdf_report_list:
@@ -159,7 +177,10 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
 
                     # Route to consumers based on actions
                     _route_event(
-                        enriched_event, event_def.actions, consumer_queues, email_handler
+                        enriched_event,
+                        event_def.actions,
+                        consumer_queues,
+                        email_handler,
                     )
 
                     # Only match first definition (events are mutually exclusive)
@@ -167,11 +188,11 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
 
             if not matched:
                 # Event didn't match any definition - discard it
-                logger.debug(
-                    f"Event did not match any definition: {enriched_event.get('event_type')} "
-                    f"{enriched_event.get('object_class_name')} "
-                    f"{enriched_event.get('zone_description') or enriched_event.get('line_description')}"
-                )
+                event_type = enriched_event.get("event_type")
+                obj_class = enriched_event.get("object_class_name")
+                loc = enriched_event.get("zone_description") or \
+                    enriched_event.get("line_description")
+                logger.debug(f"No match: {event_type} {obj_class} {loc}")
 
     except Exception as e:
         logger.error(f"Error in dispatcher: {e}", exc_info=True)
@@ -192,6 +213,10 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             print(f"  {class_summary}")
         print("=" * 50)
 
+        # Stop digest scheduler first (uses threading.Event, exits cleanly)
+        if digest_scheduler:
+            digest_scheduler.stop()
+
         # Shutdown all consumers
         logger.info("Shutting down consumers...")
         for queue_name, queue in consumer_queues.items():
@@ -211,7 +236,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             generate_pdf_reports(json_dir, pdf_shutdown_config, start_time)
 
         if digest_shutdown_config:
-            print("Generating email digest...")
+            print("Sending shutdown email digest...")
             generate_email_digest(json_dir, digest_shutdown_config, start_time)
 
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")

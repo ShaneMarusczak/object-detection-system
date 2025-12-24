@@ -20,9 +20,10 @@ from ..models import EventDefinition
 from .json_writer import json_writer_consumer
 from .frame_capture import frame_capture_consumer
 
-# Email handlers (fire-and-forget immediate, shutdown-time digest)
+# Email handlers (fire-and-forget immediate, scheduled/shutdown digest)
 from .email_immediate import ImmediateEmailHandler
 from .email_digest import generate_email_digest
+from .digest_scheduler import DigestScheduler
 
 # Services
 from .email_service import EmailService
@@ -45,6 +46,7 @@ __all__ = [
     # Email handlers
     "ImmediateEmailHandler",
     "generate_email_digest",
+    "DigestScheduler",
     # Services
     "EmailService",
     "FrameService",
