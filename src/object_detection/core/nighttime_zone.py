@@ -241,7 +241,8 @@ class NighttimeCarZone:
 
         # Debug mode
         self._debug = config.debug
-        self._debug_interval = 30  # Log debug info every N frames
+        self._debug_interval = 150  # Log status every N frames (5s at 30fps) when idle
+        self._last_debug_state = ""  # Track state changes to reduce noise
 
         # Taillight detector
         self.taillight_detector = TaillightDetector()
@@ -320,17 +321,36 @@ class NighttimeCarZone:
             frame, self.x1, self.y1, self.x2, self.y2
         )
 
-        # Debug logging - periodic status
-        if self._debug and self._frame_count % self._debug_interval == 0:
+        # Debug logging - only when state changes or blobs are present
+        if self._debug:
             active_blobs = sum(1 for b in self.tracked_blobs.values() if not b.is_disqualified)
-            logger.info(
-                f"[DEBUG] '{self.name}' frame {self._frame_count}: "
-                f"brightness={self.brightness_state.current:.2f} "
-                f"(base={self.brightness_state.baseline:.2f}, delta={self.brightness_state.delta:.2f}, "
-                f"rising={self.brightness_state.is_rising}) | "
-                f"blobs_detected={len(blobs)}, tracked={active_blobs}, taillights={len(taillights)}, "
-                f"primed={self._primed}"
+            # Create state signature to detect changes
+            current_state = f"{len(blobs)}_{active_blobs}_{len(taillights)}_{self._primed}"
+
+            # Log immediately if blobs detected, or periodically if idle
+            should_log = (
+                len(blobs) > 0 or
+                active_blobs > 0 or
+                current_state != self._last_debug_state or
+                self._frame_count % self._debug_interval == 0
             )
+
+            if should_log:
+                self._last_debug_state = current_state
+                if len(blobs) == 0 and active_blobs == 0:
+                    # Compact idle status
+                    logger.info(
+                        f"[DEBUG] '{self.name}' frame {self._frame_count}: "
+                        f"idle (brightness={self.brightness_state.current:.2f}, primed={self._primed})"
+                    )
+                else:
+                    # Full status when blobs are present
+                    logger.info(
+                        f"[DEBUG] '{self.name}' frame {self._frame_count}: "
+                        f"brightness={self.brightness_state.current:.2f} "
+                        f"(delta={self.brightness_state.delta:.2f}, rising={self.brightness_state.is_rising}) | "
+                        f"blobs={len(blobs)}, tracked={active_blobs}, taillights={len(taillights)}, primed={self._primed}"
+                    )
 
         # Score each active blob
         for blob_id, blob in list(self.tracked_blobs.items()):
