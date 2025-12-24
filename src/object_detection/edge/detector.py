@@ -29,7 +29,7 @@ import torch
 from ultralytics import YOLO
 
 from .config import EdgeConfig, LineConfig
-from ..core.nighttime_zone import (
+from .nighttime_zone import (
     NighttimeCarZone,
     NighttimeCarZoneConfig,
     NighttimeDetectionParams,
