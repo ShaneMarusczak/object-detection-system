@@ -92,7 +92,11 @@ class ZoneBrightnessState:
         if len(self.history) < 5:
             return False
         recent = self.history[-5:]
-        # Check if each frame is >= previous (allowing small noise)
+        # Must have actually increased from start to end of window
+        total_rise = recent[-1] - recent[0]
+        if total_rise < 3:  # Require at least 3 units (~1%) actual increase
+            return False
+        # Check trend is mostly upward (allowing small noise)
         rising_count = sum(
             1 for i in range(1, len(recent)) if recent[i] >= recent[i - 1] - 2
         )
