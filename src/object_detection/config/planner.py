@@ -643,6 +643,7 @@ def prepare_runtime_config(config: dict) -> dict:
     This is the single place where all inference happens:
     - Derive track_classes from events
     - Resolve implied actions (json_log, frame_capture, annotate cascade)
+    - Link nighttime_car_zones to pdf_reports/digests
     - Determine which consumers are needed
 
     After this function, the config is fully resolved and the dispatcher
@@ -667,6 +668,9 @@ def prepare_runtime_config(config: dict) -> dict:
 
     # Resolve all implied actions (e.g., pdf_report → json_log)
     _resolve_implied_actions(config)
+
+    # Link nighttime_car_zones to their referenced pdf_reports and digests
+    _link_nighttime_car_zones(config)
 
     # Always enable temp_frames - consumers are always available
     config["temp_frames_enabled"] = True
@@ -751,6 +755,52 @@ def _resolve_implied_actions(config: dict) -> None:
                 actions["frame_capture"] = {"enabled": frame_capture}
             elif isinstance(frame_capture, dict) and "enabled" not in frame_capture:
                 actions["frame_capture"]["enabled"] = True
+
+
+def _link_nighttime_car_zones(config: dict) -> None:
+    """
+    Link nighttime_car_zones to their referenced pdf_reports and digests.
+
+    For each nighttime_car_zone that references a pdf_report or digest,
+    add the auto-generated event definition name to that report/digest's
+    events filter list so it will be included.
+
+    The auto-generated event name format is: nighttime_car_{zone_name}
+    """
+    pdf_reports = config.get("pdf_reports", [])
+    digests = config.get("digests", [])
+
+    # Build lookup by id
+    pdf_report_lookup = {r["id"]: r for r in pdf_reports if r.get("id")}
+    digest_lookup = {d["id"]: d for d in digests if d.get("id")}
+
+    for ncz in config.get("nighttime_car_zones", []):
+        zone_name = ncz.get("name", "unknown")
+        event_def_name = f"nighttime_car_{zone_name}"
+
+        # Link to pdf_report
+        pdf_report_id = ncz.get("pdf_report")
+        if pdf_report_id and pdf_report_id in pdf_report_lookup:
+            report = pdf_report_lookup[pdf_report_id]
+            if "events" not in report:
+                report["events"] = []
+            if event_def_name not in report["events"]:
+                report["events"].append(event_def_name)
+                logger.debug(
+                    f"Auto-added '{event_def_name}' to pdf_report '{pdf_report_id}'"
+                )
+
+        # Link to email_digest
+        digest_id = ncz.get("email_digest")
+        if digest_id and digest_id in digest_lookup:
+            digest = digest_lookup[digest_id]
+            if "events" not in digest:
+                digest["events"] = []
+            if event_def_name not in digest["events"]:
+                digest["events"].append(event_def_name)
+                logger.debug(
+                    f"Auto-added '{event_def_name}' to digest '{digest_id}'"
+                )
 
 
 def build_plan(config: dict) -> ConfigPlan:
