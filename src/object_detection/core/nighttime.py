@@ -13,10 +13,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Virtual class ID for headlight detections (not in COCO)
-HEADLIGHT_CLASS_ID = 1000
-HEADLIGHT_CLASS_NAME = "headlight"
-
 
 @dataclass
 class BlobDetection:
@@ -56,7 +52,9 @@ class HeadlightDetector:
     def __init__(self):
         """Initialize headlight detector with blob detection parameters."""
         self.blob_detector = self._create_blob_detector()
-        self._track_frame_counts: dict[int, int] = {}  # track_id -> consecutive frames seen
+        self._track_frame_counts: dict[
+            int, int
+        ] = {}  # track_id -> consecutive frames seen
         logger.debug("HeadlightDetector initialized")
 
     def _create_blob_detector(self) -> cv2.SimpleBlobDetector:
@@ -141,9 +139,7 @@ class HeadlightDetector:
 
         return detections
 
-    def _pair_headlights(
-        self, detections: list[BlobDetection]
-    ) -> list[BlobDetection]:
+    def _pair_headlights(self, detections: list[BlobDetection]) -> list[BlobDetection]:
         """
         Merge pairs of headlights into single vehicle detections.
 
@@ -184,7 +180,9 @@ class HeadlightDetector:
                     continue
 
                 # Check size similarity
-                size_ratio = max(det1.size, det2.size) / max(min(det1.size, det2.size), 1)
+                size_ratio = max(det1.size, det2.size) / max(
+                    min(det1.size, det2.size), 1
+                )
                 if size_ratio > self.PAIR_MAX_SIZE_RATIO:
                     continue
 
@@ -262,11 +260,12 @@ class HeadlightDetector:
             best_track_id = None
             best_distance = max_distance
 
-            # Find nearest existing track
+            # Find nearest existing track (headlight tracks have IDs >= 10000)
             for track_id, tracked_obj in existing_tracks.items():
                 if track_id in seen_this_frame:
                     continue
-                if tracked_obj.object_class != HEADLIGHT_CLASS_ID:
+                # Only match with headlight tracks (IDs start at 10000)
+                if track_id < 10000:
                     continue
 
                 tx, ty = tracked_obj.current_pos
@@ -283,7 +282,8 @@ class HeadlightDetector:
                     self._track_frame_counts.get(best_track_id, 0) + 1
                 )
                 is_confirmed = (
-                    self._track_frame_counts[best_track_id] >= self.MIN_FRAMES_TO_CONFIRM
+                    self._track_frame_counts[best_track_id]
+                    >= self.MIN_FRAMES_TO_CONFIRM
                 )
                 results.append((best_track_id, detection, is_confirmed))
             else:

@@ -26,7 +26,7 @@ from ..utils.constants import (
     CAMERA_RECONNECT_DELAY,
 )
 from .models import TrackedObject, LineConfig, ZoneConfig, ROIConfig
-from .nighttime import HeadlightDetector, HEADLIGHT_CLASS_ID
+from .nighttime_zone import create_nighttime_car_zones, NighttimeCarZone
 
 logger = logging.getLogger(__name__)
 
@@ -165,10 +165,8 @@ def _detection_loop(
             f"Temp frames: {temp_frame_dir} (on-demand, {temp_frame_max_age}s retention)"
         )
 
-    # Headlight detector (runs when YOLO finds nothing)
-    headlight_detector = (
-        HeadlightDetector() if config.get("headlight_detection", True) else None
-    )
+    # Nighttime car zones (separate from YOLO detection)
+    nighttime_car_zones: list[NighttimeCarZone] = []
 
     logger.info("Detection started")
 
@@ -186,6 +184,12 @@ def _detection_loop(
 
             frame_count += 1
             frame_height, frame_width = frame.shape[:2]
+
+            # Initialize nighttime car zones on first frame (need dimensions)
+            if frame_count == 1 and config.get("nighttime_car_zones"):
+                nighttime_car_zones = create_nighttime_car_zones(
+                    config, frame_width, frame_height
+                )
 
             # Apply ROI cropping
             roi_frame, roi_dims = _apply_roi_crop(frame, roi_config)
@@ -224,23 +228,14 @@ def _detection_loop(
                     temp_frame_max_age,
                 )
 
-            # Always run headlight detection to maintain tracking continuity
-            # Only emit events when YOLO found nothing
-            if headlight_detector:
-                event_count += _process_headlight_detections(
-                    headlight_detector,
+            # Process nighttime car zones (independent scoring-based detection)
+            for ncz in nighttime_car_zones:
+                event_count += ncz.process_frame(
                     frame,
-                    tracked_objects,
-                    lines,
-                    zones,
-                    roi_dims,
                     data_queue,
-                    current_time,
                     relative_time,
-                    frame if temp_frame_enabled else None,
-                    temp_frame_dir,
+                    temp_frame_dir if temp_frame_enabled else None,
                     temp_frame_max_age,
-                    emit_events=not yolo_has_detections,
                 )
 
             # Save frames if enabled
@@ -360,231 +355,6 @@ def _process_detections(
             temp_frame_dir,
             temp_frame_max_age,
         )
-
-    return event_count
-
-
-def _process_headlight_detections(
-    headlight_detector: "HeadlightDetector",
-    frame,
-    tracked_objects: dict[int, TrackedObject],
-    lines: list[LineConfig],
-    zones: list[ZoneConfig],
-    roi_dims: tuple,
-    data_queue: Queue,
-    current_time: float,
-    relative_time: float,
-    save_frame=None,
-    temp_frame_dir: str = None,
-    temp_frame_max_age: int = 30,
-    emit_events: bool = True,
-) -> int:
-    """
-    Process headlight detections as fallback when YOLO fails.
-
-    Always updates tracking state to maintain continuity.
-    Only emits events (line crossings, zone events) when emit_events=True.
-
-    Args:
-        emit_events: If True, generate events for line/zone crossings.
-                    If False, only update tracking state (no events).
-
-    Returns:
-        Number of events generated
-    """
-    event_count = 0
-
-    # Detect headlights
-    detections = headlight_detector.detect(frame)
-    if not detections:
-        return 0
-
-    # Associate detections with tracks (includes temporal confirmation status)
-    track_associations = headlight_detector.detections_to_tracks(
-        detections, tracked_objects, current_time
-    )
-
-    for track_id, detection, is_confirmed in track_associations:
-        center_x, center_y = detection.center
-        bbox = detection.bbox
-
-        # Get or create tracked object
-        if track_id not in tracked_objects:
-            tracked_objects[track_id] = TrackedObject(
-                track_id=track_id,
-                object_class=HEADLIGHT_CLASS_ID,
-                current_pos=(center_x, center_y),
-                bbox=bbox,
-                first_pos=(center_x, center_y),
-                first_seen_time=current_time,
-            )
-        else:
-            tracked_objects[track_id].update_position(center_x, center_y, bbox)
-
-        # Only emit events if enabled AND track is confirmed (seen for 5+ frames)
-        # This filters out brief reflections and noise
-        if not emit_events or not is_confirmed:
-            continue
-
-        tracked_obj = tracked_objects[track_id]
-
-        # Check line crossings (headlights are allowed on all lines)
-        if not tracked_obj.is_new():
-            event_count += _check_headlight_line_crossings(
-                tracked_obj,
-                lines,
-                roi_dims,
-                data_queue,
-                relative_time,
-                current_time,
-                save_frame,
-                temp_frame_dir,
-                temp_frame_max_age,
-            )
-
-        # Check zone entry/exit
-        event_count += _check_headlight_zone_events(
-            tracked_obj,
-            zones,
-            roi_dims,
-            data_queue,
-            relative_time,
-            current_time,
-            save_frame,
-            temp_frame_dir,
-            temp_frame_max_age,
-        )
-
-    return event_count
-
-
-def _check_headlight_line_crossings(
-    tracked_obj: TrackedObject,
-    lines: list[LineConfig],
-    roi_dims: tuple,
-    data_queue: Queue,
-    relative_time: float,
-    current_time: float,
-    frame=None,
-    temp_frame_dir: str = None,
-    temp_frame_max_age: int = 30,
-) -> int:
-    """Check if headlight crossed any lines (no class filtering)."""
-    event_count = 0
-    roi_width, roi_height = roi_dims
-
-    prev_x, prev_y = tracked_obj.previous_pos
-    curr_x, curr_y = tracked_obj.current_pos
-
-    for line in lines:
-        # Skip if already crossed
-        if line.line_id in tracked_obj.crossed_lines:
-            continue
-
-        # Check for crossing
-        crossed, direction = _detect_line_crossing(
-            prev_x, prev_y, curr_x, curr_y, line, roi_width, roi_height
-        )
-
-        if crossed:
-            tracked_obj.crossed_lines.add(line.line_id)
-            event_count += 1
-
-            # Save frame on-demand
-            frame_id = None
-            if frame is not None and temp_frame_dir:
-                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
-            data_queue.put(
-                {
-                    "event_type": "LINE_CROSS",
-                    "track_id": tracked_obj.track_id,
-                    "object_class": HEADLIGHT_CLASS_ID,
-                    "bbox": tracked_obj.bbox,
-                    "frame_id": frame_id,
-                    "line_id": line.line_id,
-                    "direction": direction,
-                    "timestamp_relative": relative_time,
-                    "detection_mode": "nighttime",
-                }
-            )
-
-    return event_count
-
-
-def _check_headlight_zone_events(
-    tracked_obj: TrackedObject,
-    zones: list[ZoneConfig],
-    roi_dims: tuple,
-    data_queue: Queue,
-    relative_time: float,
-    current_time: float,
-    frame=None,
-    temp_frame_dir: str = None,
-    temp_frame_max_age: int = 30,
-) -> int:
-    """Check for headlight zone entry/exit events (no class filtering)."""
-    event_count = 0
-    roi_width, roi_height = roi_dims
-    curr_x, curr_y = tracked_obj.current_pos
-
-    for zone in zones:
-        # Calculate zone boundaries
-        zone_x1 = roi_width * zone.x1_pct / 100
-        zone_x2 = roi_width * zone.x2_pct / 100
-        zone_y1 = roi_height * zone.y1_pct / 100
-        zone_y2 = roi_height * zone.y2_pct / 100
-
-        # Check if inside zone
-        inside = zone_x1 <= curr_x <= zone_x2 and zone_y1 <= curr_y <= zone_y2
-        was_inside = zone.zone_id in tracked_obj.active_zones
-
-        if inside and not was_inside:
-            # ZONE_ENTER
-            tracked_obj.active_zones[zone.zone_id] = current_time
-            event_count += 1
-
-            frame_id = None
-            if frame is not None and temp_frame_dir:
-                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
-            data_queue.put(
-                {
-                    "event_type": "ZONE_ENTER",
-                    "track_id": tracked_obj.track_id,
-                    "object_class": HEADLIGHT_CLASS_ID,
-                    "bbox": tracked_obj.bbox,
-                    "frame_id": frame_id,
-                    "zone_id": zone.zone_id,
-                    "timestamp_relative": relative_time,
-                    "detection_mode": "nighttime",
-                }
-            )
-
-        elif not inside and was_inside:
-            # ZONE_EXIT
-            entry_time = tracked_obj.active_zones[zone.zone_id]
-            dwell_time = current_time - entry_time
-            del tracked_obj.active_zones[zone.zone_id]
-            event_count += 1
-
-            frame_id = None
-            if frame is not None and temp_frame_dir:
-                frame_id = _save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
-            data_queue.put(
-                {
-                    "event_type": "ZONE_EXIT",
-                    "track_id": tracked_obj.track_id,
-                    "object_class": HEADLIGHT_CLASS_ID,
-                    "bbox": tracked_obj.bbox,
-                    "frame_id": frame_id,
-                    "zone_id": zone.zone_id,
-                    "timestamp_relative": relative_time,
-                    "dwell_time": dwell_time,
-                    "detection_mode": "nighttime",
-                }
-            )
 
     return event_count
 

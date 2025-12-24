@@ -110,6 +110,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         # Parse zone and line lookups
         zone_lookup = _build_zone_lookup(config)
         line_lookup = _build_line_lookup(config)
+        nighttime_car_zone_lookup = _build_nighttime_car_zone_lookup(config)
 
         # Get pre-resolved consumers from config (resolved by prepare_runtime_config)
         needed_consumers = set(config.get("_resolved_consumers", []))
@@ -237,6 +238,28 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             if raw_event is None:
                 logger.info("Received shutdown signal")
                 break
+
+            # Handle NIGHTTIME_CAR events specially (have their own output wiring)
+            if raw_event.get("event_type") == "NIGHTTIME_CAR":
+                enriched_event = _enrich_nighttime_car_event(raw_event)
+                zone_name = enriched_event.get("zone_name")
+                zone_config = nighttime_car_zone_lookup.get(zone_name, {})
+
+                if zone_config:
+                    event_count += 1
+                    events_by_class["nighttime_car"] += 1
+
+                    # Route based on zone's output wiring
+                    actions = {
+                        "json_log": True,  # Always log NIGHTTIME_CAR events
+                        "pdf_report": zone_config.get("pdf_report"),
+                        "email_immediate": {
+                            "enabled": zone_config.get("email_immediate", False)
+                        },
+                        "email_digest": zone_config.get("email_digest"),
+                    }
+                    _route_event(enriched_event, actions, consumer_queues)
+                continue
 
             # Enrich raw event with descriptions
             enriched_event = _enrich_event(
@@ -420,3 +443,21 @@ def _build_line_lookup(config: dict) -> dict[str, dict]:
         }
 
     return lookup
+
+
+def _build_nighttime_car_zone_lookup(config: dict) -> dict[str, dict]:
+    """Build lookup from zone name to nighttime car zone config."""
+    lookup = {}
+    for zone in config.get("nighttime_car_zones", []):
+        name = zone.get("name")
+        if name:
+            lookup[name] = zone
+    return lookup
+
+
+def _enrich_nighttime_car_event(raw_event: dict) -> dict:
+    """Enrich NIGHTTIME_CAR event with timestamp."""
+    enriched = raw_event.copy()
+    enriched["timestamp"] = datetime.now(timezone.utc).isoformat()
+    enriched["object_class_name"] = "nighttime_car"  # Virtual class name
+    return enriched

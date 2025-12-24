@@ -27,7 +27,6 @@ COMMON_CLASSES = [
     "dog",
     "cat",
     "bird",
-    "headlight",
 ]
 
 
@@ -69,6 +68,7 @@ class ConfigBuilder:
             self._setup_detection()
             self._setup_lines()
             self._setup_zones()
+            self._setup_nighttime_car_zones()
             self._setup_events()
             self._setup_pdf_reports()
             self._setup_digests()
@@ -374,6 +374,246 @@ class ConfigBuilder:
 
         if zones:
             self.config["zones"] = zones
+
+    def _setup_nighttime_car_zones(self):
+        """Setup nighttime car detection zones with visual preview."""
+        print(f"\n{Colors.BOLD}--- Nighttime Car Zones Setup ---{Colors.RESET}")
+        print(
+            f"{Colors.GRAY}Nighttime car zones detect vehicles at night using brightness + blob scoring{Colors.RESET}"
+        )
+        print(
+            f"{Colors.GRAY}(Separate from regular zones - uses headlight/taillight detection){Colors.RESET}"
+        )
+
+        nighttime_zones = []
+        lines = self.config.get("lines", [])
+        zones = self.config.get("zones", [])
+
+        while True:
+            add = input("\nAdd a nighttime car zone? (y/N): ").strip().lower()
+            if add != "y":
+                break
+
+            # Zone bounds with validation
+            while True:
+                print("  Zone bounds (percentages):")
+                x1 = int(input("    Left edge % [0]: ").strip() or "0")
+                y1 = int(input("    Top edge % [50]: ").strip() or "50")
+                x2 = int(input("    Right edge % [100]: ").strip() or "100")
+                y2 = int(input("    Bottom edge % [100]: ").strip() or "100")
+
+                # Validate bounds
+                if x2 <= x1:
+                    print(
+                        f"  {Colors.RED}Error: Right edge ({x2}%) must be greater than left edge ({x1}%){Colors.RESET}"
+                    )
+                    continue
+                if y2 <= y1:
+                    print(
+                        f"  {Colors.RED}Error: Bottom edge ({y2}%) must be greater than top edge ({y1}%){Colors.RESET}"
+                    )
+                    continue
+                break
+
+            # Zone name
+            name = (
+                input("  Zone name: ").strip()
+                or f"Nighttime Zone {len(nighttime_zones) + 1}"
+            )
+
+            zone_config = {
+                "name": name,
+                "x1_pct": x1,
+                "y1_pct": y1,
+                "x2_pct": x2,
+                "y2_pct": y2,
+            }
+
+            # Output wiring
+            print("  Output wiring:")
+
+            # PDF report
+            pdf = input("    Add to PDF report? (Y/n): ").strip().lower()
+            if pdf != "n":
+                report_id = (
+                    input("    Report ID [traffic_report]: ").strip()
+                    or "traffic_report"
+                )
+                zone_config["pdf_report"] = report_id
+
+            # Immediate email
+            email_imm = (
+                input("    Send immediate email on detection? (y/N): ").strip().lower()
+            )
+            if email_imm == "y":
+                zone_config["email_immediate"] = True
+
+            # Email digest
+            email_dig = input("    Add to email digest? (y/N): ").strip().lower()
+            if email_dig == "y":
+                digest_id = (
+                    input("    Digest ID [daily_digest]: ").strip() or "daily_digest"
+                )
+                zone_config["email_digest"] = digest_id
+
+            nighttime_zones.append(zone_config)
+
+            # Capture annotated preview (reuse zones preview, add nighttime zones)
+            self._capture_nighttime_zone_preview(lines, zones, nighttime_zones)
+            print(f"  {Colors.GREEN}Preview updated{Colors.RESET} - refresh browser")
+
+            # Adjust option
+            while True:
+                action = (
+                    input("  [c] Capture again  [a] Adjust bounds  [n] Next: ")
+                    .strip()
+                    .lower()
+                )
+                if action == "c":
+                    self._capture_nighttime_zone_preview(lines, zones, nighttime_zones)
+                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
+                elif action == "a":
+                    while True:
+                        x1 = int(
+                            input(
+                                f"    Left edge % [{nighttime_zones[-1]['x1_pct']}]: "
+                            ).strip()
+                            or str(nighttime_zones[-1]["x1_pct"])
+                        )
+                        y1 = int(
+                            input(
+                                f"    Top edge % [{nighttime_zones[-1]['y1_pct']}]: "
+                            ).strip()
+                            or str(nighttime_zones[-1]["y1_pct"])
+                        )
+                        x2 = int(
+                            input(
+                                f"    Right edge % [{nighttime_zones[-1]['x2_pct']}]: "
+                            ).strip()
+                            or str(nighttime_zones[-1]["x2_pct"])
+                        )
+                        y2 = int(
+                            input(
+                                f"    Bottom edge % [{nighttime_zones[-1]['y2_pct']}]: "
+                            ).strip()
+                            or str(nighttime_zones[-1]["y2_pct"])
+                        )
+                        if x2 <= x1:
+                            print(
+                                f"  {Colors.RED}Error: Right ({x2}%) must be > left ({x1}%){Colors.RESET}"
+                            )
+                            continue
+                        if y2 <= y1:
+                            print(
+                                f"  {Colors.RED}Error: Bottom ({y2}%) must be > top ({y1}%){Colors.RESET}"
+                            )
+                            continue
+                        break
+                    nighttime_zones[-1]["x1_pct"] = x1
+                    nighttime_zones[-1]["y1_pct"] = y1
+                    nighttime_zones[-1]["x2_pct"] = x2
+                    nighttime_zones[-1]["y2_pct"] = y2
+                    self._capture_nighttime_zone_preview(lines, zones, nighttime_zones)
+                    print(f"  {Colors.GREEN}Preview updated{Colors.RESET}")
+                elif action == "n" or action == "":
+                    break
+
+            print(f"  {Colors.GREEN}Nighttime car zone '{name}' added{Colors.RESET}")
+
+        if nighttime_zones:
+            self.config["nighttime_car_zones"] = nighttime_zones
+
+    def _capture_nighttime_zone_preview(
+        self,
+        lines: list[dict] | None = None,
+        zones: list[dict] | None = None,
+        nighttime_zones: list[dict] | None = None,
+    ):
+        """Capture preview with nighttime car zones (magenta color)."""
+        if self.cap is None:
+            return
+
+        ret, frame = self.cap.read()
+        if not ret:
+            return
+
+        height, width = frame.shape[:2]
+
+        # Draw lines (yellow)
+        if lines:
+            for line in lines:
+                line_type = line.get("type", "vertical")
+                position_pct = line.get("position_pct", 50)
+                description = line.get("description", "")
+
+                if line_type == "vertical":
+                    x = int(width * position_pct / 100)
+                    cv2.line(frame, (x, 0), (x, height), (0, 255, 255), 2)
+                    cv2.putText(
+                        frame,
+                        description,
+                        (x + 5, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
+                else:
+                    y = int(height * position_pct / 100)
+                    cv2.line(frame, (0, y), (width, y), (0, 255, 255), 2)
+                    cv2.putText(
+                        frame,
+                        description,
+                        (10, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
+
+        # Draw regular zones (cyan)
+        if zones:
+            for zone in zones:
+                x1 = int(width * zone.get("x1_pct", 0) / 100)
+                y1 = int(height * zone.get("y1_pct", 0) / 100)
+                x2 = int(width * zone.get("x2_pct", 100) / 100)
+                y2 = int(height * zone.get("y2_pct", 100) / 100)
+                description = zone.get("description", "")
+
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                cv2.putText(
+                    frame,
+                    description,
+                    (x1 + 5, y1 + 25),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 0),
+                    2,
+                )
+
+        # Draw nighttime car zones (magenta)
+        if nighttime_zones:
+            for nz in nighttime_zones:
+                x1 = int(width * nz.get("x1_pct", 0) / 100)
+                y1 = int(height * nz.get("y1_pct", 0) / 100)
+                x2 = int(width * nz.get("x2_pct", 100) / 100)
+                y2 = int(height * nz.get("y2_pct", 100) / 100)
+                name = nz.get("name", "")
+
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+                cv2.putText(
+                    frame,
+                    f"[Night] {name}",
+                    (x1 + 5, y1 + 25),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 0, 255),
+                    2,
+                )
+
+        # Save
+        preview_path = os.path.join(self.preview_dir, "preview.jpg")
+        cv2.imwrite(preview_path, frame)
 
     def _setup_events(self):
         """Setup event definitions."""

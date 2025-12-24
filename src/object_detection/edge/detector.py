@@ -12,7 +12,7 @@ No:
 - Event routing/dispatching
 
 Includes:
-- Nighttime detection (headlights via blob detection when dark)
+- Nighttime car zone detection (scoring-based headlight/taillight detection)
 """
 
 import os
@@ -29,7 +29,7 @@ import torch
 from ultralytics import YOLO
 
 from .config import EdgeConfig, LineConfig
-from ..core.nighttime import LightingMonitor, HeadlightDetector, HEADLIGHT_CLASS_ID
+from ..core.nighttime_zone import create_nighttime_car_zones, NighttimeCarZone
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,22 @@ class TrackedObject:
 
     def is_new(self) -> bool:
         return self.previous_pos is None
+
+
+class _PublisherQueue:
+    """
+    Queue-like wrapper around publisher callback.
+
+    NighttimeCarZone expects a Queue.put() interface, but edge detector
+    uses a callback. This adapter bridges the two.
+    """
+
+    def __init__(self, publisher: Callable[[dict], None]):
+        self.publisher = publisher
+
+    def put(self, event: dict) -> None:
+        """Forward event to publisher callback."""
+        self.publisher(event)
 
 
 class EdgeDetector:
@@ -80,11 +96,12 @@ class EdgeDetector:
         self.frame_count = 0
         self.event_count = 0
 
-        # Nighttime detection components
-        nighttime_enabled = getattr(config, "nighttime_detection", True)
-        self.lighting_monitor = LightingMonitor(enabled=nighttime_enabled)
-        self.headlight_detector = HeadlightDetector() if nighttime_enabled else None
-        self.is_night_mode = False
+        # Nighttime car zones (initialized after first frame when dimensions known)
+        self.nighttime_car_zones: list[NighttimeCarZone] = []
+        self._nighttime_zones_initialized = False
+
+        # Publisher queue wrapper for NighttimeCarZone compatibility
+        self._publisher_queue = _PublisherQueue(publisher)
 
     def initialize(self) -> None:
         """Initialize model and camera."""
@@ -138,9 +155,8 @@ class EdgeDetector:
                 # Status update every 500 frames
                 if self.frame_count % 500 == 0:
                     elapsed = time.time() - start_time
-                    mode = "[NIGHT]" if self.is_night_mode else "[DAY]"
                     logger.info(
-                        f"{mode} [{elapsed / 60:.1f}min] Frame {self.frame_count} | Events: {self.event_count}"
+                        f"[{elapsed / 60:.1f}min] Frame {self.frame_count} | Events: {self.event_count}"
                     )
 
         except KeyboardInterrupt:
@@ -153,9 +169,18 @@ class EdgeDetector:
 
     def _process_frame(self, frame, relative_time: float) -> None:
         """Process a single frame."""
-        # Check lighting conditions periodically
-        if self.lighting_monitor.should_check():
-            self.is_night_mode = self.lighting_monitor.check_lighting(frame)
+        h, w = frame.shape[:2]
+
+        # Initialize nighttime car zones on first frame
+        if not self._nighttime_zones_initialized:
+            if (
+                hasattr(self.config, "nighttime_car_zones")
+                and self.config.nighttime_car_zones
+            ):
+                self.nighttime_car_zones = create_nighttime_car_zones(
+                    {"nighttime_car_zones": self.config.nighttime_car_zones}, w, h
+                )
+            self._nighttime_zones_initialized = True
 
         # Apply ROI crop
         roi_frame, roi_dims = self._apply_roi(frame)
@@ -181,9 +206,14 @@ class EdgeDetector:
         if yolo_has_detections:
             self._process_detections(results[0].boxes, roi_dims, relative_time)
 
-        # Night mode: if YOLO found nothing, check for headlights
-        if self.is_night_mode and self.headlight_detector and not yolo_has_detections:
-            self._process_headlight_detections(frame, roi_dims, relative_time)
+        # Process nighttime car zones (independent scoring-based detection)
+        for ncz in self.nighttime_car_zones:
+            events = ncz.process_frame(
+                frame,
+                self._publisher_queue,
+                relative_time,
+            )
+            self.event_count += events
 
     def _apply_roi(self, frame) -> tuple:
         """Apply ROI cropping."""
@@ -345,146 +375,5 @@ class EdgeDetector:
                         "zone_id": zone.zone_id,
                         "timestamp_relative": relative_time,
                         "dwell_time": dwell_time,
-                    }
-                )
-
-    def _process_headlight_detections(
-        self, frame, roi_dims: tuple, relative_time: float
-    ) -> None:
-        """Process headlight detections in night mode."""
-        current_time = time.time()
-
-        # Detect bright blobs (headlights)
-        blob_detections = self.headlight_detector.detect(frame)
-        if not blob_detections:
-            return
-
-        # Get headlight tracks from existing tracked objects
-        headlight_tracks = {
-            tid: obj
-            for tid, obj in self.tracked_objects.items()
-            if obj.object_class == HEADLIGHT_CLASS_ID
-        }
-
-        # Associate blobs with tracks
-        tracked_blobs = self.headlight_detector.detections_to_tracks(
-            blob_detections, headlight_tracks, current_time
-        )
-
-        for track_id, blob in tracked_blobs:
-            cx, cy = blob.center
-
-            # Get or create tracked object for this headlight
-            if track_id not in self.tracked_objects:
-                self.tracked_objects[track_id] = TrackedObject(
-                    track_id=track_id,
-                    object_class=HEADLIGHT_CLASS_ID,
-                    current_pos=(cx, cy),
-                )
-            else:
-                self.tracked_objects[track_id].update_position(cx, cy)
-
-            obj = self.tracked_objects[track_id]
-
-            # Check line crossings
-            if not obj.is_new():
-                self._check_headlight_lines(obj, roi_dims, relative_time)
-
-            # Check zone events
-            self._check_headlight_zones(obj, roi_dims, relative_time, current_time)
-
-    def _check_headlight_lines(
-        self, obj: TrackedObject, roi_dims: tuple, relative_time: float
-    ) -> None:
-        """Check for headlight line crossing events."""
-        roi_w, roi_h = roi_dims
-        prev_x, prev_y = obj.previous_pos
-        curr_x, curr_y = obj.current_pos
-
-        for line in self.config.lines:
-            # Skip if headlight class (1000) not in allowed_classes
-            if HEADLIGHT_CLASS_ID not in line.allowed_classes:
-                continue
-            if line.line_id in obj.crossed_lines:
-                continue
-
-            crossed, direction = self._detect_crossing(
-                prev_x, prev_y, curr_x, curr_y, line, roi_w, roi_h
-            )
-
-            if crossed:
-                obj.crossed_lines.add(line.line_id)
-                self.event_count += 1
-
-                self.publisher(
-                    {
-                        "event_type": "LINE_CROSS",
-                        "device_id": self.config.device_id,
-                        "track_id": obj.track_id,
-                        "object_class": HEADLIGHT_CLASS_ID,
-                        "line_id": line.line_id,
-                        "direction": direction,
-                        "timestamp_relative": relative_time,
-                        "detection_mode": "nighttime",
-                    }
-                )
-
-    def _check_headlight_zones(
-        self,
-        obj: TrackedObject,
-        roi_dims: tuple,
-        relative_time: float,
-        current_time: float,
-    ) -> None:
-        """Check for headlight zone entry/exit events."""
-        roi_w, roi_h = roi_dims
-        cx, cy = obj.current_pos
-
-        for zone in self.config.zones:
-            # Skip if headlight class (1000) not in allowed_classes
-            if HEADLIGHT_CLASS_ID not in zone.allowed_classes:
-                continue
-
-            # Zone boundaries
-            zx1 = roi_w * zone.x1_pct / 100
-            zx2 = roi_w * zone.x2_pct / 100
-            zy1 = roi_h * zone.y1_pct / 100
-            zy2 = roi_h * zone.y2_pct / 100
-
-            inside = zx1 <= cx <= zx2 and zy1 <= cy <= zy2
-            was_inside = zone.zone_id in obj.active_zones
-
-            if inside and not was_inside:
-                obj.active_zones[zone.zone_id] = current_time
-                self.event_count += 1
-
-                self.publisher(
-                    {
-                        "event_type": "ZONE_ENTER",
-                        "device_id": self.config.device_id,
-                        "track_id": obj.track_id,
-                        "object_class": HEADLIGHT_CLASS_ID,
-                        "zone_id": zone.zone_id,
-                        "timestamp_relative": relative_time,
-                        "detection_mode": "nighttime",
-                    }
-                )
-
-            elif not inside and was_inside:
-                entry_time = obj.active_zones[zone.zone_id]
-                dwell_time = current_time - entry_time
-                del obj.active_zones[zone.zone_id]
-                self.event_count += 1
-
-                self.publisher(
-                    {
-                        "event_type": "ZONE_EXIT",
-                        "device_id": self.config.device_id,
-                        "track_id": obj.track_id,
-                        "object_class": HEADLIGHT_CLASS_ID,
-                        "zone_id": zone.zone_id,
-                        "timestamp_relative": relative_time,
-                        "dwell_time": dwell_time,
-                        "detection_mode": "nighttime",
                     }
                 )

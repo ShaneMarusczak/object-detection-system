@@ -145,30 +145,22 @@ def load_config(
 
 def get_model_class_names(model_path: str) -> dict:
     """
-    Load YOLO model and extract class names, merged with custom classes.
+    Load YOLO model and extract class names.
 
     Args:
         model_path: Path to .pt model file
 
     Returns:
-        Dictionary mapping class IDs to names (YOLO + custom classes)
+        Dictionary mapping class IDs to names
 
     Raises:
         SystemExit: If model cannot be loaded
     """
-    from .processor.coco_classes import COCO_CLASSES
-
     try:
         logger.info("Loading model to extract class names...")
         model = YOLO(model_path)
-        class_names = dict(model.names)  # Copy model names
-
-        # Merge custom classes (e.g., headlight for nighttime detection)
-        for class_id, class_name in COCO_CLASSES.items():
-            if class_id not in class_names:
-                class_names[class_id] = class_name
-
-        logger.info(f"Model loaded: {len(model.names)} YOLO classes + custom classes")
+        class_names = dict(model.names)
+        logger.info(f"Model loaded: {len(model.names)} YOLO classes")
         return class_names
 
     except Exception as e:
