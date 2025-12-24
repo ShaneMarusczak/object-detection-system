@@ -799,10 +799,18 @@ def _resolve_implied_actions(config: dict) -> list[str]:
         digest_id = ncz.get("email_digest")
         if digest_id:
             needed_consumers.add("email_digest")
+            # Check if digest wants photos
+            digest = digests.get(digest_id, {})
+            if digest.get("photos"):
+                needed_consumers.add("frame_capture")
 
         pdf_report_id = ncz.get("pdf_report")
         if pdf_report_id:
             needed_consumers.add("pdf_report")
+            # Check if report wants photos
+            report = pdf_reports.get(pdf_report_id, {})
+            if report.get("photos"):
+                needed_consumers.add("frame_capture")
 
     return sorted(needed_consumers)
 
