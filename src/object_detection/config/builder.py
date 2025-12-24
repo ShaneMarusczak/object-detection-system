@@ -753,8 +753,7 @@ class ConfigBuilder:
     def _setup_pdf_reports(self):
         """Setup PDF report configurations."""
         events = self.config.get("events", [])
-        if not events:
-            return
+        nighttime_car_zones = self.config.get("nighttime_car_zones", [])
 
         # Collect unique report IDs from events
         report_ids = set()
@@ -762,6 +761,14 @@ class ConfigBuilder:
             report_id = event.get("actions", {}).get("pdf_report")
             if report_id:
                 report_ids.add(report_id)
+
+        # Also collect from nighttime_car_zones
+        ncz_report_ids = set()
+        for ncz in nighttime_car_zones:
+            report_id = ncz.get("pdf_report")
+            if report_id:
+                report_ids.add(report_id)
+                ncz_report_ids.add(report_id)
 
         if not report_ids:
             return
@@ -772,12 +779,26 @@ class ConfigBuilder:
         for report_id in report_ids:
             print(f"\n  Report: {report_id}")
 
-            # Get events for this report
+            # Get events for this report (regular events)
             report_events = [
                 e["name"]
                 for e in events
                 if e.get("actions", {}).get("pdf_report") == report_id
             ]
+
+            # Add nighttime_car_zone event definitions
+            for ncz in nighttime_car_zones:
+                if ncz.get("pdf_report") == report_id:
+                    # Nighttime car events use event_definition format
+                    report_events.append(f"nighttime_car_{ncz['name']}")
+
+            # Show what's included
+            is_ncz_only = report_id in ncz_report_ids and not any(
+                e.get("actions", {}).get("pdf_report") == report_id for e in events
+            )
+            if is_ncz_only:
+                ncz_names = [ncz["name"] for ncz in nighttime_car_zones if ncz.get("pdf_report") == report_id]
+                print(f"    (Nighttime car zone{'s' if len(ncz_names) > 1 else ''}: {', '.join(ncz_names)})")
 
             title = input(
                 f"    Title [{report_id.replace('_', ' ').title()}]: "
@@ -787,12 +808,18 @@ class ConfigBuilder:
 
             output_dir = input("    Output directory [reports]: ").strip() or "reports"
 
-            # Check if any event has frame_capture
+            # Check if any event has frame_capture or if nighttime zones want photos
             has_photos = any(
                 e.get("actions", {}).get("frame_capture")
                 for e in events
                 if e.get("actions", {}).get("pdf_report") == report_id
             )
+
+            # For nighttime_car_zones, ask about photos
+            if report_id in ncz_report_ids:
+                photos_str = input("    Include photos in report? (Y/n): ").strip().lower()
+                if photos_str != "n":
+                    has_photos = True
 
             annotate = False
             if has_photos:
@@ -819,8 +846,7 @@ class ConfigBuilder:
     def _setup_digests(self):
         """Setup email digest configurations."""
         events = self.config.get("events", [])
-        if not events:
-            return
+        nighttime_car_zones = self.config.get("nighttime_car_zones", [])
 
         # Collect unique digest IDs from events
         digest_ids = set()
@@ -828,6 +854,14 @@ class ConfigBuilder:
             digest_id = event.get("actions", {}).get("email_digest")
             if digest_id:
                 digest_ids.add(digest_id)
+
+        # Also collect from nighttime_car_zones
+        ncz_digest_ids = set()
+        for ncz in nighttime_car_zones:
+            digest_id = ncz.get("email_digest")
+            if digest_id:
+                digest_ids.add(digest_id)
+                ncz_digest_ids.add(digest_id)
 
         if not digest_ids:
             return
@@ -838,13 +872,21 @@ class ConfigBuilder:
         for digest_id in digest_ids:
             print(f"\n  Digest: {digest_id}")
 
-            # Get events for this digest
+            # Get events for this digest (regular events)
             digest_events = [
                 e["name"]
                 for e in events
                 if e.get("actions", {}).get("email_digest") == digest_id
             ]
-            print(f"  {Colors.GRAY}Events: {', '.join(digest_events)}{Colors.RESET}")
+
+            # Add nighttime_car_zone event definitions
+            for ncz in nighttime_car_zones:
+                if ncz.get("email_digest") == digest_id:
+                    digest_events.append(f"nighttime_car_{ncz['name']}")
+
+            # Show what's included
+            if digest_events:
+                print(f"    {Colors.GRAY}Events: {', '.join(digest_events)}{Colors.RESET}")
 
             # Schedule
             print("    Schedule type:")
