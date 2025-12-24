@@ -189,10 +189,14 @@ class NighttimeCarZone:
     - blob_present: 1.0 if white blob in zone, else 0.0 (weight: 20)
     - blob_duration: frames_seen / 30, capped at 1.0 (weight: 15)
     - blob_size: normalized blob size (weight: 5)
-    - primed_bonus: 1.0 if zone was primed (brightness rose before blob) (weight: 25)
-    - taillight_match: 1.0 if red blob follows at same Y (weight: 30)
+    - primed_bonus: 1.0 if zone was primed (brightness rose before blob) (weight: 15)
+    - taillight_match: 1.0 if red blob follows at same Y (weight: 50)
 
-    Event emitted when score >= 100. Blob is then disqualified.
+    Taillight match is decisive - if a red blob follows the headlight,
+    it's definitely a car. Fast cars that appear without priming still
+    trigger if taillight matches.
+
+    Event emitted when score >= 85. Blob is then disqualified.
     """
 
     # Scoring weights
@@ -201,8 +205,8 @@ class NighttimeCarZone:
     WEIGHT_BLOB_PRESENT = 20
     WEIGHT_BLOB_DURATION = 15
     WEIGHT_BLOB_SIZE = 5
-    WEIGHT_PRIMED_BONUS = 25
-    WEIGHT_TAILLIGHT_MATCH = 40
+    WEIGHT_PRIMED_BONUS = 15  # Reduced - fast cars shouldn't be penalized
+    WEIGHT_TAILLIGHT_MATCH = 50  # Decisive - taillight confirms it's a car
 
     SCORE_THRESHOLD = 85
 
