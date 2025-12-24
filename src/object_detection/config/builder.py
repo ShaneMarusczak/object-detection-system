@@ -77,7 +77,7 @@ class ConfigBuilder:
 
             # Final review - show edit menu to allow tweaks before saving
             print(f"\n{Colors.CYAN}{Colors.BOLD}=== Final Review ==={Colors.RESET}")
-            print(f"{Colors.GRAY}Review your config and make any adjustments{Colors.RESET}")
+            print(f"{Colors.GRAY}Review your config and make adjustments{Colors.RESET}")
             return self._edit_menu_loop()
 
         except KeyboardInterrupt:
@@ -293,9 +293,8 @@ class ConfigBuilder:
 
     def _edit_section(self, section: str):
         """Edit a specific section."""
-        print(
-            f"\n{Colors.BOLD}--- Edit {section.replace('_', ' ').title()} ---{Colors.RESET}"
-        )
+        title = section.replace("_", " ").title()
+        print(f"\n{Colors.BOLD}--- Edit {title} ---{Colors.RESET}")
 
         if section == "camera":
             self._setup_camera()
@@ -464,8 +463,6 @@ class ConfigBuilder:
         if self.config_path:
             default_path = self.config_path
         else:
-            from datetime import datetime
-
             timestamp = datetime.now().strftime("%Y%m%d_%H%M")
             default_path = f"configs/config_{timestamp}.yaml"
 
@@ -1165,71 +1162,6 @@ class ConfigBuilder:
             frame_capture = event.get("actions", {}).get("frame_capture")
             if frame_capture:
                 frame_capture["expected_duration_seconds"] = duration_seconds
-
-    def _save_config(self) -> str | None:
-        """Save config to YAML file with options for what to do next."""
-        print(f"\n{Colors.BOLD}--- Finish ---{Colors.RESET}")
-
-        # Generate default name from timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        default_name = f"config_{timestamp}"
-
-        name = input(f"Config name [{default_name}]: ").strip() or default_name
-
-        # Ensure .yaml extension
-        if not name.endswith(".yaml") and not name.endswith(".yml"):
-            filename = f"{name}.yaml"
-        else:
-            filename = name
-
-        filepath = os.path.join("configs", filename)
-
-        # Show options
-        print(f"\n{Colors.BOLD}What next?{Colors.RESET}")
-        print("  1. Save and run (auto)   - quick start, no pauses")
-        print("  2. Save and run (verify) - pause between steps to check")
-        print("  3. Save and exit")
-        print("  4. Exit without saving")
-        choice = input("Choice [3]: ").strip() or "3"
-
-        # Handle exit without saving
-        if choice == "4":
-            print(f"{Colors.YELLOW}Exiting without saving{Colors.RESET}")
-            return None
-
-        # Save the config (options 1, 2, 3)
-        os.makedirs("configs", exist_ok=True)
-        with open(filepath, "w", encoding="utf-8") as f:
-            yaml.dump(self.config, f, default_flow_style=False, sort_keys=False)
-
-        print(f"{Colors.GREEN}Saved:{Colors.RESET} {filepath}")
-
-        # Handle based on choice
-        if choice in ("1", "2"):
-            # Running - auto-set as default (no need to ask)
-            self._set_as_default(filepath)
-            self._cleanup()
-
-            if choice == "1":
-                print(
-                    f"\n{Colors.CYAN}Starting detection (auto mode)...{Colors.RESET}\n"
-                )
-                os.execvp("./run.sh", ["./run.sh", "-sy"])  # skip menu + auto
-            else:
-                print(
-                    f"\n{Colors.CYAN}Starting detection (verify mode)...{Colors.RESET}\n"
-                )
-                os.execvp("./run.sh", ["./run.sh", "-s"])  # skip menu only
-
-        else:  # choice == '3' - save and exit
-            # Only ask about default if just saving
-            set_default = input("\nSet as default? (Y/n): ").strip().lower()
-            if set_default != "n":
-                self._set_as_default(filepath)
-
-            print(f"\n{Colors.GRAY}Run later with: ./run.sh{Colors.RESET}")
-
-        return filepath
 
     def _set_as_default(self, config_path: str):
         """Set config as default by updating config.yaml's use: pointer."""
