@@ -37,6 +37,8 @@ class NighttimeCarZoneConfig:
     pdf_report: str | None = None
     email_immediate: bool = False
     email_digest: str | None = None
+    # Debug mode - logs scoring details every N frames
+    debug: bool = False
 
 
 @dataclass
@@ -236,15 +238,21 @@ class NighttimeCarZone:
         self._primed_frame = 0
         self._frame_count = 0
 
+        # Debug mode
+        self._debug = config.debug
+        self._debug_interval = 30  # Log debug info every N frames
+
         # Taillight detector
         self.taillight_detector = TaillightDetector()
 
         # Blob detector
         self._blob_detector = self._create_blob_detector()
 
-        logger.debug(
-            f"NighttimeCarZone '{self.name}' initialized: ({self.x1},{self.y1})-({self.x2},{self.y2})"
-        )
+        log_msg = f"NighttimeCarZone '{self.name}' initialized: ({self.x1},{self.y1})-({self.x2},{self.y2})"
+        if self._debug:
+            logger.info(f"{log_msg} [DEBUG MODE ENABLED]")
+        else:
+            logger.debug(log_msg)
 
     def _create_blob_detector(self) -> cv2.SimpleBlobDetector:
         """Create OpenCV blob detector for headlight detection."""
@@ -311,12 +319,24 @@ class NighttimeCarZone:
             frame, self.x1, self.y1, self.x2, self.y2
         )
 
+        # Debug logging - periodic status
+        if self._debug and self._frame_count % self._debug_interval == 0:
+            active_blobs = sum(1 for b in self.tracked_blobs.values() if not b.is_disqualified)
+            logger.info(
+                f"[DEBUG] '{self.name}' frame {self._frame_count}: "
+                f"brightness={self.brightness_state.current:.2f} "
+                f"(base={self.brightness_state.baseline:.2f}, delta={self.brightness_state.delta:.2f}, "
+                f"rising={self.brightness_state.is_rising}) | "
+                f"blobs_detected={len(blobs)}, tracked={active_blobs}, taillights={len(taillights)}, "
+                f"primed={self._primed}"
+            )
+
         # Score each active blob
         for blob_id, blob in list(self.tracked_blobs.items()):
             if blob.is_disqualified:
                 continue
 
-            score = self._calculate_score(blob, taillights)
+            score = self._calculate_score(blob, taillights, log_debug=self._debug)
 
             if score >= self.SCORE_THRESHOLD:
                 # Emit event
@@ -438,7 +458,8 @@ class NighttimeCarZone:
                 seen_this_frame.add(new_id)
 
     def _calculate_score(
-        self, blob: TrackedBlob, taillights: list[tuple[float, float, float]]
+        self, blob: TrackedBlob, taillights: list[tuple[float, float, float]],
+        log_debug: bool = False
     ) -> float:
         """Calculate detection score for a blob."""
         # Brightness delta (0-1, capped)
@@ -469,16 +490,33 @@ class NighttimeCarZone:
                     taillight_match = 1.0
                     break
 
-        # Calculate weighted score
+        # Calculate weighted score with individual contributions
+        score_brightness_delta = self.WEIGHT_BRIGHTNESS_DELTA * brightness_delta
+        score_brightness_rising = self.WEIGHT_BRIGHTNESS_RISING * brightness_rising
+        score_blob_present = self.WEIGHT_BLOB_PRESENT * blob_present
+        score_blob_duration = self.WEIGHT_BLOB_DURATION * blob_duration
+        score_blob_size = self.WEIGHT_BLOB_SIZE * blob_size
+        score_primed_bonus = self.WEIGHT_PRIMED_BONUS * primed_bonus
+        score_taillight_match = self.WEIGHT_TAILLIGHT_MATCH * taillight_match
+
         score = (
-            self.WEIGHT_BRIGHTNESS_DELTA * brightness_delta
-            + self.WEIGHT_BRIGHTNESS_RISING * brightness_rising
-            + self.WEIGHT_BLOB_PRESENT * blob_present
-            + self.WEIGHT_BLOB_DURATION * blob_duration
-            + self.WEIGHT_BLOB_SIZE * blob_size
-            + self.WEIGHT_PRIMED_BONUS * primed_bonus
-            + self.WEIGHT_TAILLIGHT_MATCH * taillight_match
+            score_brightness_delta
+            + score_brightness_rising
+            + score_blob_present
+            + score_blob_duration
+            + score_blob_size
+            + score_primed_bonus
+            + score_taillight_match
         )
+
+        if log_debug:
+            logger.info(
+                f"[DEBUG] '{self.name}' blob#{blob.blob_id} score={score:.0f}/{self.SCORE_THRESHOLD} | "
+                f"bright_delta={score_brightness_delta:.0f} bright_rise={score_brightness_rising:.0f} "
+                f"present={score_blob_present:.0f} duration={score_blob_duration:.0f} "
+                f"size={score_blob_size:.0f} primed={score_primed_bonus:.0f} taillight={score_taillight_match:.0f} | "
+                f"blob: frames={blob.frames_seen}, size={blob.size:.1f}, center={blob.center}"
+            )
 
         return score
 
@@ -570,6 +608,7 @@ def create_nighttime_car_zones(
                 pdf_report=zone_config.get("pdf_report"),
                 email_immediate=zone_config.get("email_immediate", False),
                 email_digest=zone_config.get("email_digest"),
+                debug=zone_config.get("debug", False),
             ),
             frame_width,
             frame_height,
