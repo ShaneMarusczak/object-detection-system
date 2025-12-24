@@ -56,10 +56,45 @@ if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
     echo "  1. Run with existing config"
     echo "  2. Pick a config"
     echo "  3. Build new config"
+    echo "  4. Edit a config"
     read -p "Choice [1]: " ENTRY_CHOICE
 
     if [ "$ENTRY_CHOICE" = "3" ]; then
         python -m object_detection --build-config
+        exit 0
+    elif [ "$ENTRY_CHOICE" = "4" ]; then
+        # List configs in configs/ folder for editing
+        echo ""
+        echo "Select config to edit:"
+        configs=(configs/*.yaml configs/*.yml)
+        valid_configs=()
+        for cfg in "${configs[@]}"; do
+            [ -f "$cfg" ] && valid_configs+=("$cfg")
+        done
+
+        if [ ${#valid_configs[@]} -eq 0 ]; then
+            echo -e "  ${YELLOW}No configs found in configs/${NC}"
+            exit 1
+        fi
+
+        i=1
+        for cfg in "${valid_configs[@]}"; do
+            echo "  $i. $cfg"
+            ((i++))
+        done
+
+        read -p "Choice [1]: " CONFIG_CHOICE
+        CONFIG_CHOICE=${CONFIG_CHOICE:-1}
+        idx=$((CONFIG_CHOICE - 1))
+
+        if [ $idx -lt 0 ] || [ $idx -ge ${#valid_configs[@]} ]; then
+            echo -e "${YELLOW}Invalid choice${NC}"
+            exit 1
+        fi
+
+        SELECTED_CONFIG="${valid_configs[$idx]}"
+        echo ""
+        python -c "from object_detection.config import run_editor; run_editor('$SELECTED_CONFIG')"
         exit 0
     elif [ "$ENTRY_CHOICE" = "2" ]; then
         # List configs in configs/ folder
