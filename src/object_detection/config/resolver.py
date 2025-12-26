@@ -9,17 +9,24 @@ Handles:
 
 import logging
 
-from ..processor.coco_classes import COCO_NAME_TO_ID
-
 logger = logging.getLogger(__name__)
 
 
-def derive_track_classes(config: dict) -> list[int]:
+def derive_track_classes(
+    config: dict, model_names: dict[int, str] | None = None
+) -> list[int]:
     """
-    Derive COCO class IDs from event definitions.
+    Derive class IDs from event definitions using the loaded model.
 
     This is the public API for getting track_classes from events.
     Returns just the IDs (not name pairs) for use by detector.
+
+    Args:
+        config: Configuration dictionary
+        model_names: Mapping of class ID -> class name from loaded model
+
+    Returns:
+        List of class IDs to track
     """
     class_names = set()
 
@@ -35,18 +42,25 @@ def derive_track_classes(config: dict) -> list[int]:
             else:
                 class_names.add(obj_class.lower())
 
+    # Build reverse mapping (name -> id) from model
+    name_to_id: dict[str, int] = {}
+    if model_names is not None:
+        name_to_id = {name.lower(): id for id, name in model_names.items()}
+
     # Convert to IDs
     class_ids = []
     for name in class_names:
-        if name in COCO_NAME_TO_ID:
-            class_ids.append(COCO_NAME_TO_ID[name])
+        if name in name_to_id:
+            class_ids.append(name_to_id[name])
         else:
-            logger.warning(f"Unknown class '{name}' in events (not in COCO)")
+            logger.warning(f"Unknown class '{name}' in events (not in loaded model)")
 
     return sorted(class_ids)
 
 
-def prepare_runtime_config(config: dict) -> dict:
+def prepare_runtime_config(
+    config: dict, model_names: dict[int, str] | None = None
+) -> dict:
     """
     Prepare config for runtime - resolve all implied actions statically.
 
@@ -60,12 +74,13 @@ def prepare_runtime_config(config: dict) -> dict:
 
     Args:
         config: Validated configuration
+        model_names: Mapping of class ID -> class name from loaded model
 
     Returns:
         Config with all implied actions resolved
     """
     # Derive track_classes from events (the only way to specify them)
-    derived_classes = derive_track_classes(config)
+    derived_classes = derive_track_classes(config, model_names)
 
     if derived_classes:
         config["detection"]["track_classes"] = derived_classes

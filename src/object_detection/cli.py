@@ -113,7 +113,9 @@ def find_config_file(config_path: str) -> Path:
 
 
 def load_config(
-    config_path: str = "config.yaml", skip_validation: bool = False
+    config_path: str = "config.yaml",
+    skip_validation: bool = False,
+    model_names: dict[int, str] | None = None,
 ) -> dict:
     """
     Load and optionally validate configuration file.
@@ -124,6 +126,8 @@ def load_config(
     Args:
         config_path: Path to config.yaml
         skip_validation: If True, skip validation (for --validate/--plan modes)
+        model_names: Optional mapping of class ID -> class name from loaded model.
+                     If provided, event class names are validated against the model.
 
     Returns:
         Configuration dictionary
@@ -157,8 +161,8 @@ def load_config(
     config = load_config_with_env(config)
 
     if not skip_validation:
-        # Use new comprehensive validation
-        result = validate_config_full(config)
+        # Use new comprehensive validation with model classes
+        result = validate_config_full(config, model_names)
         if not result.valid:
             print_validation_result(result)
             sys.exit(1)
@@ -467,7 +471,19 @@ def print_final_status(
 def run_validate(config_path: str) -> None:
     """Run validation mode."""
     config = load_config(config_path, skip_validation=True)
-    result = validate_config_full(config)
+
+    # Load model to get class names for validation
+    model_path = config.get("detection", {}).get("model_file")
+    model_names = None
+    if model_path:
+        try:
+            model_names = get_model_class_names(model_path)
+        except SystemExit:
+            # Model loading failed - continue without model validation
+            print("Warning: Could not load model, class names will not be validated")
+            model_names = None
+
+    result = validate_config_full(config, model_names)
     print_validation_result(result)
     sys.exit(0 if result.valid else 1)
 
@@ -476,14 +492,25 @@ def run_plan(config_path: str) -> None:
     """Run plan mode."""
     config = load_config(config_path, skip_validation=True)
 
+    # Load model to get class names for validation
+    model_path = config.get("detection", {}).get("model_file")
+    model_names = None
+    if model_path:
+        try:
+            model_names = get_model_class_names(model_path)
+        except SystemExit:
+            # Model loading failed - continue without model validation
+            print("Warning: Could not load model, class names will not be validated")
+            model_names = None
+
     # First validate
-    result = validate_config_full(config)
+    result = validate_config_full(config, model_names)
     if not result.valid:
         print_validation_result(result)
         sys.exit(1)
 
     # Then show plan
-    plan = build_plan(config)
+    plan = build_plan(config, model_names)
     print_plan(plan)
     sys.exit(0)
 
@@ -492,8 +519,19 @@ def run_dry_run(config_path: str, events_file: str | None) -> None:
     """Run dry-run simulation mode."""
     config = load_config(config_path, skip_validation=True)
 
+    # Load model to get class names for validation
+    model_path = config.get("detection", {}).get("model_file")
+    model_names = None
+    if model_path:
+        try:
+            model_names = get_model_class_names(model_path)
+        except SystemExit:
+            # Model loading failed - continue without model validation
+            print("Warning: Could not load model, class names will not be validated")
+            model_names = None
+
     # First validate
-    result = validate_config_full(config)
+    result = validate_config_full(config, model_names)
     if not result.valid:
         print_validation_result(result)
         sys.exit(1)
@@ -552,11 +590,23 @@ def main() -> None:
         return
 
     # Normal execution mode
-    # Load configuration
-    config = load_config(args.config)
+    # First load config without validation to get model path
+    config = load_config(args.config, skip_validation=True)
 
-    # Derive track_classes from events (event-driven wiring)
-    config = prepare_runtime_config(config)
+    # Load model FIRST to get class names for validation
+    model_names = get_model_class_names(config["detection"]["model_file"])
+    # Add synthetic class for nighttime car detection
+    model_names[1000] = "nighttime_car"
+
+    # Now validate config against actual model classes
+    result = validate_config_full(config, model_names)
+    if not result.valid:
+        print_validation_result(result)
+        sys.exit(1)
+    logger.info("Configuration validated against model")
+
+    # Derive track_classes from events using model mapping
+    config = prepare_runtime_config(config, model_names)
 
     # Parse duration
     duration_hours = parse_duration(args.duration, config)
@@ -564,11 +614,6 @@ def main() -> None:
 
     # Print banner
     print_banner(config, duration_hours)
-
-    # Get model class names before spawning processes
-    model_names = get_model_class_names(config["detection"]["model_file"])
-    # Add synthetic class for nighttime car detection
-    model_names[1000] = "nighttime_car"
 
     # Setup signal handlers for graceful shutdown (SIGTERM from systemd/Docker)
     _setup_signal_handlers()

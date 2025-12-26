@@ -15,7 +15,6 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-from ..processor.coco_classes import COCO_NAME_TO_ID
 from ..utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
 
 # Import from new modules
@@ -105,11 +104,23 @@ def load_config_with_env(config: dict) -> dict:
     return config
 
 
-def build_plan(config: dict) -> ConfigPlan:
-    """Build a complete configuration plan from config."""
+def build_plan(
+    config: dict, model_names: dict[int, str] | None = None
+) -> ConfigPlan:
+    """Build a complete configuration plan from config.
+
+    Args:
+        config: Configuration dictionary
+        model_names: Optional mapping of class ID -> class name from loaded model
+    """
     events = []
     digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
     pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+
+    # Build reverse mapping (name -> id) from model
+    name_to_id: dict[str, int] = {}
+    if model_names is not None:
+        name_to_id = {name.lower(): id for id, name in model_names.items()}
 
     for event_config in config.get("events", []):
         name = event_config.get("name", "unnamed")
@@ -195,8 +206,13 @@ def build_plan(config: dict) -> ConfigPlan:
             classes = [obj_class] if isinstance(obj_class, str) else obj_class
             for cls in classes:
                 cls_lower = cls.lower()
-                if cls_lower in COCO_NAME_TO_ID:
-                    pair = (COCO_NAME_TO_ID[cls_lower], cls_lower)
+                if cls_lower in name_to_id:
+                    pair = (name_to_id[cls_lower], cls_lower)
+                    if pair not in track_classes:
+                        track_classes.append(pair)
+                elif model_names is None:
+                    # No model loaded - use placeholder ID
+                    pair = (-1, cls_lower)
                     if pair not in track_classes:
                         track_classes.append(pair)
 
@@ -284,7 +300,10 @@ def print_plan(plan: ConfigPlan) -> None:
     if plan.track_classes:
         print(f"\n{Colors.CYAN}Track Classes (derived from events):{Colors.RESET}")
         for class_id, class_name in plan.track_classes:
-            print(f"  {Colors.GREEN}+{Colors.RESET} {class_name} (COCO ID: {class_id})")
+            if class_id >= 0:
+                print(f"  {Colors.GREEN}+{Colors.RESET} {class_name} (ID: {class_id})")
+            else:
+                print(f"  {Colors.YELLOW}?{Colors.RESET} {class_name} (ID: unknown - model not loaded)")
 
     # Events
     print(f"\n{Colors.CYAN}Events:{Colors.RESET}")
@@ -366,13 +385,17 @@ def print_plan(plan: ConfigPlan) -> None:
     print()
 
 
-def simulate_dry_run(config: dict, sample_events: list[dict]) -> None:
+def simulate_dry_run(
+    config: dict,
+    sample_events: list[dict],
+    model_names: dict[int, str] | None = None,
+) -> None:
     """Simulate event processing with sample events."""
     print()
     print(f"{Colors.BOLD}Dry Run Simulation{Colors.RESET}")
     print("=" * 60)
 
-    plan = build_plan(config)
+    plan = build_plan(config, model_names)
 
     # Build lookup tables
     digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}

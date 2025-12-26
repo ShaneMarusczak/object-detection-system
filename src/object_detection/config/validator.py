@@ -9,8 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..processor.coco_classes import COCO_NAME_TO_ID
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,13 +22,28 @@ class ValidationResult:
     derived: dict[str, Any] = field(default_factory=dict)
 
 
-def validate_config_full(config: dict) -> ValidationResult:
+def validate_config_full(
+    config: dict, model_names: dict[int, str] | None = None
+) -> ValidationResult:
     """
     Comprehensive config validation with detailed error messages.
 
-    Returns ValidationResult with errors, warnings, and derived configuration.
+    Args:
+        config: Configuration dictionary to validate
+        model_names: Optional mapping of class ID -> class name from loaded model.
+                     If provided, event class names are validated against the model.
+                     If None, class validation is skipped (useful for --validate without model).
+
+    Returns:
+        ValidationResult with errors, warnings, and derived configuration.
     """
     result = ValidationResult(valid=True)
+
+    # Build name->id mapping from model if provided
+    model_name_to_id: dict[str, int] | None = None
+    if model_names is not None:
+        model_name_to_id = {name.lower(): id for id, name in model_names.items()}
+        result.derived["model_classes"] = list(model_names.values())
 
     # Basic structure validation
     _validate_required_sections(config, result)
@@ -50,7 +63,9 @@ def validate_config_full(config: dict) -> ValidationResult:
 
     # Events and digests
     digest_ids = _validate_digests(config, result)
-    _validate_events(config, result, zone_descriptions, line_descriptions, digest_ids)
+    _validate_events(
+        config, result, zone_descriptions, line_descriptions, digest_ids, model_name_to_id
+    )
 
     # Notifications (if events use email)
     _validate_notifications(config, result)
@@ -59,7 +74,7 @@ def validate_config_full(config: dict) -> ValidationResult:
     _validate_frame_storage(config, result)
 
     # Derive track_classes from events
-    track_classes = _derive_track_classes_from_events(config, result)
+    track_classes = _derive_track_classes_from_events(config, result, model_name_to_id)
     result.derived["track_classes"] = track_classes
     result.derived["consumers"] = _derive_consumers_for_validation(config)
 
@@ -287,6 +302,7 @@ def _validate_events(
     zone_descriptions: set[str],
     line_descriptions: set[str],
     digest_ids: set[str],
+    model_name_to_id: dict[str, int] | None = None,
 ) -> None:
     """Validate event definitions."""
     events = config.get("events", [])
@@ -347,11 +363,15 @@ def _validate_events(
         if obj_class and event_type != "NIGHTTIME_CAR":
             classes = [obj_class] if isinstance(obj_class, str) else obj_class
             for cls in classes:
-                if cls.lower() not in COCO_NAME_TO_ID:
-                    result.errors.append(
-                        f"{event_ref}.match.object_class '{cls}' is not a valid COCO class. "
-                        f"Valid: person, car, cat, dog, truck, bus, motorcycle, bird, etc."
-                    )
+                # Validate against loaded model if available
+                if model_name_to_id is not None:
+                    if cls.lower() not in model_name_to_id:
+                        available = ", ".join(sorted(model_name_to_id.keys())[:10])
+                        more = f" (and {len(model_name_to_id) - 10} more)" if len(model_name_to_id) > 10 else ""
+                        result.errors.append(
+                            f"{event_ref}.match.object_class '{cls}' not found in model. "
+                            f"Available: {available}{more}"
+                        )
 
         # Actions
         actions = event.get("actions", {})
@@ -483,9 +503,11 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
 
 
 def _derive_track_classes_from_events(
-    config: dict, result: ValidationResult
+    config: dict,
+    result: ValidationResult,
+    model_name_to_id: dict[str, int] | None = None,
 ) -> list[tuple[int, str]]:
-    """Derive COCO class IDs from event definitions."""
+    """Derive class IDs from event definitions using loaded model mapping."""
     class_names = set()
     for event in config.get("events", []):
         match = event.get("match", {})
@@ -499,11 +521,15 @@ def _derive_track_classes_from_events(
             else:
                 class_names.add(obj_class)
 
-    # Convert names to (id, name) pairs
+    # Convert names to (id, name) pairs using model mapping
     pairs = []
     for name in class_names:
         name_lower = name.lower()
-        if name_lower in COCO_NAME_TO_ID:
-            pairs.append((COCO_NAME_TO_ID[name_lower], name))
+        if model_name_to_id is not None and name_lower in model_name_to_id:
+            pairs.append((model_name_to_id[name_lower], name))
+        elif model_name_to_id is None:
+            # No model loaded - can't derive IDs, just use name with placeholder ID
+            # This happens during --validate without model
+            pairs.append((-1, name))
 
     return sorted(pairs, key=lambda x: x[0])
