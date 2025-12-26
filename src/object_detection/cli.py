@@ -171,12 +171,94 @@ def load_config(
     return config
 
 
+def scan_for_models(directory: str) -> list[Path]:
+    """
+    Scan a directory for .pt model files.
+
+    Args:
+        directory: Path to directory to scan
+
+    Returns:
+        Sorted list of .pt file paths
+    """
+    dir_path = Path(directory)
+    if not dir_path.is_dir():
+        return []
+
+    pt_files = sorted(dir_path.glob("*.pt"))
+    return pt_files
+
+
+def select_model_interactively(directory: str) -> str:
+    """
+    Scan directory for .pt files and let user select one interactively.
+
+    Args:
+        directory: Path to directory containing model files
+
+    Returns:
+        Full path to the selected model file
+
+    Raises:
+        SystemExit: If no models found or invalid selection
+    """
+    models = scan_for_models(directory)
+
+    if not models:
+        print(f"\nNo .pt model files found in: {directory}")
+        sys.exit(1)
+
+    print(f"\nAvailable models in {directory}:")
+    print("-" * 50)
+    for i, model_path in enumerate(models, 1):
+        # Show file size for reference
+        size_mb = model_path.stat().st_size / (1024 * 1024)
+        print(f"  {i}. {model_path.name} ({size_mb:.1f} MB)")
+    print("-" * 50)
+
+    while True:
+        try:
+            choice = input(f"Select model [1-{len(models)}]: ").strip()
+            if not choice:
+                continue
+            idx = int(choice) - 1
+            if 0 <= idx < len(models):
+                selected = models[idx]
+                print(f"Selected: {selected.name}\n")
+                return str(selected)
+            else:
+                print(f"Invalid choice. Enter a number between 1 and {len(models)}")
+        except ValueError:
+            print("Please enter a number")
+        except (EOFError, KeyboardInterrupt):
+            print("\nSelection cancelled")
+            sys.exit(1)
+
+
+def resolve_model_path(model_path: str) -> str:
+    """
+    Resolve model path, prompting for selection if it's a directory.
+
+    Args:
+        model_path: Path to .pt model file or directory containing models
+
+    Returns:
+        Resolved path to a specific .pt file
+    """
+    if Path(model_path).is_dir():
+        return select_model_interactively(model_path)
+    return model_path
+
+
 def get_model_class_names(model_path: str) -> dict:
     """
     Load YOLO model and extract class names.
 
+    If model_path is a directory, scans for .pt files and prompts
+    the user to select one interactively.
+
     Args:
-        model_path: Path to .pt model file
+        model_path: Path to .pt model file or directory containing models
 
     Returns:
         Dictionary mapping class IDs to names
@@ -184,9 +266,12 @@ def get_model_class_names(model_path: str) -> dict:
     Raises:
         SystemExit: If model cannot be loaded
     """
+    # Resolve path if it's a directory
+    resolved_path = resolve_model_path(model_path)
+
     try:
         logger.info("Loading model to extract class names...")
-        model = YOLO(model_path)
+        model = YOLO(resolved_path)
         class_names = dict(model.names)
         logger.info(f"Model loaded: {len(model.names)} YOLO classes")
         return class_names
@@ -593,8 +678,12 @@ def main() -> None:
     # First load config without validation to get model path
     config = load_config(args.config, skip_validation=True)
 
-    # Load model FIRST to get class names for validation
-    model_names = get_model_class_names(config["detection"]["model_file"])
+    # Resolve model path (prompts for selection if it's a directory)
+    model_path = resolve_model_path(config["detection"]["model_file"])
+    config["detection"]["model_file"] = model_path  # Update config with resolved path
+
+    # Load model to get class names for validation
+    model_names = get_model_class_names(model_path)
     # Add synthetic class for nighttime car detection
     model_names[1000] = "nighttime_car"
 
