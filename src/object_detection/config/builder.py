@@ -75,6 +75,7 @@ class ConfigBuilder:
         self.frame_height: int = 0
         self.config_path: str | None = None  # Track source file for edits
         self.current_step: int = 0  # For progress indicator
+        self.model_classes: list[str] = []  # Classes from loaded model
 
     def run(self) -> str | None:
         """Run the config builder wizard. Returns config filename or None."""
@@ -738,6 +739,20 @@ class ConfigBuilder:
             except ValueError:
                 print(f"  {Colors.RED}Please enter a number{Colors.RESET}")
 
+    def _load_model_classes(self, model_path: str) -> list[str]:
+        """Load model and extract its class names."""
+        try:
+            from ultralytics import YOLO
+            print(f"  {Colors.GRAY}Loading model...{Colors.RESET}", end=" ", flush=True)
+            model = YOLO(model_path)
+            classes = list(model.names.values())
+            print(f"{Colors.GREEN}OK{Colors.RESET} ({len(classes)} classes)")
+            return classes
+        except Exception as e:
+            print(f"{Colors.RED}Failed{Colors.RESET}")
+            print(f"  {Colors.YELLOW}Warning: Could not load model: {e}{Colors.RESET}")
+            return []
+
     def _setup_detection(self):
         """Setup detection parameters."""
         print(f"\n{Colors.BOLD}--- Detection Settings ---{Colors.RESET}")
@@ -754,6 +769,15 @@ class ConfigBuilder:
         else:
             # No models found, ask for path
             model = input(f"Model file [{default_model}]: ").strip() or default_model
+
+        # Load model to get its classes
+        self.model_classes = self._load_model_classes(model)
+        if self.model_classes:
+            print(f"  {Colors.CYAN}Model classes:{Colors.RESET} {', '.join(self.model_classes[:5])}", end="")
+            if len(self.model_classes) > 5:
+                print(f" (+{len(self.model_classes) - 5} more)")
+            else:
+                print()
 
         # Confidence threshold
         default_conf = "0.3"
@@ -1077,13 +1101,23 @@ class ConfigBuilder:
 
             # Object classes with validation (skip for NIGHTTIME_CAR)
             if not is_nighttime_event:
-                valid_classes = set(COCO_CLASSES.values())
+                # Use model classes if loaded, otherwise fall back to COCO
+                if self.model_classes:
+                    valid_classes = set(self.model_classes)
+                    display_classes = self.model_classes
+                    # Default to first class if single-class model
+                    default_classes = self.model_classes[0] if len(self.model_classes) == 1 else "car, truck, bus"
+                else:
+                    valid_classes = set(COCO_CLASSES.values())
+                    display_classes = COMMON_CLASSES
+                    default_classes = "car, truck, bus"
+
                 while True:
                     print("    Object classes (comma-separated):")
-                    print(f"    Common: {', '.join(COMMON_CLASSES)}")
+                    print(f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}")
                     classes_str = (
-                        input("    Classes [car, truck, bus]: ").strip()
-                        or "car, truck, bus"
+                        input(f"    Classes [{default_classes}]: ").strip()
+                        or default_classes
                     )
                     classes = [c.strip() for c in classes_str.split(",") if c.strip()]
 
