@@ -10,6 +10,7 @@ import readline  # noqa: F401 - Enables arrow key history for input()
 import subprocess
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import cv2
 import yaml
@@ -697,13 +698,62 @@ class ConfigBuilder:
 
         return True
 
+    def _scan_for_models(self, directory: str = ".") -> list[Path]:
+        """Scan a directory for .pt model files."""
+        dir_path = Path(directory)
+        if not dir_path.is_dir():
+            return []
+        return sorted(dir_path.glob("*.pt"))
+
+    def _select_model_interactively(self, directory: str = ".") -> str | None:
+        """
+        Scan directory for .pt files and let user select one.
+
+        Returns the selected model path or None if no models found.
+        """
+        models = self._scan_for_models(directory)
+
+        if not models:
+            return None
+
+        print(f"\n  {Colors.CYAN}Available models in {directory}:{Colors.RESET}")
+        print("  " + "-" * 45)
+        for i, model_path in enumerate(models, 1):
+            size_mb = model_path.stat().st_size / (1024 * 1024)
+            print(f"    {i}. {model_path.name} ({size_mb:.1f} MB)")
+        print("  " + "-" * 45)
+
+        while True:
+            try:
+                choice = input(f"  Select model [1-{len(models)}]: ").strip()
+                if not choice:
+                    continue
+                idx = int(choice) - 1
+                if 0 <= idx < len(models):
+                    selected = models[idx]
+                    print(f"  {Colors.GREEN}Selected: {selected.name}{Colors.RESET}")
+                    return str(selected)
+                else:
+                    print(f"  {Colors.RED}Enter a number between 1 and {len(models)}{Colors.RESET}")
+            except ValueError:
+                print(f"  {Colors.RED}Please enter a number{Colors.RESET}")
+
     def _setup_detection(self):
         """Setup detection parameters."""
         print(f"\n{Colors.BOLD}--- Detection Settings ---{Colors.RESET}")
 
-        # Model
+        # Model - check for .pt files in current directory
+        models_in_cwd = self._scan_for_models(".")
         default_model = "yolo11n.pt"
-        model = input(f"Model file [{default_model}]: ").strip() or default_model
+
+        if models_in_cwd:
+            # Show available models for selection
+            model = self._select_model_interactively(".")
+            if not model:
+                model = input(f"Model file [{default_model}]: ").strip() or default_model
+        else:
+            # No models found, ask for path
+            model = input(f"Model file [{default_model}]: ").strip() or default_model
 
         # Confidence threshold
         default_conf = "0.3"
