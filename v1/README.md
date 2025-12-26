@@ -155,7 +155,7 @@ lines:
     position_pct: 30
     description: "entrance"
     allowed_classes: [0]  # People only
-  
+
   # Horizontal line at 60% from top
   - type: horizontal
     position_pct: 60
@@ -194,7 +194,7 @@ roi:
     enabled: true
     crop_from_left_pct: 0
     crop_to_right_pct: 50  # Left half only
-  
+
   vertical:
     enabled: false
     crop_from_top_pct: 0
@@ -235,14 +235,14 @@ Track when cats use food bowl and litterbox:
 ```yaml
 detection:
   track_classes: [15]  # cats
-  
+
 zones:
   - x1_pct: 10
     y1_pct: 20
     x2_pct: 30
     y2_pct: 40
     description: "food bowl"
-  
+
   - x1_pct: 70
     y1_pct: 60
     x2_pct: 90
@@ -289,7 +289,7 @@ lines:
   - type: vertical
     position_pct: 40
     description: "entrance"
-  
+
   - type: vertical
     position_pct: 60
     description: "exit"
@@ -508,4 +508,3 @@ Built with:
 - [ByteTrack](https://github.com/ifzhang/ByteTrack)
 - [OpenCV](https://opencv.org/)
 - [PyTorch](https://pytorch.org/)
-

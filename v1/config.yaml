@@ -8,7 +8,7 @@ detection:
   # YOLO model file (.pt format) - must exist in current directory
   # Options: yolov8n.pt, yolo11n.pt, yolo11s.pt, etc.
   model_file: "yolo11n.pt"
-  
+
   # COCO class IDs to track (0-79)
   # Common classes:
   #   0: person
@@ -17,7 +17,7 @@ detection:
   #   17: horse, 18: sheep, 19: cow
   # See https://docs.ultralytics.com/datasets/detect/coco/ for full list
   track_classes: [15, 16, 2, 3, 5, 7]  # cats and dogs
-  
+
   # Confidence threshold (0.0-1.0)
   # Higher = fewer false positives, may miss some objects
   # Lower = catch more objects, more false positives
@@ -35,7 +35,7 @@ roi:
     crop_from_left_pct: 0    # Left edge (0-100)
     crop_to_right_pct: 45   # Right edge (0-100)
     # Example: 0-50 = left half only, 25-75 = middle half
-  
+
   vertical:
     enabled: true
     crop_from_top_pct: 5     # Top edge (0-100)
@@ -53,18 +53,18 @@ lines:
     position_pct: 25
     description: "traffic boundary"
     allowed_classes: [2,3,5,7]
-    
+
   # Vertical lines (measured from left edge, detect left-right movement)
  # - type: vertical
  #   position_pct: 30                    # 30% from left edge
  #   description: "feeder approach"      # Semantic meaning
  #   allowed_classes: [15]               # Only cats (optional - defaults to all track_classes)
-  
+
  # - type: vertical
  #   position_pct: 70
  #   description: "feeder exit"
  #   allowed_classes: [15]
-  
+
   # Horizontal lines (measured from top edge, detect top-bottom movement)
  # - type: horizontal
  #   position_pct: 50                    # 50% from top (center line)
@@ -128,7 +128,7 @@ output:
 console_output:
   enabled: true
   level: "detailed"  # Options: "detailed" | "summary" | "silent"
-  
+
   # detailed: Print every event as it happens
   # summary:  Print periodic statistics only
   # silent:   No console output (data still written to file)
@@ -152,11 +152,11 @@ camera:
 runtime:
   # Default duration if not specified on command line
   default_duration_hours: 1.0
-  
+
   # Startup delay for analyzer (seconds)
   # Brief pause to ensure consumer is ready before detector starts
   analyzer_startup_delay: 1
-  
+
   # Shutdown timeouts (seconds)
   # How long to wait for graceful shutdown before forcing
   detector_shutdown_timeout: 5
@@ -258,4 +258,3 @@ runtime:
 #
 # speed_calculation:
 #   enabled: false
-

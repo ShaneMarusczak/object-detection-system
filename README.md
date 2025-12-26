@@ -1,348 +1,156 @@
 # Object Detection System
 
-Production-quality object detection for tracking movement across boundaries and through zones. Built on YOLO and ByteTrack with GPU acceleration.
+GPU-accelerated object detection for tracking movement across lines and through zones. YOLO + ByteTrack with blob-based nighttime detection.
 
 ## Features
 
-- **Multi-line detection**: Define vertical/horizontal counting lines
-- **Zone monitoring**: Track entry/exit with automatic dwell time calculation
-- **Class filtering**: Different boundaries for different object types
-- **GPU-accelerated**: 40+ FPS on Jetson Orin Nano with YOLO11n
-- **Real-time JSONL output**: Events streamed as they happen
-- **ROI cropping**: Focus processing on specific frame regions
-- **Multiprocessing**: Detection (GPU) and analysis (CPU) run in parallel
+- **Event-driven**: Define events declaratively, system routes automatically
+- **Nighttime detection**: Headlight/taillight blob scoring when YOLO can't see
+- **PDF reports**: Generated on shutdown with event summaries and photos
+- **Email digests**: Periodic summaries with optional frame captures
+- **Terraform workflow**: `--validate`, `--plan`, `--dry-run` before running
+- **42+ FPS** on Jetson Orin Nano
 
 ## Quick Start
 
-### Installation (Jetson Orin Nano)
-
 ```bash
-# 1. Clone repository
-git clone <repository> object-detection-system
-cd object-detection-system
-
-# 2. Setup virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# 3. Install PyTorch for Jetson (see requirements.txt for details)
-wget https://developer.download.nvidia.com/compute/redist/jp/v50/pytorch/torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl
-pip install torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl
-
-# 4. Install dependencies
 pip install -r requirements.txt
-
-# 5. Download YOLO model
-wget https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt
+./run.sh
 ```
 
-### Configuration
+The run script is the preferred entry point. It offers three options:
 
-Copy the example config and customize for your use case:
+1. **Run with existing config** - Validates, plans, dry-runs, then executes
+2. **Pick a config** - Choose from saved configs in `configs/`
+3. **Build new config** - Interactive wizard that guides you through setup
+
+### Config Builder
+
+The config builder is a TUI wizard for first-time setup or creating new configurations:
 
 ```bash
-cp examples/config.yaml config.yaml
-nano config.yaml
+./run.sh        # Choose option 3
+# or directly:
+python -m object_detection --build-config
 ```
 
-Key settings:
+Features:
+- Connects to camera and serves preview frames via HTTP (for visual feedback)
+- Guides through lines, zones, events, reports, and email setup
+- Validates inputs (zone bounds, COCO classes)
+- Saves to `configs/` and optionally runs immediately
+
+### Manual Commands
+
+For scripting or advanced use:
+
+```bash
+python -m object_detection --validate   # Check config
+python -m object_detection --plan       # Preview routing
+python -m object_detection --dry-run    # Simulate events
+python -m object_detection 1            # Run for 1 hour
+```
+
+## Configuration
+
+The main `config.yaml` uses a pointer to the active config:
 
 ```yaml
-detection:
-  model_file: "yolo11n.pt"
-  track_classes: [15, 16]  # cats, dogs
-  confidence_threshold: 0.25
-
-lines:
-  - type: vertical
-    position_pct: 50      # Line at 50% from left
-    description: "doorway"
-
-camera:
-  url: "http://192.168.1.100:4747/video"  # Or use CAMERA_URL env var
+use: configs/traffic.yaml
 ```
 
-### Run
+Switch configs by changing the `use:` path, or let the builder set it for you.
 
-```bash
-# Run for 1 hour
-python -m object_detection 1
+### Config Format
 
-# Run for 30 minutes
-python -m object_detection 0.5
+```yaml
+lines:
+  - type: vertical
+    position_pct: 30
+    description: "entrance gate"
 
-# Run indefinitely (Ctrl+C to stop)
-python -m object_detection 999
+zones:
+  - x1_pct: 0
+    y1_pct: 60
+    x2_pct: 25
+    y2_pct: 100
+    description: "driveway"
+
+events:
+  # Daytime: YOLO detects cars
+  - name: "vehicle_entering"
+    match:
+      event_type: LINE_CROSS
+      line: "entrance gate"
+      object_class: [car, truck]
+    actions:
+      json_log: true
+      pdf_report: "traffic_report"
+
+  # Nighttime: Blob detection for headlights/taillights
+  - name: "nighttime_car"
+    match:
+      event_type: NIGHTTIME_CAR
+      zone: "driveway"
+      nighttime_detection:
+        score_threshold: 85
+    actions:
+      json_log: true
+      pdf_report: "traffic_report"
+
+pdf_reports:
+  - id: "traffic_report"
+    title: "Traffic Report"
+    photos: true
+```
+
+## Project Structure
+
+```
+src/object_detection/
+├── cli.py                 # Entry point
+├── models/                # Consolidated data models
+│   ├── tracking.py        # TrackedObject, LineConfig, ZoneConfig
+│   ├── events.py          # EventDefinition
+│   └── detector.py        # Detector protocol interface
+├── core/
+│   ├── detector.py        # YOLO detection loop
+│   ├── camera.py          # Camera init with retry
+│   ├── frame_saver.py     # Temp + annotated frame saving
+│   └── nighttime_zone.py  # Blob-based nighttime detection
+├── processor/
+│   ├── dispatcher.py      # Event routing to consumers
+│   ├── json_writer.py     # JSONL logging + console output
+│   ├── pdf_report.py      # PDF generation on shutdown
+│   └── email_digest.py    # Periodic email summaries
+├── config/
+│   ├── planner.py         # validate/plan/dry-run logic
+│   ├── schemas.py         # Pydantic config validation
+│   └── builder.py         # Interactive config wizard
+├── utils/
+│   ├── event_schema.py    # Event format documentation
+│   └── queue_protocol.py  # Queue abstraction for distributed mode
+└── edge/                  # Self-contained for Jetson deployment
+    ├── detector.py        # Minimal edge detector
+    └── config.py          # Edge-specific config parsing
 ```
 
 ## Output
 
-Events are logged to `data/events_YYYYMMDD_HHMMSS.jsonl`:
-
+**JSONL** (`data/events_*.jsonl`):
 ```json
-{"event_type":"LINE_CROSS","timestamp":"2025-12-22T14:35:47.123Z","track_id":47,"object_class":15,"object_class_name":"cat","line_id":"V1","line_description":"doorway","direction":"LTR"}
-{"event_type":"ZONE_ENTER","timestamp":"2025-12-22T14:35:50.234Z","track_id":47,"object_class":15,"object_class_name":"cat","zone_id":"Z1","zone_description":"food bowl"}
-{"event_type":"ZONE_EXIT","timestamp":"2025-12-22T14:36:02.654Z","track_id":47,"object_class":15,"object_class_name":"cat","zone_id":"Z1","zone_description":"food bowl","dwell_time":12.42}
+{"event_type":"LINE_CROSS","track_id":42,"object_class_name":"car","line_description":"entrance gate","direction":"LTR","timestamp":"2025-12-23T04:11:17Z"}
+{"event_type":"NIGHTTIME_CAR","track_id":"nc_1","zone_description":"driveway","score":92,"timestamp":"2025-12-23T22:45:03Z"}
 ```
 
-## Configuration Guide
+**PDF**: Generated on shutdown with event tables and captured frames.
 
-### COCO Classes
-
-Common object classes:
-
-| ID | Class | Use Case |
-|----|-------|----------|
-| 0 | person | Doorway counting, occupancy |
-| 2 | car | Traffic analysis |
-| 3 | motorcycle | Traffic analysis |
-| 15 | cat | Pet monitoring |
-| 16 | dog | Pet monitoring |
-
-[Full list](https://docs.ultralytics.com/datasets/detect/coco/)
-
-### Lines
-
-```yaml
-lines:
-  - type: vertical           # or 'horizontal'
-    position_pct: 30         # 30% from left (or top)
-    description: "entrance"
-    allowed_classes: [0]     # Optional: filter by class
+**Console**:
 ```
-
-**Directions:**
-- Vertical: `LTR` (left-to-right), `RTL` (right-to-left)
-- Horizontal: `TTB` (top-to-bottom), `BTT` (bottom-to-top)
-
-### Zones
-
-```yaml
-zones:
-  - x1_pct: 10              # Rectangle boundaries (%)
-    y1_pct: 20
-    x2_pct: 30
-    y2_pct: 40
-    description: "food bowl"
-    allowed_classes: [15, 16]  # Optional: filter by class
+json_writer INFO #   1 | Track 42 (car) crossed V1 (entrance gate) LTR
+json_writer INFO #   2 | NIGHTTIME_CAR in driveway (score=92)
 ```
-
-Events: `ZONE_ENTER`, `ZONE_EXIT` (with dwell time)
-
-### ROI Cropping
-
-Crop frame for better performance:
-
-```yaml
-roi:
-  horizontal:
-    enabled: true
-    crop_from_left_pct: 0
-    crop_to_right_pct: 50   # Process left half only
-  vertical:
-    enabled: false
-```
-
-### Environment Variables
-
-Override camera URL without editing config:
-
-```bash
-export CAMERA_URL="http://192.168.1.200:4747/video"
-python -m object_detection 1
-```
-
-## Use Cases
-
-### Pet Monitoring
-
-Track food/water bowl usage:
-
-```yaml
-detection:
-  track_classes: [15]  # cats
-
-zones:
-  - {x1_pct: 10, y1_pct: 20, x2_pct: 30, y2_pct: 40, description: "food bowl"}
-  - {x1_pct: 70, y1_pct: 60, x2_pct: 90, y2_pct: 85, description: "water"}
-```
-
-### Traffic Analysis
-
-Count vehicles and measure speeds:
-
-```yaml
-detection:
-  track_classes: [2, 3, 5, 7]  # vehicles
-
-lines:
-  - type: vertical
-    position_pct: 50
-    description: "counting line"
-
-speed_calculation:
-  enabled: true
-```
-
-### Doorway Counting
-
-Track occupancy:
-
-```yaml
-detection:
-  track_classes: [0]  # person
-
-lines:
-  - type: vertical
-    position_pct: 45
-    description: "entrance"
-  - type: vertical
-    position_pct: 55
-    description: "exit"
-```
-
-## Development
-
-### Project Structure
-
-```
-object-detection-system/
-├── src/object_detection/
-│   ├── __init__.py
-│   ├── __main__.py         # Entry point
-│   ├── cli.py              # Command-line interface
-│   ├── detector.py         # YOLO detection (GPU)
-│   ├── analyzer.py         # Event enrichment (CPU)
-│   ├── config.py           # Configuration validation
-│   ├── models.py           # Data models
-│   └── constants.py        # Constants
-├── tests/
-│   ├── test_models.py
-│   ├── test_config.py
-│   └── test_detector_logic.py
-├── examples/
-│   └── config.yaml
-├── requirements.txt
-├── LICENSE
-└── README.md
-```
-
-### Running Tests
-
-```bash
-python -m unittest discover tests
-```
-
-### Key Improvements (v2.0)
-
-- **Type hints** throughout codebase
-- **Logging** framework (replaces print statements)
-- **TrackedObject dataclass** for cleaner state management
-- **Named constants** instead of magic numbers
-- **Modular functions** (broken down from 300+ line functions)
-- **Camera reconnection** logic (2 retries)
-- **Environment variable** support for sensitive config
-- **Configurable queue size** for performance tuning
-- **Comprehensive unit tests**
-
-## Performance Tuning
-
-### Model Selection
-
-| Model | FPS | Accuracy | Use Case |
-|-------|-----|----------|----------|
-| yolo11n | 40+ | Good | Real-time, multiple cameras |
-| yolo11s | 15-20 | Better | Single camera |
-| yolo11m | 8-12 | Best | Offline processing |
-
-### GPU Utilization
-
-```bash
-# Check GPU usage
-nvidia-smi
-
-# System auto-detects GPU
-# CPU fallback available but slow (1-3 FPS)
-```
-
-### Optimize Performance
-
-1. **ROI Cropping**: 2x speedup if objects in consistent region
-2. **Lower resolution**: Configure at camera source
-3. **Lighter model**: Use yolo11n instead of yolo11s/m
-4. **Queue size**: Increase if analyzer falls behind
-
-## Data Analysis
-
-### Python
-
-```python
-import json
-
-# Load events
-with open('data/events_20251222_143547.jsonl', 'r') as f:
-    events = [json.loads(line) for line in f]
-
-# Filter and analyze
-crossings = [e for e in events if e['event_type'] == 'LINE_CROSS']
-print(f"Total crossings: {len(crossings)}")
-
-# Count by class
-from collections import Counter
-class_counts = Counter(e['object_class_name'] for e in crossings)
-print(class_counts)
-```
-
-### Command Line
-
-```bash
-# Count events by type
-cat data/events_*.jsonl | jq -r '.event_type' | sort | uniq -c
-
-# Find long dwell times
-cat data/events_*.jsonl | jq 'select(.event_type=="ZONE_EXIT" and .dwell_time > 30)'
-
-# Extract speeds
-cat data/events_*.jsonl | jq -r 'select(.speed_px_per_sec) | .speed_px_per_sec'
-```
-
-## Troubleshooting
-
-### Camera Connection Issues
-
-- Verify URL is correct
-- Test URL in browser first
-- Check network connectivity
-- For DroidCam: ensure app is running
-
-### Low FPS
-
-- Check GPU is being used (logs show "Model on CUDA: True")
-- Reduce camera resolution
-- Enable ROI cropping
-- Use lighter model (yolo11n)
-
-### No Events Logged
-
-- Check `allowed_classes` matches detected objects
-- Lower `confidence_threshold` (try 0.15)
-- Verify line/zone positions
-- Enable frame saving to visualize detections
-
-### PyTorch Import Errors (Jetson)
-
-- Don't install torch from PyPI
-- Use NVIDIA-provided wheels only
-- See `requirements.txt` for installation instructions
 
 ## License
 
-MIT License - use freely for any purpose. See [LICENSE](LICENSE).
-
-## Credits
-
-Built with:
-- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics)
-- [ByteTrack](https://github.com/ifzhang/ByteTrack)
-- [OpenCV](https://opencv.org/)
-- [PyTorch](https://pytorch.org/)
+MIT

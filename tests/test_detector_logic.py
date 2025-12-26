@@ -3,7 +3,7 @@ Tests for detector logic (line crossing, zone detection)
 """
 
 import unittest
-from src.object_detection.detector import _detect_line_crossing
+from src.object_detection.core.detector import _detect_line_crossing
 from src.object_detection.models import LineConfig
 
 
@@ -17,20 +17,22 @@ class TestLineCrossing(unittest.TestCase):
             type="vertical",
             position_pct=50.0,
             description="center",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         # Object moves from x=40 to x=60, crossing line at x=50
         crossed, direction = _detect_line_crossing(
-            prev_x=40.0, prev_y=100.0,
-            curr_x=60.0, curr_y=100.0,
+            prev_x=40.0,
+            prev_y=100.0,
+            curr_x=60.0,
+            curr_y=100.0,
             line=line,
             roi_width=100,
-            roi_height=100
+            roi_height=100,
         )
 
         self.assertTrue(crossed)
-        self.assertEqual(direction, 'LTR')
+        self.assertEqual(direction, "LTR")
 
     def test_vertical_line_right_to_left(self):
         """Test crossing vertical line from right to left."""
@@ -39,20 +41,22 @@ class TestLineCrossing(unittest.TestCase):
             type="vertical",
             position_pct=50.0,
             description="center",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         # Object moves from x=60 to x=40, crossing line at x=50
         crossed, direction = _detect_line_crossing(
-            prev_x=60.0, prev_y=100.0,
-            curr_x=40.0, curr_y=100.0,
+            prev_x=60.0,
+            prev_y=100.0,
+            curr_x=40.0,
+            curr_y=100.0,
             line=line,
             roi_width=100,
-            roi_height=100
+            roi_height=100,
         )
 
         self.assertTrue(crossed)
-        self.assertEqual(direction, 'RTL')
+        self.assertEqual(direction, "RTL")
 
     def test_vertical_line_no_crossing(self):
         """Test no crossing when object stays on same side."""
@@ -61,16 +65,18 @@ class TestLineCrossing(unittest.TestCase):
             type="vertical",
             position_pct=50.0,
             description="center",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         # Object moves from x=30 to x=40, not crossing line at x=50
         crossed, direction = _detect_line_crossing(
-            prev_x=30.0, prev_y=100.0,
-            curr_x=40.0, curr_y=100.0,
+            prev_x=30.0,
+            prev_y=100.0,
+            curr_x=40.0,
+            curr_y=100.0,
             line=line,
             roi_width=100,
-            roi_height=100
+            roi_height=100,
         )
 
         self.assertFalse(crossed)
@@ -83,20 +89,22 @@ class TestLineCrossing(unittest.TestCase):
             type="horizontal",
             position_pct=50.0,
             description="center",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         # Object moves from y=40 to y=60, crossing line at y=50
         crossed, direction = _detect_line_crossing(
-            prev_x=100.0, prev_y=40.0,
-            curr_x=100.0, curr_y=60.0,
+            prev_x=100.0,
+            prev_y=40.0,
+            curr_x=100.0,
+            curr_y=60.0,
             line=line,
             roi_width=100,
-            roi_height=100
+            roi_height=100,
         )
 
         self.assertTrue(crossed)
-        self.assertEqual(direction, 'TTB')
+        self.assertEqual(direction, "TTB")
 
     def test_horizontal_line_bottom_to_top(self):
         """Test crossing horizontal line from bottom to top."""
@@ -105,20 +113,22 @@ class TestLineCrossing(unittest.TestCase):
             type="horizontal",
             position_pct=50.0,
             description="center",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         # Object moves from y=60 to y=40, crossing line at y=50
         crossed, direction = _detect_line_crossing(
-            prev_x=100.0, prev_y=60.0,
-            curr_x=100.0, curr_y=40.0,
+            prev_x=100.0,
+            prev_y=60.0,
+            curr_x=100.0,
+            curr_y=40.0,
             line=line,
             roi_width=100,
-            roi_height=100
+            roi_height=100,
         )
 
         self.assertTrue(crossed)
-        self.assertEqual(direction, 'BTT')
+        self.assertEqual(direction, "BTT")
 
     def test_diagonal_crossing(self):
         """Test diagonal movement that crosses line."""
@@ -127,20 +137,22 @@ class TestLineCrossing(unittest.TestCase):
             type="vertical",
             position_pct=50.0,
             description="center",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         # Object moves diagonally, crossing vertical line
         crossed, direction = _detect_line_crossing(
-            prev_x=30.0, prev_y=30.0,
-            curr_x=70.0, curr_y=70.0,
+            prev_x=30.0,
+            prev_y=30.0,
+            curr_x=70.0,
+            curr_y=70.0,
             line=line,
             roi_width=100,
-            roi_height=100
+            roi_height=100,
         )
 
         self.assertTrue(crossed)
-        self.assertEqual(direction, 'LTR')
+        self.assertEqual(direction, "LTR")
 
     def test_edge_case_exactly_on_line(self):
         """Test movement starting exactly on the line."""
@@ -149,21 +161,23 @@ class TestLineCrossing(unittest.TestCase):
             type="vertical",
             position_pct=50.0,
             description="center",
-            allowed_classes=[15]
+            allowed_classes=[15],
         )
 
         # Object starts on line, moves right
         crossed, direction = _detect_line_crossing(
-            prev_x=50.0, prev_y=100.0,
-            curr_x=60.0, curr_y=100.0,
+            prev_x=50.0,
+            prev_y=100.0,
+            curr_x=60.0,
+            curr_y=100.0,
             line=line,
             roi_width=100,
-            roi_height=100
+            roi_height=100,
         )
 
         # Should detect as crossing (from left side of line to right)
         self.assertTrue(crossed)
-        self.assertEqual(direction, 'LTR')
+        self.assertEqual(direction, "LTR")
 
 
 class TestZoneDetection(unittest.TestCase):
@@ -181,8 +195,7 @@ class TestZoneDetection(unittest.TestCase):
         point_x = 20.0
         point_y = 30.0
 
-        inside = (zone_x1 <= point_x <= zone_x2 and
-                  zone_y1 <= point_y <= zone_y2)
+        inside = zone_x1 <= point_x <= zone_x2 and zone_y1 <= point_y <= zone_y2
 
         self.assertTrue(inside)
 
@@ -197,8 +210,7 @@ class TestZoneDetection(unittest.TestCase):
         point_x = 50.0
         point_y = 50.0
 
-        inside = (zone_x1 <= point_x <= zone_x2 and
-                  zone_y1 <= point_y <= zone_y2)
+        inside = zone_x1 <= point_x <= zone_x2 and zone_y1 <= point_y <= zone_y2
 
         self.assertFalse(inside)
 
@@ -213,11 +225,10 @@ class TestZoneDetection(unittest.TestCase):
         point_x = 10.0
         point_y = 30.0
 
-        inside = (zone_x1 <= point_x <= zone_x2 and
-                  zone_y1 <= point_y <= zone_y2)
+        inside = zone_x1 <= point_x <= zone_x2 and zone_y1 <= point_y <= zone_y2
 
         self.assertTrue(inside)  # Boundaries are inclusive
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

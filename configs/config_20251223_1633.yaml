@@ -1,0 +1,36 @@
+camera:
+  url: http://192.168.86.33:4747/video
+detection:
+  model_file: yolo11n.pt
+  confidence_threshold: 0.2
+lines:
+- type: horizontal
+  position_pct: 50
+  description: test
+events:
+- name: test
+  match:
+    event_type: LINE_CROSS
+    line: test
+    object_class:
+    - car
+    - truck
+    - bus
+  actions:
+    pdf_report: traffic_report
+pdf_reports:
+- id: traffic_report
+  title: Traffic Report
+  output_dir: reports
+  events:
+  - test
+  photos: false
+  annotate: false
+output:
+  json_dir: data
+console_output:
+  enabled: true
+  level: detailed
+runtime:
+  queue_size: 500
+  default_duration_hours: 0.1

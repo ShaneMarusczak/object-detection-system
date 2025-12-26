@@ -4,6 +4,8 @@
 # Output Data (Don't track event logs or saved frames)
 # =============================================================================
 data/
+frames/
+reports/
 output_frames/
 *.jsonl
 
@@ -90,4 +92,4 @@ test_output/
 *.mp4
 *.avi
 *.mov
-
+.run.local
