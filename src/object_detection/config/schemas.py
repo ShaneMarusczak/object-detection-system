@@ -257,7 +257,6 @@ class RuntimeConfig(BaseModel):
     queue_size: int = Field(default=1000, gt=0)
     analyzer_startup_delay: int = Field(default=1, ge=0)
     detector_shutdown_timeout: int = Field(default=5, ge=0)
-    analyzer_shutdown_timeout: int = Field(default=10, ge=0)
 
 
 class ConsoleOutputConfig(BaseModel):

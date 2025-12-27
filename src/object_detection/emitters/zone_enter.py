@@ -4,26 +4,13 @@ ZoneEnterEmitter - Detects objects entering monitoring zones.
 Requires tracking state to detect entry transitions.
 """
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ..models import ZoneConfig
 from .registry import register
 
 if TYPE_CHECKING:
     from .tracking_state import TrackingState
-
-
-@dataclass
-class ZoneConfig:
-    """Configuration for a monitoring zone."""
-
-    zone_id: str
-    x1_pct: float
-    y1_pct: float
-    x2_pct: float
-    y2_pct: float
-    description: str
-    allowed_classes: list[int]
 
 
 @register("ZONE_ENTER")

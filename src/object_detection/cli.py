@@ -458,10 +458,6 @@ def print_final_status(
 
     print("\nCheck output files in:")
     print(f"  {config['output']['json_dir']}/")
-
-    if config.get("frame_saving", {}).get("enabled", False):
-        print(f"  {config['frame_saving']['output_dir']}/")
-
     print(f"{'=' * 70}\n")
 
 

@@ -265,8 +265,9 @@ class ConfigBuilder:
             return ", ".join(ids)
 
         elif section == "email":
-            email = self.config.get("email", {})
-            if not email:
+            notifications = self.config.get("notifications", {})
+            email = notifications.get("email", {})
+            if not email or not email.get("enabled"):
                 return "not configured"
             to_addrs = email.get("to_addresses", [])
             if to_addrs:
@@ -320,7 +321,8 @@ class ConfigBuilder:
             or e.get("actions", {}).get("email_digest")
             for e in events
         )
-        if has_email_action and not self.config.get("email"):
+        email_config = self.config.get("notifications", {}).get("email", {})
+        if has_email_action and not email_config.get("enabled"):
             warnings.append("Email actions configured but email settings missing")
 
         # Check for no events
@@ -1075,8 +1077,9 @@ class ConfigBuilder:
             print("      1. LINE_CROSS (object crosses a line)")
             if zones:
                 print("      2. ZONE_ENTER (object enters a zone)")
-                print("      3. NIGHTTIME_CAR (headlight blob detection in zone)")
-            print("      4. DETECTED (any detection, no geometry required)")
+                print("      3. ZONE_EXIT (object exits a zone)")
+                print("      4. NIGHTTIME_CAR (headlight blob detection in zone)")
+            print("      5. DETECTED (any detection, no geometry required)")
             type_choice = input("    Choice [1]: ").strip() or "1"
 
             is_nighttime_event = False
@@ -1098,13 +1101,20 @@ class ConfigBuilder:
                         print(f"      {i}. {zone['description']}")
                     zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
                     match["zone"] = zones[zone_choice]["description"]
-            elif type_choice == "4":
+            elif type_choice == "3" and zones:
+                match["event_type"] = "ZONE_EXIT"
+                print("    Which zone?")
+                for i, zone in enumerate(zones, 1):
+                    print(f"      {i}. {zone['description']}")
+                zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                match["zone"] = zones[zone_choice]["description"]
+            elif type_choice == "5":
                 match["event_type"] = "DETECTED"
                 is_detected_event = True
                 print(
                     f"    {Colors.GRAY}DETECTED fires for every detection - no tracking needed{Colors.RESET}"
                 )
-            elif type_choice == "3" and zones:
+            elif type_choice == "4" and zones:
                 match["event_type"] = "NIGHTTIME_CAR"
                 is_nighttime_event = True
                 print("    Which zone to monitor for headlights?")
@@ -1439,20 +1449,24 @@ class ConfigBuilder:
             f"{Colors.GRAY}Configure SMTP settings for email notifications{Colors.RESET}"
         )
 
-        smtp_host = input("  SMTP host [smtp.gmail.com]: ").strip() or "smtp.gmail.com"
+        smtp_server = input("  SMTP server [smtp.gmail.com]: ").strip() or "smtp.gmail.com"
         smtp_port = input("  SMTP port [587]: ").strip() or "587"
-        smtp_user = input("  SMTP username (email): ").strip()
-        smtp_pass = input("  SMTP password (app password): ").strip()
-        from_addr = input(f"  From address [{smtp_user}]: ").strip() or smtp_user
+        username = input("  SMTP username (email): ").strip()
+        password = input("  SMTP password (app password): ").strip()
+        from_addr = input(f"  From address [{username}]: ").strip() or username
         to_addr = input("  To address(es) (comma-separated): ").strip()
 
-        self.config["email"] = {
-            "smtp_host": smtp_host,
-            "smtp_port": int(smtp_port),
-            "smtp_user": smtp_user,
-            "smtp_pass": smtp_pass,
-            "from_address": from_addr,
-            "to_addresses": [addr.strip() for addr in to_addr.split(",")],
+        self.config["notifications"] = {
+            "enabled": True,
+            "email": {
+                "enabled": True,
+                "smtp_server": smtp_server,
+                "smtp_port": int(smtp_port),
+                "username": username,
+                "password": password,
+                "from_address": from_addr,
+                "to_addresses": [addr.strip() for addr in to_addr.split(",")],
+            },
         }
 
         print(f"  {Colors.GREEN}Email configured{Colors.RESET}")

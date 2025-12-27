@@ -4,24 +4,13 @@ LineCrossEmitter - Detects objects crossing counting lines.
 Requires tracking state to detect movement across line boundaries.
 """
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ..models import LineConfig
 from .registry import register
 
 if TYPE_CHECKING:
     from .tracking_state import TrackingState
-
-
-@dataclass
-class LineConfig:
-    """Configuration for a counting line."""
-
-    line_id: str
-    type: str  # 'vertical' or 'horizontal'
-    position_pct: float
-    description: str
-    allowed_classes: list[int]
 
 
 @register("LINE_CROSS")
