@@ -35,6 +35,7 @@ from .config import (
 from .core import run_detection
 from .processor import dispatch_events
 from .utils import DEFAULT_QUEUE_SIZE
+from .utils.snapshot_server import start_snapshot_server
 
 logger = logging.getLogger(__name__)
 
@@ -611,6 +612,12 @@ def main() -> None:
 
     # Print banner
     print_banner(config, duration_hours)
+
+    # Start snapshot server for on-demand camera preview
+    camera_url = config["camera"]["url"]
+    snapshot_url = start_snapshot_server(camera_url)
+    print(f"Snapshot server: {snapshot_url}")
+    print()
 
     # Setup signal handlers for graceful shutdown (SIGTERM from systemd/Docker)
     _setup_signal_handlers()
