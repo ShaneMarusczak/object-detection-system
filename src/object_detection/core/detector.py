@@ -184,25 +184,28 @@ def _detection_loop(
                 if needs_tracking and tracking_state is not None:
                     tracking_state.update(yolo_results, current_time)
 
-            # Save temp frame if enabled (for linking to events)
-            frame_id = None
-            if temp_frame_enabled:
-                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
             # Process each emitter
+            all_events = []
             for emitter in active_emitters:
                 events = emitter.process(
                     frame=frame,
                     yolo_results=yolo_results,
                     timestamp=relative_time,
                     tracking_state=tracking_state,
-                    frame_id=frame_id,
+                    frame_id=None,
                 )
+                all_events.extend(events)
 
-                # Queue events
-                for event in events:
-                    data_queue.put(event)
-                    event_count += 1
+            # Only save temp frame if there are events (avoid I/O overhead)
+            if all_events and temp_frame_enabled:
+                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+                for event in all_events:
+                    event["frame_id"] = frame_id
+
+            # Queue events
+            for event in all_events:
+                data_queue.put(event)
+                event_count += 1
 
             # Periodic status
             if frame_count % FPS_REPORT_INTERVAL == 0:
