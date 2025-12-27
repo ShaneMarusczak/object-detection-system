@@ -204,14 +204,14 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             f"{elapsed / 60:.1f} minutes" if elapsed >= 60 else f"{elapsed:.0f} seconds"
         )
 
-        print("\n" + "=" * 50)
-        print(f"Session: {elapsed_str}, {event_count} events")
+        logger.info("=" * 50)
+        logger.info(f"Session: {elapsed_str}, {event_count} events")
         if events_by_class:
             class_summary = ", ".join(
                 f"{count} {cls}" for cls, count in events_by_class.most_common()
             )
-            print(f"  {class_summary}")
-        print("=" * 50)
+            logger.info(f"  {class_summary}")
+        logger.info("=" * 50)
 
         # Stop digest scheduler first (uses threading.Event, exits cleanly)
         if digest_scheduler:
@@ -232,11 +232,11 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         json_dir = config.get("output", {}).get("json_dir", "data")
 
         if pdf_shutdown_config:
-            print("Generating PDF report...")
+            logger.info("Generating PDF report...")
             generate_pdf_reports(json_dir, pdf_shutdown_config, start_time)
 
         if digest_shutdown_config:
-            print("Sending shutdown email digest...")
+            logger.info("Sending shutdown email digest...")
             generate_email_digest(json_dir, digest_shutdown_config, start_time)
 
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")

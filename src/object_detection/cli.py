@@ -93,7 +93,6 @@ def find_config_file(config_path: str) -> Path:
     search_paths = [
         Path.cwd() / "config.yaml",  # Current directory
         Path.home() / ".config" / "object-detection" / "config.yaml",  # User config
-        Path(__file__).parent / "default_config.yaml",  # Package default
     ]
 
     for path in search_paths:
@@ -104,11 +103,9 @@ def find_config_file(config_path: str) -> Path:
     logger.error("No config file found in any of these locations:")
     for path in search_paths:
         logger.error(f"  - {path}")
-    logger.error("\nTo create a config file:")
-    logger.error("  mkdir -p ~/.config/object-detection")
-    logger.error(
-        f"  cp {Path(__file__).parent / 'default_config.yaml'} ~/.config/object-detection/config.yaml"
-    )
+    logger.error("\nTo create a config file, either:")
+    logger.error("  1. Run: python -m object_detection --build-config")
+    logger.error("  2. Copy an existing config to ./config.yaml")
     sys.exit(1)
 
 
