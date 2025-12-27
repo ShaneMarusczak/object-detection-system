@@ -21,25 +21,26 @@ class DetectedEmitter:
     needs_yolo = True
     needs_tracking = False
 
-    def __init__(self, config: dict, frame_dims: tuple):
+    def __init__(self, _config: dict, frame_dims: tuple):
         """Initialize emitter (no config needed for this simple emitter)."""
         self.frame_dims = frame_dims
 
     def process(
         self,
-        frame,
+        _frame,
         yolo_results,
         timestamp: float,
-        tracking_state: "TrackingState | None" = None,
+        _tracking_state: "TrackingState | None" = None,
         frame_id: str | None = None,
     ) -> list[dict]:
         """
         Emit DETECTED event for each detection in frame.
 
         Args:
-            frame: Raw frame (unused)
+            _frame: Raw frame (unused - interface requirement)
             yolo_results: YOLO results with boxes
             timestamp: Relative timestamp
+            _tracking_state: Tracking state (unused - no tracking needed)
             frame_id: Optional saved frame reference
 
         Returns:

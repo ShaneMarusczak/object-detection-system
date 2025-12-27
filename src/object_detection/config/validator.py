@@ -454,7 +454,7 @@ def _validate_notifications(config: dict, result: ValidationResult) -> None:
             )
 
 
-def _validate_frame_storage(config: dict, result: ValidationResult) -> None:
+def _validate_frame_storage(config: dict, _result: ValidationResult) -> None:
     """Validate frame storage if frame capture is needed."""
     events = config.get("events", [])
     digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
@@ -514,7 +514,7 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
 
 def _derive_track_classes_from_events(
     config: dict,
-    result: ValidationResult,
+    _result: ValidationResult,
     model_name_to_id: dict[str, int] | None = None,
 ) -> list[tuple[int, str]]:
     """Derive class IDs from event definitions using loaded model mapping."""

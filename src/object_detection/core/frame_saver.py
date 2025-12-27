@@ -12,7 +12,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-from ..models import LineConfig, ZoneConfig, ROIConfig
+from ..models import LineConfig, ROIConfig, ZoneConfig
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-from ..utils.constants import ENV_CAMERA_URL, DEFAULT_QUEUE_SIZE
+from ..utils.constants import DEFAULT_QUEUE_SIZE, ENV_CAMERA_URL
 
 # Import from new modules
 from .validator import (

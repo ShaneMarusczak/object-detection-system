@@ -6,14 +6,14 @@ This module contains the detector and foundational classes.
 Models have moved to the models/ package.
 """
 
+from ..models import EventDefinition, LineConfig, ROIConfig, TrackedObject, ZoneConfig
 from .detector import run_detection
-from ..models import TrackedObject, LineConfig, ZoneConfig, ROIConfig, EventDefinition
 
 __all__ = [
-    "run_detection",
-    "TrackedObject",
-    "LineConfig",
-    "ZoneConfig",
-    "ROIConfig",
     "EventDefinition",
+    "LineConfig",
+    "ROIConfig",
+    "TrackedObject",
+    "ZoneConfig",
+    "run_detection",
 ]

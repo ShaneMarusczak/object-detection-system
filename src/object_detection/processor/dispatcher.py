@@ -16,12 +16,12 @@ from multiprocessing import Process, Queue
 
 from ..models import EventDefinition
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
-from .json_writer import json_writer_consumer
-from .email_immediate import ImmediateEmailHandler
-from .email_digest import generate_email_digest
 from .digest_scheduler import DigestScheduler
-from .pdf_report import generate_pdf_reports
+from .email_digest import generate_email_digest
+from .email_immediate import ImmediateEmailHandler
 from .frame_capture import frame_capture_consumer
+from .json_writer import json_writer_consumer
+from .pdf_report import generate_pdf_reports
 
 logger = logging.getLogger(__name__)
 

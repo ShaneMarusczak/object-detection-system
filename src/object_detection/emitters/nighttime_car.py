@@ -194,9 +194,9 @@ class NighttimeCarEmitter:
     def process(
         self,
         frame,
-        yolo_results,
+        _yolo_results,
         timestamp: float,
-        tracking_state: "TrackingState | None" = None,
+        _tracking_state: "TrackingState | None" = None,
         frame_id: str | None = None,
     ) -> list[dict]:
         """
@@ -204,9 +204,9 @@ class NighttimeCarEmitter:
 
         Args:
             frame: Raw BGR frame for blob analysis
-            yolo_results: Unused (we don't use YOLO)
+            _yolo_results: Unused (this emitter doesn't use YOLO)
             timestamp: Relative timestamp
-            tracking_state: Unused (we don't use tracking)
+            _tracking_state: Unused (this emitter doesn't use tracking)
             frame_id: Optional saved frame reference
 
         Returns:

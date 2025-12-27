@@ -13,7 +13,7 @@ from .tracking_state import TrackingState
 if TYPE_CHECKING:
     from .tracking_state import TrackingState
 
-__all__ = ["Emitter", "EMITTER_REGISTRY", "build_active_emitters", "TrackingState"]
+__all__ = ["EMITTER_REGISTRY", "Emitter", "TrackingState", "build_active_emitters"]
 
 
 @runtime_checkable

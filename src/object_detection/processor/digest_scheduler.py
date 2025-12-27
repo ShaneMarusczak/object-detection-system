@@ -178,7 +178,7 @@ class DigestScheduler:
         self,
         digest_config: dict,
         start_time: datetime,
-        end_time: datetime,
+        _end_time: datetime,
     ) -> None:
         """Send a single digest for the given time window."""
         try:

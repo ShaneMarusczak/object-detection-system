@@ -5,6 +5,7 @@ Provides type-safe, declarative validation with clear error messages.
 """
 
 from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR, DEFAULT_TEMP_FRAME_MAX_AGE

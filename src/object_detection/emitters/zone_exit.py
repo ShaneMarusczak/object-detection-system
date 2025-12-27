@@ -69,8 +69,8 @@ class ZoneExitEmitter:
 
     def process(
         self,
-        frame,
-        yolo_results,
+        _frame,
+        _yolo_results,
         timestamp: float,
         tracking_state: "TrackingState | None" = None,
         frame_id: str | None = None,
@@ -79,8 +79,8 @@ class ZoneExitEmitter:
         Check for zone exits and emit events.
 
         Args:
-            frame: Raw frame (unused)
-            yolo_results: YOLO results (unused, we use tracking_state)
+            _frame: Raw frame (unused - interface requirement)
+            _yolo_results: YOLO results (unused - we use tracking_state)
             timestamp: Relative timestamp
             tracking_state: Shared tracking state with object positions
             frame_id: Optional saved frame reference

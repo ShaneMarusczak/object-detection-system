@@ -7,10 +7,9 @@ import io
 import json
 import logging
 import os
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-
-from collections import Counter
 
 from .frame_service import FrameService
 
@@ -20,17 +19,17 @@ logger = logging.getLogger(__name__)
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.platypus import (
-        SimpleDocTemplate,
+        HRFlowable,
+        Image,
+        PageBreak,
         Paragraph,
+        SimpleDocTemplate,
         Spacer,
         Table,
         TableStyle,
-        Image,
-        HRFlowable,
-        PageBreak,
     )
 
     REPORTLAB_AVAILABLE = True

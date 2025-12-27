@@ -14,27 +14,27 @@ import logging
 import signal
 import sys
 import time
-import yaml
-from multiprocessing import Process, Queue, Event
+from multiprocessing import Event, Process, Queue
 from pathlib import Path
 from threading import Event as ThreadEvent
 
+import yaml
 from ultralytics import YOLO
 
 from .config import (
-    load_config_with_env,
-    prepare_runtime_config,
-    validate_config_full,
     build_plan,
-    print_validation_result,
-    print_plan,
-    simulate_dry_run,
     generate_sample_events,
+    load_config_with_env,
     load_sample_events,
+    prepare_runtime_config,
+    print_plan,
+    print_validation_result,
+    simulate_dry_run,
+    validate_config_full,
 )
-from .utils import DEFAULT_QUEUE_SIZE
 from .core import run_detection
 from .processor import dispatch_events
+from .utils import DEFAULT_QUEUE_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 _shutdown_signal = ThreadEvent()
 
 
-def _handle_shutdown_signal(signum, frame):
+def _handle_shutdown_signal(signum, _frame):
     """
     Handle SIGTERM/SIGINT for graceful shutdown.
 

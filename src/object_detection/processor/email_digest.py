@@ -8,9 +8,9 @@ Supports multiple digest configurations with independent filters and photos.
 
 import json
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from collections import Counter
 
 from .email_service import EmailService
 from .frame_service import FrameService

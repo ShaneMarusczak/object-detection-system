@@ -21,41 +21,40 @@ __version__ = "2.2.0"
 __author__ = "Shane"
 
 # Core detection
+# Configuration
+from .config import (
+    ConfigPlan,
+    ConfigValidationError,
+    ValidationResult,
+    build_plan,
+    validate_config_full,
+)
 from .core import (
-    run_detection,
     TrackedObject,
+    run_detection,
 )
 
 # Processor (dispatcher, consumers)
 from .processor import (
-    dispatch_events,
-    EventDefinition,
     COCO_CLASSES,
+    EventDefinition,
+    dispatch_events,
     get_class_name,
 )
 
-# Configuration
-from .config import (
-    ConfigValidationError,
-    validate_config_full,
-    build_plan,
-    ConfigPlan,
-    ValidationResult,
-)
-
 __all__ = [
-    # Core
-    "run_detection",
-    "TrackedObject",
-    # Processor
-    "dispatch_events",
-    "EventDefinition",
     "COCO_CLASSES",
-    "get_class_name",
+    "ConfigPlan",
     # Config
     "ConfigValidationError",
-    "validate_config_full",
-    "build_plan",
-    "ConfigPlan",
+    "EventDefinition",
+    "TrackedObject",
     "ValidationResult",
+    "build_plan",
+    # Processor
+    "dispatch_events",
+    "get_class_name",
+    # Core
+    "run_detection",
+    "validate_config_full",
 ]
