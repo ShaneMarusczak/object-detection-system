@@ -190,5 +190,7 @@ class LineCrossEmitter:
         time_elapsed = current_time - tracked_obj.first_seen_time
 
         if time_elapsed > 0.1:  # MIN_TRACKING_TIME
+            speed_px_per_sec = distance / time_elapsed
             event["distance_pixels"] = distance
             event["time_elapsed"] = time_elapsed
+            event["speed_px_per_sec"] = speed_px_per_sec
