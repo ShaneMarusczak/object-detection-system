@@ -1051,12 +1051,6 @@ class ConfigBuilder:
         lines = self.config.get("lines", [])
         zones = self.config.get("zones", [])
 
-        if not lines and not zones:
-            print(
-                f"{Colors.YELLOW}No lines or zones defined - skipping events{Colors.RESET}"
-            )
-            return
-
         while True:
             add = input("\nAdd an event? (Y/n): ").strip().lower()
             if add == "n":
