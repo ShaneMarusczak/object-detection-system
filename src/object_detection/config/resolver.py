@@ -85,14 +85,26 @@ def prepare_runtime_config(
     if derived_classes:
         config["detection"]["track_classes"] = derived_classes
     else:
-        # Check if there are NIGHTTIME_CAR events (don't need YOLO classes)
+        # Check if there are events that need YOLO but don't specify classes
+        # (e.g., DETECTED events that want all detections)
+        has_yolo_events = any(
+            e.get("match", {}).get("event_type") in ("DETECTED", "LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT")
+            for e in config.get("events", [])
+        )
         has_nighttime_events = any(
             e.get("match", {}).get("event_type") == "NIGHTTIME_CAR"
             for e in config.get("events", [])
         )
-        if not has_nighttime_events:
+
+        if has_yolo_events:
+            # Events exist but no specific classes - detect all classes (None = no filter)
+            config["detection"]["track_classes"] = None
+        elif has_nighttime_events:
+            # Only nighttime events - no YOLO classes needed
+            config["detection"]["track_classes"] = []
+        else:
             logger.warning("No events defined - nothing will be tracked!")
-        config["detection"]["track_classes"] = []
+            config["detection"]["track_classes"] = []
 
     # Resolve all implied actions (e.g., pdf_report → json_log)
     _resolve_implied_actions(config)
