@@ -116,14 +116,16 @@ class ZoneEnterEmitter:
                     # ZONE_ENTER - record entry time in tracking state
                     tracked_obj.active_zones[zone.zone_id] = tracking_state.current_time
 
-                    events.append({
-                        "event_type": "ZONE_ENTER",
-                        "track_id": tracked_obj.track_id,
-                        "object_class": tracked_obj.object_class,
-                        "bbox": tracked_obj.bbox,
-                        "frame_id": frame_id,
-                        "zone_id": zone.zone_id,
-                        "timestamp_relative": timestamp,
-                    })
+                    events.append(
+                        {
+                            "event_type": "ZONE_ENTER",
+                            "track_id": tracked_obj.track_id,
+                            "object_class": tracked_obj.object_class,
+                            "bbox": tracked_obj.bbox,
+                            "frame_id": frame_id,
+                            "zone_id": zone.zone_id,
+                            "timestamp_relative": timestamp,
+                        }
+                    )
 
         return events

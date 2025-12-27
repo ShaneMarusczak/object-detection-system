@@ -64,7 +64,12 @@ def validate_config_full(
     # Events and digests
     digest_ids = _validate_digests(config, result)
     _validate_events(
-        config, result, zone_descriptions, line_descriptions, digest_ids, model_name_to_id
+        config,
+        result,
+        zone_descriptions,
+        line_descriptions,
+        digest_ids,
+        model_name_to_id,
     )
 
     # Notifications (if events use email)
@@ -342,6 +347,7 @@ def _validate_events(
             "ZONE_EXIT",
             "ZONE_DWELL",
             "NIGHTTIME_CAR",
+            "DETECTED",
         ]
         if event_type and event_type not in valid_types:
             result.errors.append(
@@ -367,7 +373,11 @@ def _validate_events(
                 if model_name_to_id is not None:
                     if cls.lower() not in model_name_to_id:
                         available = ", ".join(sorted(model_name_to_id.keys())[:10])
-                        more = f" (and {len(model_name_to_id) - 10} more)" if len(model_name_to_id) > 10 else ""
+                        more = (
+                            f" (and {len(model_name_to_id) - 10} more)"
+                            if len(model_name_to_id) > 10
+                            else ""
+                        )
                         result.errors.append(
                             f"{event_ref}.match.object_class '{cls}' not found in model. "
                             f"Available: {available}{more}"

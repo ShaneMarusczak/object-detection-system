@@ -153,6 +153,9 @@ class EmailService:
             elif event_type == "NIGHTTIME_CAR":
                 zone_desc = event.get("zone_description", "zone")
                 message = f"Vehicle detected at night in {zone_desc}"
+            elif event_type == "DETECTED":
+                conf = event.get("confidence", 0)
+                message = f"{obj_name} detected (confidence: {conf:.0%})"
             else:
                 message = f"Event detected: {obj_name}"
 
@@ -177,6 +180,8 @@ class EmailService:
                 body += f"Detection Score: {event['score']:.0f}\n"
             if event.get("had_taillight"):
                 body += "Taillight: Confirmed\n"
+        elif event_type == "DETECTED":
+            body += f"Confidence: {event.get('confidence', 0):.0%}\n"
 
         if frame_data:
             body += "\nSee attached photo.\n"

@@ -199,8 +199,7 @@ class ConfigBuilder:
 
         # Capture initial preview with existing annotations
         self._capture_annotated_preview(
-            lines=self.config.get("lines", []),
-            zones=self.config.get("zones", [])
+            lines=self.config.get("lines", []), zones=self.config.get("zones", [])
         )
         return True
 
@@ -232,7 +231,7 @@ class ConfigBuilder:
             descs = [ln.get("description", "?")[:12] for ln in lines[:3]]
             summary = ", ".join(descs)
             if len(lines) > 3:
-                summary += f" +{len(lines)-3} more"
+                summary += f" +{len(lines) - 3} more"
             return f"{len(lines)}: {summary}"
 
         elif section == "zones":
@@ -242,7 +241,7 @@ class ConfigBuilder:
             descs = [z.get("description", "?")[:12] for z in zones[:3]]
             summary = ", ".join(descs)
             if len(zones) > 3:
-                summary += f" +{len(zones)-3} more"
+                summary += f" +{len(zones) - 3} more"
             return f"{len(zones)}: {summary}"
 
         elif section == "events":
@@ -274,7 +273,7 @@ class ConfigBuilder:
                 return (
                     to_addrs[0]
                     if len(to_addrs) == 1
-                    else f"{to_addrs[0]} +{len(to_addrs)-1}"
+                    else f"{to_addrs[0]} +{len(to_addrs) - 1}"
                 )
             return "configured"
 
@@ -440,7 +439,7 @@ class ConfigBuilder:
                 # Refresh preview with updated annotations
                 self._capture_annotated_preview(
                     lines=self.config.get("lines", []),
-                    zones=self.config.get("zones", [])
+                    zones=self.config.get("zones", []),
                 )
                 return
             elif choice == "3":
@@ -451,8 +450,7 @@ class ConfigBuilder:
                 lines = []
                 # Refresh preview with zones only
                 self._capture_annotated_preview(
-                    lines=[],
-                    zones=self.config.get("zones", [])
+                    lines=[], zones=self.config.get("zones", [])
                 )
 
         # Add new lines (reuse existing method logic)
@@ -490,7 +488,7 @@ class ConfigBuilder:
                 # Refresh preview with updated annotations
                 self._capture_annotated_preview(
                     lines=self.config.get("lines", []),
-                    zones=self.config.get("zones", [])
+                    zones=self.config.get("zones", []),
                 )
                 return
             elif choice == "3":
@@ -501,8 +499,7 @@ class ConfigBuilder:
                 zones = []
                 # Refresh preview with lines only
                 self._capture_annotated_preview(
-                    lines=self.config.get("lines", []),
-                    zones=[]
+                    lines=self.config.get("lines", []), zones=[]
                 )
 
         # Add new zones
@@ -581,9 +578,7 @@ class ConfigBuilder:
 
             self._cleanup()
             print(f"\n{Colors.CYAN}Starting detection...{Colors.RESET}\n")
-            os.execvp(
-                "python", ["python", "-m", "object_detection", "-c", filepath]
-            )
+            os.execvp("python", ["python", "-m", "object_detection", "-c", filepath])
 
         return filepath
 
@@ -735,7 +730,9 @@ class ConfigBuilder:
                     print(f"  {Colors.GREEN}Selected: {selected.name}{Colors.RESET}")
                     return str(selected)
                 else:
-                    print(f"  {Colors.RED}Enter a number between 1 and {len(models)}{Colors.RESET}")
+                    print(
+                        f"  {Colors.RED}Enter a number between 1 and {len(models)}{Colors.RESET}"
+                    )
             except ValueError:
                 print(f"  {Colors.RED}Please enter a number{Colors.RESET}")
 
@@ -743,6 +740,7 @@ class ConfigBuilder:
         """Load model and extract its class names."""
         try:
             from ultralytics import YOLO
+
             print(f"  {Colors.GRAY}Loading model...{Colors.RESET}", end=" ", flush=True)
             model = YOLO(model_path)
             classes = list(model.names.values())
@@ -765,7 +763,9 @@ class ConfigBuilder:
             # Show available models for selection
             model = self._select_model_interactively(".")
             if not model:
-                model = input(f"Model file [{default_model}]: ").strip() or default_model
+                model = (
+                    input(f"Model file [{default_model}]: ").strip() or default_model
+                )
         else:
             # No models found, ask for path
             model = input(f"Model file [{default_model}]: ").strip() or default_model
@@ -773,7 +773,10 @@ class ConfigBuilder:
         # Load model to get its classes
         self.model_classes = self._load_model_classes(model)
         if self.model_classes:
-            print(f"  {Colors.CYAN}Model classes:{Colors.RESET} {', '.join(self.model_classes[:5])}", end="")
+            print(
+                f"  {Colors.CYAN}Model classes:{Colors.RESET} {', '.join(self.model_classes[:5])}",
+                end="",
+            )
             if len(self.model_classes) > 5:
                 print(f" (+{len(self.model_classes) - 5} more)")
             else:
@@ -788,7 +791,7 @@ class ConfigBuilder:
 
         self.config["detection"] = {"model_file": model, "confidence_threshold": conf}
 
-    def _parse_line_input(self, line_input: str, line_count: int) -> dict | None:
+    def _parse_line_input(self, line_input: str) -> dict | None:
         """Parse shorthand line input like 'v 50 Driveway' or 'h 30'."""
         parts = line_input.split(maxsplit=2)
         if not parts:
@@ -823,7 +826,9 @@ class ConfigBuilder:
         """Setup detection lines with visual preview."""
         print(f"\n{Colors.BOLD}--- Lines Setup ---{Colors.RESET}")
         print(f"{Colors.GRAY}Lines detect objects crossing a boundary{Colors.RESET}")
-        print(f"{Colors.GRAY}Format: h/v [position%] [name]  (e.g. 'v 50 Driveway'){Colors.RESET}")
+        print(
+            f"{Colors.GRAY}Format: h/v [position%] [name]  (e.g. 'v 50 Driveway'){Colors.RESET}"
+        )
 
         # Start with existing lines (for edit mode)
         lines = list(self.config.get("lines", []))
@@ -835,9 +840,11 @@ class ConfigBuilder:
                 break
 
             # Parse shorthand input
-            parsed = self._parse_line_input(line_input, len(lines))
+            parsed = self._parse_line_input(line_input)
             if not parsed:
-                print(f"  {Colors.RED}Invalid format. Use: h/v [%] [name]{Colors.RESET}")
+                print(
+                    f"  {Colors.RED}Invalid format. Use: h/v [%] [name]{Colors.RESET}"
+                )
                 continue
 
             line_type = parsed["type"]
@@ -856,7 +863,9 @@ class ConfigBuilder:
             # Prompt for missing description
             if not desc:
                 default_desc = f"Line {len(lines) + 1}"
-                desc = input(f"  Description [{default_desc}]: ").strip() or default_desc
+                desc = (
+                    input(f"  Description [{default_desc}]: ").strip() or default_desc
+                )
 
             lines.append(
                 {"type": line_type, "position_pct": position, "description": desc}
@@ -864,7 +873,9 @@ class ConfigBuilder:
 
             # Show confirmation and capture preview
             type_label = "vertical" if line_type == "vertical" else "horizontal"
-            print(f"  {Colors.GREEN}✓ {type_label} at {position}% \"{desc}\"{Colors.RESET}")
+            print(
+                f'  {Colors.GREEN}✓ {type_label} at {position}% "{desc}"{Colors.RESET}'
+            )
             self._capture_annotated_preview(lines=lines, zones=zones)
 
             # Quick adjust option
@@ -882,7 +893,9 @@ class ConfigBuilder:
                         print(f"  {Colors.GREEN}✓ Updated to {position}%{Colors.RESET}")
                 elif action == "d":
                     deleted = lines.pop()
-                    print(f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}")
+                    print(
+                        f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
+                    )
                     self._capture_annotated_preview(lines=lines, zones=zones)
                     break
                 else:
@@ -914,9 +927,13 @@ class ConfigBuilder:
     def _setup_zones(self):
         """Setup detection zones with visual preview."""
         print(f"\n{Colors.BOLD}--- Zones Setup ---{Colors.RESET}")
-        print(f"{Colors.GRAY}Zones detect objects entering/dwelling in an area{Colors.RESET}")
+        print(
+            f"{Colors.GRAY}Zones detect objects entering/dwelling in an area{Colors.RESET}"
+        )
         print(f"{Colors.GRAY}Format: left% top% right% bottom% [name]{Colors.RESET}")
-        print(f"{Colors.GRAY}  e.g. '0 0 50 100 Left Half' or '25 25 75 75 Center'{Colors.RESET}")
+        print(
+            f"{Colors.GRAY}  e.g. '0 0 50 100 Left Half' or '25 25 75 75 Center'{Colors.RESET}"
+        )
 
         # Start with existing zones and lines (for edit mode)
         zones = list(self.config.get("zones", []))
@@ -930,24 +947,37 @@ class ConfigBuilder:
             # Parse shorthand input
             parsed = self._parse_zone_input(zone_input)
             if not parsed:
-                print(f"  {Colors.RED}Invalid format. Use: left top right bottom [name]{Colors.RESET}")
+                print(
+                    f"  {Colors.RED}Invalid format. Use: left top right bottom [name]{Colors.RESET}"
+                )
                 continue
 
-            x1, y1, x2, y2 = parsed["x1_pct"], parsed["y1_pct"], parsed["x2_pct"], parsed["y2_pct"]
+            x1, y1, x2, y2 = (
+                parsed["x1_pct"],
+                parsed["y1_pct"],
+                parsed["x2_pct"],
+                parsed["y2_pct"],
+            )
             desc = parsed.get("description")
 
             # Validate bounds
             if x2 <= x1:
-                print(f"  {Colors.RED}Error: right ({x2}%) must be > left ({x1}%){Colors.RESET}")
+                print(
+                    f"  {Colors.RED}Error: right ({x2}%) must be > left ({x1}%){Colors.RESET}"
+                )
                 continue
             if y2 <= y1:
-                print(f"  {Colors.RED}Error: bottom ({y2}%) must be > top ({y1}%){Colors.RESET}")
+                print(
+                    f"  {Colors.RED}Error: bottom ({y2}%) must be > top ({y1}%){Colors.RESET}"
+                )
                 continue
 
             # Prompt for missing description
             if not desc:
                 default_desc = f"Zone {len(zones) + 1}"
-                desc = input(f"  Description [{default_desc}]: ").strip() or default_desc
+                desc = (
+                    input(f"  Description [{default_desc}]: ").strip() or default_desc
+                )
 
             zones.append(
                 {
@@ -960,7 +990,7 @@ class ConfigBuilder:
             )
 
             # Show confirmation and capture preview
-            print(f"  {Colors.GREEN}✓ {x1},{y1} to {x2},{y2} \"{desc}\"{Colors.RESET}")
+            print(f'  {Colors.GREEN}✓ {x1},{y1} to {x2},{y2} "{desc}"{Colors.RESET}')
             self._capture_annotated_preview(lines=lines, zones=zones)
 
             # Quick adjust option
@@ -991,10 +1021,14 @@ class ConfigBuilder:
                         "description": desc,
                     }
                     self._capture_annotated_preview(lines=lines, zones=zones)
-                    print(f"  {Colors.GREEN}✓ Updated to {x1},{y1} to {x2},{y2}{Colors.RESET}")
+                    print(
+                        f"  {Colors.GREEN}✓ Updated to {x1},{y1} to {x2},{y2}{Colors.RESET}"
+                    )
                 elif action == "d":
                     deleted = zones.pop()
-                    print(f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}")
+                    print(
+                        f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
+                    )
                     self._capture_annotated_preview(lines=lines, zones=zones)
                     break
                 else:
@@ -1043,9 +1077,11 @@ class ConfigBuilder:
                 print("      2. ZONE_ENTER (object enters a zone)")
                 print("      3. ZONE_DWELL (object stays in zone)")
                 print("      4. NIGHTTIME_CAR (headlight blob detection in zone)")
+            print("      5. DETECTED (any detection, no geometry required)")
             type_choice = input("    Choice [1]: ").strip() or "1"
 
             is_nighttime_event = False
+            is_detected_event = False
 
             if type_choice == "1":
                 match["event_type"] = "LINE_CROSS"
@@ -1071,6 +1107,12 @@ class ConfigBuilder:
                         print(f"      {i}. {zone['description']}")
                     zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
                     match["zone"] = zones[zone_choice]["description"]
+            elif type_choice == "5":
+                match["event_type"] = "DETECTED"
+                is_detected_event = True
+                print(
+                    f"    {Colors.GRAY}DETECTED fires for every detection - no tracking needed{Colors.RESET}"
+                )
             elif type_choice == "4" and zones:
                 match["event_type"] = "NIGHTTIME_CAR"
                 is_nighttime_event = True
@@ -1099,14 +1141,18 @@ class ConfigBuilder:
                     "taillight_color_match": taillight,
                 }
 
-            # Object classes with validation (skip for NIGHTTIME_CAR)
-            if not is_nighttime_event:
+            # Object classes with validation (skip for NIGHTTIME_CAR, optional for DETECTED)
+            if not is_nighttime_event and not is_detected_event:
                 # Use model classes if loaded, otherwise fall back to COCO
                 if self.model_classes:
                     valid_classes = set(self.model_classes)
                     display_classes = self.model_classes
                     # Default to first class if single-class model
-                    default_classes = self.model_classes[0] if len(self.model_classes) == 1 else "car, truck, bus"
+                    default_classes = (
+                        self.model_classes[0]
+                        if len(self.model_classes) == 1
+                        else "car, truck, bus"
+                    )
                 else:
                     valid_classes = set(COCO_CLASSES.values())
                     display_classes = COMMON_CLASSES
@@ -1114,7 +1160,9 @@ class ConfigBuilder:
 
                 while True:
                     print("    Object classes (comma-separated):")
-                    print(f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}")
+                    print(
+                        f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}"
+                    )
                     classes_str = (
                         input(f"    Classes [{default_classes}]: ").strip()
                         or default_classes
@@ -1134,6 +1182,34 @@ class ConfigBuilder:
                     break
 
                 match["object_class"] = classes if len(classes) > 1 else classes[0]
+
+            # DETECTED events can optionally filter by class
+            if is_detected_event:
+                filter_class = (
+                    input("    Filter by object class? (y/N): ").strip().lower()
+                )
+                if filter_class == "y":
+                    if self.model_classes:
+                        valid_classes = set(self.model_classes)
+                        display_classes = self.model_classes
+                        default_class = self.model_classes[0]
+                    else:
+                        valid_classes = set(COCO_CLASSES.values())
+                        display_classes = COMMON_CLASSES
+                        default_class = "car"
+
+                    print(
+                        f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}"
+                    )
+                    class_str = (
+                        input(f"    Class [{default_class}]: ").strip() or default_class
+                    )
+                    if class_str in valid_classes:
+                        match["object_class"] = class_str
+                    else:
+                        print(
+                            f"    {Colors.YELLOW}Unknown class, skipping filter{Colors.RESET}"
+                        )
 
             event["match"] = match
 
@@ -1445,7 +1521,9 @@ use: {config_path}
         result = validate_config_full(config)
         print_validation_result(result)
         if not result.valid:
-            print(f"\n{Colors.RED}Validation failed. Fix errors before running.{Colors.RESET}")
+            print(
+                f"\n{Colors.RED}Validation failed. Fix errors before running.{Colors.RESET}"
+            )
             sys.exit(1)
         input("Press Enter to continue...")
 

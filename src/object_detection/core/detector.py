@@ -60,7 +60,9 @@ def run_detection(
         needs_yolo = any(e.needs_yolo for e in active_emitters)
         needs_tracking = any(e.needs_tracking for e in active_emitters)
 
-        logger.info(f"Emitter requirements: YOLO={needs_yolo}, tracking={needs_tracking}")
+        logger.info(
+            f"Emitter requirements: YOLO={needs_yolo}, tracking={needs_tracking}"
+        )
 
         # Initialize model only if needed
         model = None
@@ -172,9 +174,7 @@ def _detection_loop(
             # Run YOLO inference if needed
             yolo_results = None
             if needs_yolo and model is not None:
-                yolo_results = _run_inference(
-                    model, roi_frame, config, needs_tracking
-                )
+                yolo_results = _run_inference(model, roi_frame, config, needs_tracking)
 
                 # Track FPS from YOLO
                 inference_time = yolo_results[0].speed["inference"]
@@ -273,9 +273,15 @@ def _log_status(
     frame_count: int, fps_list: list[float], start_time: float, event_count: int
 ) -> None:
     """Log periodic status."""
-    avg_fps = sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE) if fps_list else 0
+    avg_fps = (
+        sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE)
+        if fps_list
+        else 0
+    )
     elapsed = time.time() - start_time
-    logger.info(f"[{elapsed / 60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}")
+    logger.info(
+        f"[{elapsed / 60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}"
+    )
 
 
 def _log_final_stats(

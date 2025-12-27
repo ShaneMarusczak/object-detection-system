@@ -53,8 +53,7 @@ class DigestScheduler:
 
         # Filter to only digests with schedules
         self._scheduled_digests = [
-            d for d in digest_configs
-            if d.get("schedule", {}).get("interval_hours")
+            d for d in digest_configs if d.get("schedule", {}).get("interval_hours")
         ]
 
         # Track last send time per digest (for interval calculation)

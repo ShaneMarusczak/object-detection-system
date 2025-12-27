@@ -57,7 +57,9 @@ class BrightnessState:
         total_rise = recent[-1] - recent[0]
         if total_rise < 3:
             return False
-        rising_count = sum(1 for i in range(1, len(recent)) if recent[i] >= recent[i - 1] - 2)
+        rising_count = sum(
+            1 for i in range(1, len(recent)) if recent[i] >= recent[i - 1] - 2
+        )
         return rising_count >= 3
 
 
@@ -230,7 +232,7 @@ class NighttimeCarEmitter:
         zone.frame_count += 1
 
         # Extract zone region
-        region = frame[zone.y1:zone.y2, zone.x1:zone.x2]
+        region = frame[zone.y1 : zone.y2, zone.x1 : zone.x2]
         if region.size == 0:
             return events
 
@@ -261,20 +263,24 @@ class NighttimeCarEmitter:
                 blob.is_disqualified = True
                 zone.primed = False
 
-                has_taillight = any(self._taillight_matches(blob, t) for t in taillights)
+                has_taillight = any(
+                    self._taillight_matches(blob, t) for t in taillights
+                )
 
-                events.append({
-                    "event_type": "NIGHTTIME_CAR",
-                    "zone_id": zone.zone_id,
-                    "object_class": NIGHTTIME_CAR_CLASS_ID,
-                    "track_id": f"nc_{blob.blob_id}",
-                    "bbox": blob.bbox,
-                    "frame_id": frame_id,
-                    "timestamp_relative": timestamp,
-                    "score": score,
-                    "was_primed": zone.primed,
-                    "had_taillight": has_taillight,
-                })
+                events.append(
+                    {
+                        "event_type": "NIGHTTIME_CAR",
+                        "zone_id": zone.zone_id,
+                        "object_class": NIGHTTIME_CAR_CLASS_ID,
+                        "track_id": f"nc_{blob.blob_id}",
+                        "bbox": blob.bbox,
+                        "frame_id": frame_id,
+                        "timestamp_relative": timestamp,
+                        "score": score,
+                        "was_primed": zone.primed,
+                        "had_taillight": has_taillight,
+                    }
+                )
 
                 logger.info(
                     f"NIGHTTIME_CAR in '{zone.name}' (score={score:.0f}, "
@@ -295,21 +301,31 @@ class NighttimeCarEmitter:
         """Update zone priming state based on brightness."""
         brightness_elevated = zone.brightness_state.delta >= 0.02
 
-        if (brightness_elevated or zone.brightness_state.is_rising) and not zone.tracked_blobs:
+        if (
+            brightness_elevated or zone.brightness_state.is_rising
+        ) and not zone.tracked_blobs:
             if not zone.primed:
                 zone.primed = True
                 zone.primed_frame = zone.frame_count
                 zone.primed_until_frame = zone.frame_count + 45
             elif zone.frame_count < zone.primed_until_frame:
                 zone.primed_until_frame = zone.frame_count + 45
-        elif zone.primed and zone.frame_count >= zone.primed_until_frame and not zone.tracked_blobs:
+        elif (
+            zone.primed
+            and zone.frame_count >= zone.primed_until_frame
+            and not zone.tracked_blobs
+        ):
             zone.primed = False
 
-    def _detect_blobs(self, region, zone: NighttimeZoneState) -> list[tuple[float, float, float]]:
+    def _detect_blobs(
+        self, region, zone: NighttimeZoneState
+    ) -> list[tuple[float, float, float]]:
         """Detect white blobs (headlights) in region."""
         lab = cv2.cvtColor(region, cv2.COLOR_BGR2LAB)
         l_channel = lab[:, :, 0]
-        _, binary = cv2.threshold(l_channel, self.BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY)
+        _, binary = cv2.threshold(
+            l_channel, self.BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY
+        )
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
@@ -324,9 +340,11 @@ class NighttimeCarEmitter:
 
         return results
 
-    def _detect_taillights(self, frame, zone: NighttimeZoneState) -> list[tuple[float, float, float]]:
+    def _detect_taillights(
+        self, frame, zone: NighttimeZoneState
+    ) -> list[tuple[float, float, float]]:
         """Detect red blobs (taillights) in zone."""
-        region = frame[zone.y1:zone.y2, zone.x1:zone.x2]
+        region = frame[zone.y1 : zone.y2, zone.x1 : zone.x2]
         if region.size == 0:
             return []
 
@@ -385,8 +403,12 @@ class NighttimeCarEmitter:
                 blob_id = zone.next_blob_id
                 zone.next_blob_id += 1
                 half_size = int(size / 2)
-                bbox = (int(cx - half_size), int(cy - half_size),
-                        int(cx + half_size), int(cy + half_size))
+                bbox = (
+                    int(cx - half_size),
+                    int(cy - half_size),
+                    int(cx + half_size),
+                    int(cy + half_size),
+                )
                 zone.tracked_blobs[blob_id] = TrackedBlob(
                     blob_id=blob_id,
                     center=(cx, cy),

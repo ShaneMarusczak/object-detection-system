@@ -20,7 +20,9 @@ class TrackedObject:
     first_pos: tuple[float, float] | None = None
     first_seen_time: float | None = None
     crossed_lines: set[str] = field(default_factory=set)
-    active_zones: dict[str, float] = field(default_factory=dict)  # zone_id -> entry_time
+    active_zones: dict[str, float] = field(
+        default_factory=dict
+    )  # zone_id -> entry_time
 
     def update_position(
         self, x: float, y: float, bbox: tuple[int, int, int, int] | None = None

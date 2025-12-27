@@ -118,15 +118,17 @@ class ZoneExitEmitter:
                     dwell_time = tracking_state.current_time - entry_time
                     del tracked_obj.active_zones[zone.zone_id]
 
-                    events.append({
-                        "event_type": "ZONE_EXIT",
-                        "track_id": tracked_obj.track_id,
-                        "object_class": tracked_obj.object_class,
-                        "bbox": tracked_obj.bbox,
-                        "frame_id": frame_id,
-                        "zone_id": zone.zone_id,
-                        "timestamp_relative": timestamp,
-                        "dwell_time": dwell_time,
-                    })
+                    events.append(
+                        {
+                            "event_type": "ZONE_EXIT",
+                            "track_id": tracked_obj.track_id,
+                            "object_class": tracked_obj.object_class,
+                            "bbox": tracked_obj.bbox,
+                            "frame_id": frame_id,
+                            "zone_id": zone.zone_id,
+                            "timestamp_relative": timestamp,
+                            "dwell_time": dwell_time,
+                        }
+                    )
 
         return events

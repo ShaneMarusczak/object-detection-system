@@ -35,7 +35,13 @@ def json_writer_consumer(event_queue, config: dict) -> None:
 
     # Process events
     event_count = 0
-    event_counts_by_type = {"LINE_CROSS": 0, "ZONE_ENTER": 0, "ZONE_EXIT": 0}
+    event_counts_by_type = {
+        "LINE_CROSS": 0,
+        "ZONE_ENTER": 0,
+        "ZONE_EXIT": 0,
+        "NIGHTTIME_CAR": 0,
+        "DETECTED": 0,
+    }
     start_time = datetime.now()
 
     try:
@@ -131,6 +137,13 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
         logger.info(
             f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
             f"exited {zone_id} ({zone_desc}) - {dwell:.1f}s dwell"
+        )
+
+    elif event_type == "DETECTED":
+        conf = event.get("confidence", 0)
+        track_str = f"Track {track_id:3d}" if track_id else "No track"
+        logger.info(
+            f"#{event_count:4d} | {track_str} ({obj_name}) detected (conf={conf:.2f})"
         )
 
 

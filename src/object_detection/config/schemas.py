@@ -129,7 +129,12 @@ class EventMatch(BaseModel):
         None
         | (
             Literal[
-                "LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL", "NIGHTTIME_CAR"
+                "LINE_CROSS",
+                "ZONE_ENTER",
+                "ZONE_EXIT",
+                "ZONE_DWELL",
+                "NIGHTTIME_CAR",
+                "DETECTED",
             ]
         )
     ) = None

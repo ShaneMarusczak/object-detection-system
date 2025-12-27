@@ -190,8 +190,9 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                 # Event didn't match any definition - discard it
                 event_type = enriched_event.get("event_type")
                 obj_class = enriched_event.get("object_class_name")
-                loc = enriched_event.get("zone_description") or \
-                    enriched_event.get("line_description")
+                loc = enriched_event.get("zone_description") or enriched_event.get(
+                    "line_description"
+                )
                 logger.debug(f"No match: {event_type} {obj_class} {loc}")
 
     except Exception as e:

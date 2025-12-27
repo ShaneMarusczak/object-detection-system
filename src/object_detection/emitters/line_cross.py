@@ -138,7 +138,9 @@ class LineCrossEmitter:
 
                     # Add speed data if enabled
                     if self.speed_enabled:
-                        self._add_speed_data(event, tracked_obj, line, tracking_state.current_time)
+                        self._add_speed_data(
+                            event, tracked_obj, line, tracking_state.current_time
+                        )
 
                     events.append(event)
 

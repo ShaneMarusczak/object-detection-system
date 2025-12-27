@@ -104,9 +104,7 @@ def load_config_with_env(config: dict) -> dict:
     return config
 
 
-def build_plan(
-    config: dict, model_names: dict[int, str] | None = None
-) -> ConfigPlan:
+def build_plan(config: dict, model_names: dict[int, str] | None = None) -> ConfigPlan:
     """Build a complete configuration plan from config.
 
     Args:
@@ -198,8 +196,12 @@ def build_plan(
     # Derive track classes
     track_classes = []
     for event in events:
-        # Skip NIGHTTIME_CAR events - they don't need YOLO classes
-        if event.match_criteria.get("event_type") == "NIGHTTIME_CAR":
+        # Skip events that don't need YOLO classes
+        event_type = event.match_criteria.get("event_type")
+        if event_type == "NIGHTTIME_CAR":
+            continue
+        # DETECTED events may not specify object_class (fires for any detection)
+        if event_type == "DETECTED" and not event.match_criteria.get("object_class"):
             continue
         obj_class = event.match_criteria.get("object_class")
         if obj_class:
@@ -303,7 +305,9 @@ def print_plan(plan: ConfigPlan) -> None:
             if class_id >= 0:
                 print(f"  {Colors.GREEN}+{Colors.RESET} {class_name} (ID: {class_id})")
             else:
-                print(f"  {Colors.YELLOW}?{Colors.RESET} {class_name} (ID: unknown - model not loaded)")
+                print(
+                    f"  {Colors.YELLOW}?{Colors.RESET} {class_name} (ID: unknown - model not loaded)"
+                )
 
     # Events
     print(f"\n{Colors.CYAN}Events:{Colors.RESET}")
@@ -560,6 +564,22 @@ def generate_sample_events(config: dict) -> list[dict]:
                     "track_id": f"nc_{len(samples) + 1}",
                 }
             )
+            continue
+
+        # DETECTED events - raw detection to event
+        if event_type == "DETECTED":
+            obj_classes = match.get("object_class", ["detection"])
+            if isinstance(obj_classes, str):
+                obj_classes = [obj_classes]
+            for obj_class in obj_classes[:2]:
+                samples.append(
+                    {
+                        "event_type": "DETECTED",
+                        "object_class_name": obj_class,
+                        "track_id": len(samples) + 1,
+                        "confidence": 0.85,
+                    }
+                )
             continue
 
         obj_classes = match.get("object_class", [])

@@ -57,7 +57,9 @@ class DetectedEmitter:
         classes = boxes.cls.int().cpu().tolist()
         xyxy = boxes.xyxy.cpu().numpy()
         confs = boxes.conf.cpu().tolist()
-        track_ids = boxes.id.int().cpu().tolist() if has_track_ids else [None] * len(classes)
+        track_ids = (
+            boxes.id.int().cpu().tolist() if has_track_ids else [None] * len(classes)
+        )
 
         for obj_class, box, conf, track_id in zip(classes, xyxy, confs, track_ids):
             x1, y1, x2, y2 = box
