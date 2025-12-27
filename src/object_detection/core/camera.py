@@ -7,7 +7,7 @@ import time
 
 import cv2
 
-from ..utils.constants import MAX_CAMERA_RECONNECT_ATTEMPTS, CAMERA_RECONNECT_DELAY
+from ..utils.constants import CAMERA_RECONNECT_DELAY, MAX_CAMERA_RECONNECT_ATTEMPTS
 
 logger = logging.getLogger(__name__)
 

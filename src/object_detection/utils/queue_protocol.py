@@ -35,13 +35,17 @@ class EventQueue(Protocol):
         """
         ...
 
-    def get(self, block: bool = True, timeout: float | None = None) -> dict[str, Any]:
+    def get(
+        self,
+        _block: bool = True,
+        _timeout: float | None = None,
+    ) -> dict[str, Any]:
         """
         Receive an event from the queue.
 
         Args:
-            block: Whether to block waiting for event
-            timeout: Maximum time to wait (None = forever)
+            _block: Whether to block waiting for event
+            _timeout: Maximum time to wait (None = forever)
 
         Returns:
             Event dictionary
@@ -80,7 +84,11 @@ class CallbackQueueAdapter:
         """Forward event to callback."""
         self._callback(event)
 
-    def get(self, block: bool = True, timeout: float | None = None) -> dict[str, Any]:
+    def get(
+        self,
+        _block: bool = True,
+        _timeout: float | None = None,
+    ) -> dict[str, Any]:
         """Not supported - this is a write-only adapter."""
         raise NotImplementedError(
             "CallbackQueueAdapter is write-only. Use for publishing, not consuming."

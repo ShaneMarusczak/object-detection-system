@@ -3,14 +3,13 @@ Email Digest
 
 Sends summary emails by reading from JSON log files.
 Can be called on schedule (via DigestScheduler) or at session end.
-Supports multiple digest configurations with independent filters and photos.
 """
 
 import json
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from collections import Counter
 
 from .email_service import EmailService
 from .frame_service import FrameService
@@ -54,15 +53,12 @@ def generate_email_digest(json_dir: str, config: dict, start_time: datetime) -> 
     for digest_config in digest_configs:
         digest_id = digest_config.get("id", "digest")
         event_names = digest_config.get("events", [])
-        filters = digest_config.get("filters", {})
         wants_photos = digest_config.get("photos", False)
 
         logger.info(f"  Processing digest '{digest_id}'...")
 
         # Aggregate events from JSON logs
-        stats = _aggregate_from_json(
-            json_dir, start_time, end_time, filters, event_names
-        )
+        stats = _aggregate_from_json(json_dir, start_time, end_time, event_names)
 
         if stats["total_events"] == 0:
             logger.info(f"  No events for digest '{digest_id}' - skipping")
@@ -98,8 +94,7 @@ def _aggregate_from_json(
     json_dir: str,
     start_time: datetime,
     end_time: datetime,
-    filters: dict = None,
-    event_names: list[str] = None,
+    event_names: list[str] | None = None,
 ) -> dict:
     """
     Aggregate statistics from JSON log files within time window.
@@ -108,21 +103,13 @@ def _aggregate_from_json(
         json_dir: Directory containing JSON log files
         start_time: Start of time window
         end_time: End of time window
-        filters: Optional filters (event_types, zone/line_descriptions, object_classes)
-        event_names: Optional list of event definition names to include (primary filter)
+        event_names: Event definition names to include (set by dispatcher routing)
 
     Returns:
         Dictionary with aggregated statistics and events list
     """
-    if filters is None:
-        filters = {}
     if event_names is None:
         event_names = []
-
-    filter_event_types = filters.get("event_types", [])
-    filter_zones = filters.get("zone_descriptions", [])
-    filter_lines = filters.get("line_descriptions", [])
-    filter_classes = filters.get("object_classes", [])
 
     total_events = 0
     events_by_type = Counter()
@@ -173,32 +160,10 @@ def _aggregate_from_json(
                         if event_time < start_time or event_time > end_time:
                             continue
 
-                        # Primary filter: event definition names (set by dispatcher)
+                        # Filter by event definition names (set by dispatcher routing)
                         if (
                             event_names
                             and event.get("event_definition") not in event_names
-                        ):
-                            continue
-
-                        # Apply additional filters
-                        if (
-                            filter_event_types
-                            and event.get("event_type") not in filter_event_types
-                        ):
-                            continue
-                        if (
-                            filter_zones
-                            and event.get("zone_description") not in filter_zones
-                        ):
-                            continue
-                        if (
-                            filter_lines
-                            and event.get("line_description") not in filter_lines
-                        ):
-                            continue
-                        if (
-                            filter_classes
-                            and event.get("object_class_name") not in filter_classes
                         ):
                             continue
 

@@ -36,9 +36,6 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
     zones_config = config.get("zones", [])
     roi_config = config.get("roi", {})
 
-    # Track cooldowns per (track_id, zone/line)
-    cooldowns: dict[tuple[int, str], float] = {}
-
     # Per-event photo budgets - each event definition can have its own max_photos
     # Budget state tracked separately per event_definition name
     start_time = time.time()
@@ -59,23 +56,7 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
 
             # Extract frame config from event metadata
             frame_config = event.get("_frame_capture_config", {})
-            cooldown_seconds = frame_config.get("cooldown_seconds", 180)
-
-            # Build cooldown key
-            track_id = event.get("track_id")
-            zone = event.get("zone_description", "")
-            line = event.get("line_description", "")
-            location = zone or line
-            cooldown_key = (track_id, location)
-
-            # Check cooldown
             current_time = time.time()
-            if cooldown_key in cooldowns:
-                if current_time - cooldowns[cooldown_key] < cooldown_seconds:
-                    logger.debug(
-                        f"Skipping frame capture due to cooldown: {cooldown_key}"
-                    )
-                    continue
 
             # Check photo budget (per event definition)
             max_photos = frame_config.get("max_photos")
@@ -150,7 +131,6 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
 
                 if saved_path:
                     logger.info(f"Captured frame for: {event.get('event_definition')}")
-                    cooldowns[cooldown_key] = current_time
 
                     # Update photo budget if applicable
                     if max_photos and event.get("event_definition") in photo_budgets:

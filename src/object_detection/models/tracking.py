@@ -16,8 +16,6 @@ class TrackedObject:
         current_pos: Current (x, y) center position
         bbox: Current bounding box (x1, y1, x2, y2) in pixels
         previous_pos: Previous (x, y) center position for movement detection
-        first_pos: First detected (x, y) position for distance calculation
-        first_seen_time: Timestamp when first detected
         crossed_lines: Set of line IDs this object has crossed
         active_zones: Dict mapping zone_id to entry timestamp
     """
@@ -27,8 +25,6 @@ class TrackedObject:
     current_pos: tuple[float, float]
     bbox: tuple[int, int, int, int] | None = None
     previous_pos: tuple[float, float] | None = None
-    first_pos: tuple[float, float] | None = None
-    first_seen_time: float | None = None
     crossed_lines: set[str] = field(default_factory=set)
     active_zones: dict[str, float] = field(default_factory=dict)
 

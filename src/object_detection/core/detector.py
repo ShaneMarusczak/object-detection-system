@@ -1,7 +1,7 @@
 """
 Object Detection - Producer
-Detects objects crossing counting lines and entering/exiting zones.
-GPU-accelerated YOLO detection with ByteTrack tracking.
+Event-driven detection using pluggable emitters.
+Each emitter handles a single event type. Active emitters determined from config.
 """
 
 import os
@@ -16,16 +16,15 @@ import cv2
 import torch
 from ultralytics import YOLO
 
-from ..models import LineConfig, ROIConfig, TrackedObject, ZoneConfig
+from ..emitters import TrackingState, build_active_emitters
+from ..models import ROIConfig
 from ..utils.constants import (
     DEFAULT_TEMP_FRAME_DIR,
     FPS_REPORT_INTERVAL,
     FPS_WINDOW_SIZE,
-    MIN_TRACKING_TIME,
 )
 from .camera import initialize_camera
-from .frame_saver import save_annotated_frame, save_temp_frame
-from .nighttime_zone import NighttimeCarZone, create_nighttime_car_zones
+from .frame_saver import save_temp_frame
 
 logger = logging.getLogger(__name__)
 
@@ -34,47 +33,65 @@ def run_detection(
     data_queue: Queue, config: dict, shutdown_event: Event = None
 ) -> None:
     """
-    Main detection loop. Tracks objects and emits boundary crossing events.
+    Main detection loop using emitter architecture.
 
     Args:
-        data_queue: Queue for sending events to analyzer
-        config: Configuration dictionary from config.yaml
+        data_queue: Queue for sending events to dispatcher
+        config: Configuration dictionary
         shutdown_event: Event to signal graceful shutdown
     """
+    cap = None
     try:
-        # Initialize components
-        model = _initialize_model(config)
+        # Initialize camera first to get frame dimensions
         cap = initialize_camera(config["camera"]["url"])
+        ret, first_frame = cap.read()
+        if not ret:
+            raise RuntimeError("Failed to read first frame from camera")
 
-        # Parse configuration
-        lines = _parse_lines(config)
-        zones = _parse_zones(config)
+        frame_height, frame_width = first_frame.shape[:2]
+        frame_dims = (frame_width, frame_height)
+
+        # Build active emitters from config
+        active_emitters = build_active_emitters(config, frame_dims)
+        if not active_emitters:
+            logger.warning("No emitters activated - check event definitions")
+
+        # Determine what's needed based on emitter requirements
+        needs_yolo = any(e.needs_yolo for e in active_emitters)
+        needs_tracking = any(e.needs_tracking for e in active_emitters)
+
+        logger.info(
+            f"Emitter requirements: YOLO={needs_yolo}, tracking={needs_tracking}"
+        )
+
+        # Initialize model only if needed
+        model = None
+        if needs_yolo:
+            model = _initialize_model(config)
+
+        # Parse ROI config
         roi_config = _parse_roi(config)
-        speed_enabled = config.get("speed_calculation", {}).get("enabled", False)
-        frame_config = config.get("frame_saving", {})
 
-        _log_detection_config(lines, zones, roi_config, speed_enabled, frame_config)
-
-        # Run main detection loop
+        # Run detection loop
         _detection_loop(
             cap,
             model,
             data_queue,
             config,
-            lines,
-            zones,
+            active_emitters,
             roi_config,
-            speed_enabled,
-            frame_config,
+            needs_yolo,
+            needs_tracking,
             shutdown_event,
+            first_frame,
         )
 
     except Exception as e:
         logger.error(f"Fatal error in detection: {e}", exc_info=True)
-        data_queue.put(None)  # Signal analyzer if init failed before loop
+        data_queue.put(None)
         raise
     finally:
-        if "cap" in locals():
+        if cap is not None:
             cap.release()
 
 
@@ -98,20 +115,20 @@ def _initialize_model(config: dict) -> YOLO:
 
 def _detection_loop(
     cap: cv2.VideoCapture,
-    model: YOLO,
+    model: YOLO | None,
     data_queue: Queue,
     config: dict,
-    lines: list[LineConfig],
-    zones: list[ZoneConfig],
+    active_emitters: list,
     roi_config: ROIConfig,
-    speed_enabled: bool,
-    frame_config: dict,
+    needs_yolo: bool,
+    needs_tracking: bool,
     shutdown_event: Event = None,
+    first_frame=None,
 ) -> None:
-    """Main detection loop processing frames."""
+    """Main detection loop using emitters."""
 
-    # State tracking with TrackedObject dataclass
-    tracked_objects: dict[int, TrackedObject] = {}
+    # Tracking state (only if needed)
+    tracking_state = TrackingState() if needs_tracking else None
 
     # Performance tracking
     fps_list: list[float] = []
@@ -119,409 +136,114 @@ def _detection_loop(
     event_count = 0
     start_time = time.time()
 
-    # Temp frame saving configuration
+    # Temp frame configuration
     temp_frame_dir = config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR)
     temp_frame_enabled = config.get("temp_frames_enabled", True)
-    temp_frame_max_age = config.get("temp_frame_max_age_seconds", 30)  # Keep last 30s
+    temp_frame_max_age = config.get("temp_frame_max_age_seconds", 30)
 
     if temp_frame_enabled:
         os.makedirs(temp_frame_dir, exist_ok=True)
-        logger.info(
-            f"Temp frames: {temp_frame_dir} (on-demand, {temp_frame_max_age}s retention)"
-        )
-
-    # Nighttime car zones (separate from YOLO detection)
-    nighttime_car_zones: list[NighttimeCarZone] = []
+        logger.info(f"Temp frames: {temp_frame_dir} ({temp_frame_max_age}s retention)")
 
     logger.info("Detection started")
 
     try:
+        # Process first frame if we have it
+        frame = first_frame
+
         while True:
-            # Check for shutdown signal
+            # Check for shutdown
             if shutdown_event and shutdown_event.is_set():
                 logger.info("Shutdown signal received")
                 break
 
-            ret, frame = cap.read()
-            if not ret:
-                logger.warning("Failed to read frame")
-                break
+            # Read next frame (skip first iteration if we already have first_frame)
+            if frame_count > 0 or first_frame is None:
+                ret, frame = cap.read()
+                if not ret:
+                    logger.warning("Failed to read frame")
+                    break
 
             frame_count += 1
-            frame_height, frame_width = frame.shape[:2]
-
-            # Initialize nighttime car zones on first frame (need dimensions)
-            # Now reads from events with event_type=NIGHTTIME_CAR
-            if frame_count == 1:
-                nighttime_car_zones = create_nighttime_car_zones(
-                    config, frame_width, frame_height
-                )
+            current_time = time.time()
+            relative_time = current_time - start_time
 
             # Apply ROI cropping
             roi_frame, roi_dims = _apply_roi_crop(frame, roi_config)
 
-            # Run YOLO detection + tracking
-            results = _run_yolo_inference(model, roi_frame, config)
+            # Run YOLO inference if needed
+            yolo_results = None
+            if needs_yolo and model is not None:
+                yolo_results = _run_inference(model, roi_frame, config, needs_tracking)
 
-            # Track FPS
-            inference_time = results[0].speed["inference"]
-            fps_list.append(1000 / inference_time if inference_time > 0 else 0)
+                # Track FPS from YOLO
+                inference_time = yolo_results[0].speed["inference"]
+                fps_list.append(1000 / inference_time if inference_time > 0 else 0)
 
-            current_time = time.time()
-            relative_time = current_time - start_time
+                # Update tracking state if needed
+                if needs_tracking and tracking_state is not None:
+                    tracking_state.update(yolo_results, current_time)
 
-            # Check if YOLO found any detections
-            yolo_has_detections = (
-                results[0].boxes is not None
-                and results[0].boxes.id is not None
-                and len(results[0].boxes.id) > 0
-            )
-
-            # Process YOLO detections
-            if yolo_has_detections:
-                event_count += _process_detections(
-                    results[0].boxes,
-                    tracked_objects,
-                    lines,
-                    zones,
-                    roi_dims,
-                    data_queue,
-                    current_time,
-                    relative_time,
-                    speed_enabled,
-                    frame if temp_frame_enabled else None,
-                    temp_frame_dir,
-                    temp_frame_max_age,
+            # Process each emitter
+            all_events = []
+            for emitter in active_emitters:
+                events = emitter.process(
+                    frame=frame,
+                    yolo_results=yolo_results,
+                    timestamp=relative_time,
+                    tracking_state=tracking_state,
+                    frame_id=None,
                 )
+                all_events.extend(events)
 
-            # Process nighttime car zones (independent scoring-based detection)
-            for ncz in nighttime_car_zones:
-                event_count += ncz.process_frame(
-                    frame,
-                    data_queue.put,  # Pass queue.put as callback
-                    relative_time,
-                    temp_frame_dir if temp_frame_enabled else None,
-                    temp_frame_max_age,
-                )
+            # Only save temp frame if there are events (avoid I/O overhead)
+            if all_events and temp_frame_enabled:
+                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
+                for event in all_events:
+                    event["frame_id"] = frame_id
 
-            # Save frames if enabled
-            if (
-                frame_config.get("enabled")
-                and frame_count % frame_config.get("interval", 500) == 0
-            ):
-                save_annotated_frame(
-                    frame,
-                    lines,
-                    zones,
-                    roi_config,
-                    (frame_width, frame_height),
-                    event_count,
-                    fps_list[-1] if fps_list else 0,
-                    frame_count,
-                    frame_config.get("output_dir", "output_frames"),
-                )
+            # Queue events
+            for event in all_events:
+                data_queue.put(event)
+                event_count += 1
 
-            # Periodic status update
+            # Periodic status
             if frame_count % FPS_REPORT_INTERVAL == 0:
-                _log_status(frame_count, fps_list, start_time)
+                _log_status(frame_count, fps_list, start_time, event_count)
 
     except KeyboardInterrupt:
         logger.info("Detection stopped by user")
     finally:
-        data_queue.put(None)  # Signal end to analyzer
-        _log_final_stats(frame_count, fps_list, start_time)
+        data_queue.put(None)  # Signal end to dispatcher
+        _log_final_stats(frame_count, fps_list, start_time, event_count)
 
 
-def _run_yolo_inference(model: YOLO, frame, config: dict):
-    """Run YOLO inference with tracking."""
-    return model.track(
-        source=frame,
-        tracker="bytetrack.yaml",
-        conf=config["detection"]["confidence_threshold"],
-        classes=config["detection"]["track_classes"],
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        persist=True,
-        verbose=False,
-    )
+def _run_inference(model: YOLO, frame, config: dict, use_tracking: bool):
+    """Run YOLO inference with or without tracking."""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
-
-def _process_detections(
-    boxes,
-    tracked_objects: dict[int, TrackedObject],
-    lines: list[LineConfig],
-    zones: list[ZoneConfig],
-    roi_dims: tuple,
-    data_queue: Queue,
-    current_time: float,
-    relative_time: float,
-    speed_enabled: bool,
-    frame=None,
-    temp_frame_dir: str = None,
-    temp_frame_max_age: int = 30,
-) -> int:
-    """
-    Process all detections in current frame.
-
-    Returns:
-        Number of events generated
-    """
-    event_count = 0
-    _roi_width, _roi_height = roi_dims  # Unpacked for potential future use
-
-    track_ids = boxes.id.int().cpu().tolist()
-    xyxy = boxes.xyxy.cpu().numpy()
-    classes = boxes.cls.int().cpu().tolist()
-
-    for track_id, box, obj_class in zip(track_ids, xyxy, classes):
-        # Calculate center point and bbox
-        x1, y1, x2, y2 = box
-        center_x = (x1 + x2) / 2
-        center_y = (y1 + y2) / 2
-        bbox = (int(x1), int(y1), int(x2), int(y2))
-
-        # Get or create tracked object
-        if track_id not in tracked_objects:
-            tracked_objects[track_id] = TrackedObject(
-                track_id=track_id,
-                object_class=obj_class,
-                current_pos=(center_x, center_y),
-                bbox=bbox,
-                first_pos=(center_x, center_y),
-                first_seen_time=current_time,
-            )
-        else:
-            tracked_objects[track_id].update_position(center_x, center_y, bbox)
-
-        tracked_obj = tracked_objects[track_id]
-
-        # Check line crossings (only if we have previous position)
-        if not tracked_obj.is_new():
-            event_count += _check_line_crossings(
-                tracked_obj,
-                lines,
-                roi_dims,
-                data_queue,
-                relative_time,
-                speed_enabled,
-                current_time,
-                frame,
-                temp_frame_dir,
-                temp_frame_max_age,
-            )
-
-        # Check zone entry/exit
-        event_count += _check_zone_events(
-            tracked_obj,
-            zones,
-            roi_dims,
-            data_queue,
-            relative_time,
-            current_time,
-            frame,
-            temp_frame_dir,
-            temp_frame_max_age,
+    if use_tracking:
+        return model.track(
+            source=frame,
+            tracker="bytetrack.yaml",
+            conf=config["detection"]["confidence_threshold"],
+            classes=config["detection"].get("track_classes"),
+            device=device,
+            persist=True,
+            verbose=False,
         )
-
-    return event_count
-
-
-def _check_line_crossings(
-    tracked_obj: TrackedObject,
-    lines: list[LineConfig],
-    roi_dims: tuple,
-    data_queue: Queue,
-    relative_time: float,
-    speed_enabled: bool,
-    current_time: float,
-    frame=None,
-    temp_frame_dir: str = None,
-    temp_frame_max_age: int = 30,
-) -> int:
-    """Check if object crossed any lines."""
-    event_count = 0
-    roi_width, roi_height = roi_dims
-
-    prev_x, prev_y = tracked_obj.previous_pos
-    curr_x, curr_y = tracked_obj.current_pos
-
-    for line in lines:
-        # Check class permission
-        if tracked_obj.object_class not in line.allowed_classes:
-            continue
-
-        # Check if already crossed
-        if line.line_id in tracked_obj.crossed_lines:
-            continue
-
-        # Check for crossing
-        crossed, direction = _detect_line_crossing(
-            prev_x, prev_y, curr_x, curr_y, line, roi_width, roi_height
-        )
-
-        if crossed:
-            tracked_obj.crossed_lines.add(line.line_id)
-            event_count += 1
-
-            # Save frame on-demand for this event
-            frame_id = None
-            if frame is not None and temp_frame_dir:
-                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
-            event = {
-                "event_type": "LINE_CROSS",
-                "track_id": tracked_obj.track_id,
-                "object_class": tracked_obj.object_class,
-                "bbox": tracked_obj.bbox,
-                "frame_id": frame_id,
-                "line_id": line.line_id,
-                "direction": direction,
-                "timestamp_relative": relative_time,
-            }
-
-            # Add speed data if enabled
-            if speed_enabled and tracked_obj.first_pos and tracked_obj.first_seen_time:
-                _add_speed_data(event, tracked_obj, line, current_time)
-
-            data_queue.put(event)
-
-    return event_count
-
-
-def _detect_line_crossing(
-    prev_x: float,
-    prev_y: float,
-    curr_x: float,
-    curr_y: float,
-    line: LineConfig,
-    roi_width: int,
-    roi_height: int,
-) -> tuple[bool, str | None]:
-    """
-    Detect if movement crossed a line.
-
-    Returns:
-        (crossed, direction) tuple
-    """
-    if line.type == "vertical":
-        line_pos = roi_width * line.position_pct / 100
-
-        if prev_x < line_pos <= curr_x:
-            return True, "LTR"
-        elif prev_x > line_pos >= curr_x:
-            return True, "RTL"
-    else:  # horizontal
-        line_pos = roi_height * line.position_pct / 100
-
-        if prev_y < line_pos <= curr_y:
-            return True, "TTB"
-        elif prev_y > line_pos >= curr_y:
-            return True, "BTT"
-
-    return False, None
-
-
-def _add_speed_data(
-    event: dict, tracked_obj: TrackedObject, line: LineConfig, current_time: float
-) -> None:
-    """Add speed calculation data to event."""
-    first_x, first_y = tracked_obj.first_pos
-    curr_x, curr_y = tracked_obj.current_pos
-
-    if line.type == "vertical":
-        distance = abs(curr_x - first_x)
     else:
-        distance = abs(curr_y - first_y)
-
-    time_elapsed = current_time - tracked_obj.first_seen_time
-
-    if time_elapsed > MIN_TRACKING_TIME:
-        event["distance_pixels"] = distance
-        event["time_elapsed"] = time_elapsed
-
-
-def _check_zone_events(
-    tracked_obj: TrackedObject,
-    zones: list[ZoneConfig],
-    roi_dims: tuple,
-    data_queue: Queue,
-    relative_time: float,
-    current_time: float,
-    frame=None,
-    temp_frame_dir: str = None,
-    temp_frame_max_age: int = 30,
-) -> int:
-    """Check for zone entry/exit events."""
-    event_count = 0
-    roi_width, roi_height = roi_dims
-    curr_x, curr_y = tracked_obj.current_pos
-
-    for zone in zones:
-        # Check class permission
-        if tracked_obj.object_class not in zone.allowed_classes:
-            continue
-
-        # Calculate zone boundaries
-        zone_x1 = roi_width * zone.x1_pct / 100
-        zone_x2 = roi_width * zone.x2_pct / 100
-        zone_y1 = roi_height * zone.y1_pct / 100
-        zone_y2 = roi_height * zone.y2_pct / 100
-
-        # Check if inside zone
-        inside = zone_x1 <= curr_x <= zone_x2 and zone_y1 <= curr_y <= zone_y2
-        was_inside = zone.zone_id in tracked_obj.active_zones
-
-        if inside and not was_inside:
-            # ZONE_ENTER
-            tracked_obj.active_zones[zone.zone_id] = current_time
-            event_count += 1
-
-            # Save frame on-demand for this event
-            frame_id = None
-            if frame is not None and temp_frame_dir:
-                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
-            data_queue.put(
-                {
-                    "event_type": "ZONE_ENTER",
-                    "track_id": tracked_obj.track_id,
-                    "object_class": tracked_obj.object_class,
-                    "bbox": tracked_obj.bbox,
-                    "frame_id": frame_id,
-                    "zone_id": zone.zone_id,
-                    "timestamp_relative": relative_time,
-                }
-            )
-
-        elif not inside and was_inside:
-            # ZONE_EXIT
-            entry_time = tracked_obj.active_zones[zone.zone_id]
-            dwell_time = current_time - entry_time
-            del tracked_obj.active_zones[zone.zone_id]
-            event_count += 1
-
-            # Save frame on-demand for this event
-            frame_id = None
-            if frame is not None and temp_frame_dir:
-                frame_id = save_temp_frame(frame, temp_frame_dir, temp_frame_max_age)
-
-            data_queue.put(
-                {
-                    "event_type": "ZONE_EXIT",
-                    "track_id": tracked_obj.track_id,
-                    "object_class": tracked_obj.object_class,
-                    "bbox": tracked_obj.bbox,
-                    "frame_id": frame_id,
-                    "zone_id": zone.zone_id,
-                    "timestamp_relative": relative_time,
-                    "dwell_time": dwell_time,
-                }
-            )
-
-    return event_count
+        return model.predict(
+            source=frame,
+            conf=config["detection"]["confidence_threshold"],
+            classes=config["detection"].get("track_classes"),
+            device=device,
+            verbose=False,
+        )
 
 
 def _apply_roi_crop(frame, roi_config: ROIConfig) -> tuple:
-    """Apply ROI cropping to frame. Returns (cropped_frame, (width, height))."""
+    """Apply ROI cropping to frame."""
     frame_height, frame_width = frame.shape[:2]
 
     if roi_config.enabled:
@@ -536,63 +258,8 @@ def _apply_roi_crop(frame, roi_config: ROIConfig) -> tuple:
         return frame, (frame_width, frame_height)
 
 
-def _parse_lines(config: dict) -> list[LineConfig]:
-    """Parse line configurations from config."""
-    lines = []
-    vertical_count = 0
-    horizontal_count = 0
-
-    for line_config in config.get("lines", []):
-        if line_config["type"] == "vertical":
-            vertical_count += 1
-            line_id = f"V{vertical_count}"
-        else:
-            horizontal_count += 1
-            line_id = f"H{horizontal_count}"
-
-        allowed_classes = line_config.get(
-            "allowed_classes", config["detection"]["track_classes"]
-        )
-
-        lines.append(
-            LineConfig(
-                line_id=line_id,
-                type=line_config["type"],
-                position_pct=line_config["position_pct"],
-                description=line_config["description"],
-                allowed_classes=allowed_classes,
-            )
-        )
-
-    return lines
-
-
-def _parse_zones(config: dict) -> list[ZoneConfig]:
-    """Parse zone configurations from config."""
-    zones = []
-
-    for i, zone_config in enumerate(config.get("zones", []), 1):
-        allowed_classes = zone_config.get(
-            "allowed_classes", config["detection"]["track_classes"]
-        )
-
-        zones.append(
-            ZoneConfig(
-                zone_id=f"Z{i}",
-                x1_pct=zone_config["x1_pct"],
-                y1_pct=zone_config["y1_pct"],
-                x2_pct=zone_config["x2_pct"],
-                y2_pct=zone_config["y2_pct"],
-                description=zone_config["description"],
-                allowed_classes=allowed_classes,
-            )
-        )
-
-    return zones
-
-
 def _parse_roi(config: dict) -> ROIConfig:
-    """Parse ROI configuration from config."""
+    """Parse ROI configuration."""
     roi = config.get("roi", {})
     h_roi, v_roi = roi.get("horizontal", {}), roi.get("vertical", {})
 
@@ -605,44 +272,25 @@ def _parse_roi(config: dict) -> ROIConfig:
     )
 
 
-def _log_detection_config(
-    lines: list[LineConfig],
-    zones: list[ZoneConfig],
-    roi_config: ROIConfig,
-    speed_enabled: bool,
-    frame_config: dict,
+def _log_status(
+    frame_count: int, fps_list: list[float], start_time: float, event_count: int
 ) -> None:
-    """Log detection configuration."""
-    logger.info(f"Lines configured: {len(lines)}")
-    logger.info(f"Zones configured: {len(zones)}")
-
-    if roi_config.enabled:
-        logger.info(
-            f"ROI: H: {roi_config.h_from}-{roi_config.h_to}%, "
-            f"V: {roi_config.v_from}-{roi_config.v_to}%"
-        )
-
-    if speed_enabled:
-        logger.info("Speed calculation: Enabled")
-
-    if frame_config.get("enabled"):
-        logger.info(
-            f"Frame saving: Every {frame_config.get('interval')} frames "
-            f"-> {frame_config.get('output_dir')}/"
-        )
-
-
-def _log_status(frame_count: int, fps_list: list[float], start_time: float) -> None:
-    """Log periodic status update."""
-    avg_fps = sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE)
+    """Log periodic status."""
+    avg_fps = (
+        sum(fps_list[-FPS_WINDOW_SIZE:]) / min(len(fps_list), FPS_WINDOW_SIZE)
+        if fps_list
+        else 0
+    )
     elapsed = time.time() - start_time
-    logger.info(f"[{elapsed / 60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f}")
+    logger.info(
+        f"[{elapsed / 60:.1f}min] Frame {frame_count} | FPS: {avg_fps:.1f} | Events: {event_count}"
+    )
 
 
 def _log_final_stats(
-    frame_count: int, fps_list: list[float], start_time: float
+    frame_count: int, fps_list: list[float], start_time: float, event_count: int
 ) -> None:
-    """Log final detection statistics."""
+    """Log final statistics."""
     elapsed = time.time() - start_time
     avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
 
@@ -650,3 +298,4 @@ def _log_final_stats(
     logger.info(f"Runtime: {elapsed / 60:.1f} minutes")
     logger.info(f"Frames: {frame_count}")
     logger.info(f"Avg FPS: {avg_fps:.1f}")
+    logger.info(f"Events: {event_count}")

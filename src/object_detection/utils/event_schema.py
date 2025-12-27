@@ -13,6 +13,7 @@ Event Types:
     ZONE_ENTER: Object entered a zone
     ZONE_EXIT: Object exited a zone
     NIGHTTIME_CAR: Vehicle detected at night via blob scoring
+    DETECTED: Raw object detection (no geometry/tracking required)
 """
 
 from typing import Literal, TypedDict
@@ -22,8 +23,11 @@ EVENT_TYPE_LINE_CROSS = "LINE_CROSS"
 EVENT_TYPE_ZONE_ENTER = "ZONE_ENTER"
 EVENT_TYPE_ZONE_EXIT = "ZONE_EXIT"
 EVENT_TYPE_NIGHTTIME_CAR = "NIGHTTIME_CAR"
+EVENT_TYPE_DETECTED = "DETECTED"
 
-EventType = Literal["LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "NIGHTTIME_CAR"]
+EventType = Literal[
+    "LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "NIGHTTIME_CAR", "DETECTED"
+]
 
 # Direction constants for line crossings
 DIRECTION_LTR = "LTR"  # Left to right
@@ -42,10 +46,8 @@ class BaseEvent(TypedDict, total=False):
         event_type: Type of event (LINE_CROSS, ZONE_ENTER, etc.)
         track_id: Unique identifier for the tracked object
         object_class: COCO class ID (0-79) or synthetic ID (1000 for nighttime_car)
-        timestamp_relative: Seconds since detection started
 
     Optional fields:
-        device_id: Device identifier (edge mode only)
         bbox: Bounding box as (x1, y1, x2, y2) tuple
         frame_id: UUID of saved frame in temp storage
     """
@@ -53,8 +55,6 @@ class BaseEvent(TypedDict, total=False):
     event_type: EventType
     track_id: int | str  # int for YOLO, "nc_N" for nighttime car
     object_class: int
-    timestamp_relative: float
-    device_id: str
     bbox: tuple[int, int, int, int]
     frame_id: str | None
 
@@ -66,16 +66,10 @@ class LineCrossEvent(BaseEvent):
     Additional fields:
         line_id: Line identifier (V1, V2, H1, etc.)
         direction: Crossing direction (LTR, RTL, TTB, BTT)
-
-    Optional speed fields (when speed_calculation enabled):
-        distance_pixels: Pixels traveled since first seen
-        time_elapsed: Seconds since first seen
     """
 
     line_id: str
     direction: Direction
-    distance_pixels: float
-    time_elapsed: float
 
 
 class ZoneEnterEvent(BaseEvent):
@@ -113,23 +107,38 @@ class NighttimeCarEvent(BaseEvent):
     Additional fields:
         zone_id: Zone where detection occurred
         score: Detection confidence score (0-100+)
-
-    Debug fields:
-        was_primed: True if zone was primed (brightness rose before blob)
         had_taillight: True if taillight matched headlight
     """
 
     zone_id: str
     score: float
-    was_primed: bool
     had_taillight: bool
+
+
+class DetectedEvent(BaseEvent):
+    """
+    DETECTED event - raw object detection.
+
+    Fires for every YOLO detection. No zone/line geometry required.
+    Simplest event type - pure detection to event.
+
+    Additional fields:
+        confidence: Detection confidence (0-1)
+
+    Optional fields:
+        track_id: Only present if tracking is enabled
+    """
+
+    confidence: float
 
 
 # Synthetic class ID for nighttime car (outside COCO range 0-79)
 NIGHTTIME_CAR_CLASS_ID = 1000
 
 # Union type for all events
-Event = LineCrossEvent | ZoneEnterEvent | ZoneExitEvent | NighttimeCarEvent
+Event = (
+    LineCrossEvent | ZoneEnterEvent | ZoneExitEvent | NighttimeCarEvent | DetectedEvent
+)
 
 
 def is_valid_event(event: dict) -> bool:
@@ -142,7 +151,11 @@ def is_valid_event(event: dict) -> bool:
     Returns:
         True if event has required base fields
     """
-    required = {"event_type", "track_id", "object_class", "timestamp_relative"}
+    # DETECTED events don't require track_id (tracking may be disabled)
+    if event.get("event_type") == EVENT_TYPE_DETECTED:
+        required = {"event_type", "object_class", "confidence"}
+    else:
+        required = {"event_type", "track_id", "object_class"}
     return required.issubset(event.keys())
 
 
@@ -177,6 +190,10 @@ def get_event_summary(event: dict) -> str:
         zone_id = event.get("zone_id", "?")
         score = event.get("score", 0)
         return f"NIGHTTIME_CAR track={track_id} zone={zone_id} score={score:.0f}"
+
+    elif event_type == EVENT_TYPE_DETECTED:
+        conf = event.get("confidence", 0)
+        return f"DETECTED track={track_id} conf={conf:.2f}"
 
     else:
         return f"{event_type} track={track_id}"

@@ -7,9 +7,6 @@ FPS_REPORT_INTERVAL = 100  # Report FPS every N frames
 FPS_WINDOW_SIZE = 100  # Number of frames to average for FPS calculation
 SUMMARY_EVENT_INTERVAL = 50  # Print summary every N events
 
-# Detection thresholds
-MIN_TRACKING_TIME = 0.1  # Minimum seconds to track before calculating speed
-
 # Queue configuration
 DEFAULT_QUEUE_SIZE = 1000  # Default max queue size if not in config
 

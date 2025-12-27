@@ -35,7 +35,13 @@ def json_writer_consumer(event_queue, config: dict) -> None:
 
     # Process events
     event_count = 0
-    event_counts_by_type = {"LINE_CROSS": 0, "ZONE_ENTER": 0, "ZONE_EXIT": 0}
+    event_counts_by_type = {
+        "LINE_CROSS": 0,
+        "ZONE_ENTER": 0,
+        "ZONE_EXIT": 0,
+        "NIGHTTIME_CAR": 0,
+        "DETECTED": 0,
+    }
     start_time = datetime.now()
 
     try:
@@ -96,25 +102,17 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
         )
         return
 
-    # All other event types have track_id
-    track_id = event["track_id"]
+    # Get track_id (may be None for DETECTED when tracking disabled)
+    track_id = event.get("track_id")
 
     if event_type == "LINE_CROSS":
         line_id = event["line_id"]
         line_desc = event["line_description"]
         direction = event["direction"]
-
-        if "speed_px_per_sec" in event:
-            speed = event["speed_px_per_sec"]
-            logger.info(
-                f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                f"crossed {line_id} ({line_desc}) {direction} @ {speed:.1f} px/s"
-            )
-        else:
-            logger.info(
-                f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                f"crossed {line_id} ({line_desc}) {direction}"
-            )
+        logger.info(
+            f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
+            f"crossed {line_id} ({line_desc}) {direction}"
+        )
 
     elif event_type == "ZONE_ENTER":
         zone_id = event["zone_id"]
@@ -131,6 +129,13 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
         logger.info(
             f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
             f"exited {zone_id} ({zone_desc}) - {dwell:.1f}s dwell"
+        )
+
+    elif event_type == "DETECTED":
+        conf = event.get("confidence", 0)
+        track_str = f"Track {track_id:3d}" if track_id else "No track"
+        logger.info(
+            f"#{event_count:4d} | {track_str} ({obj_name}) detected (conf={conf:.2f})"
         )
 
 

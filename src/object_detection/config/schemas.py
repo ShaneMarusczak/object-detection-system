@@ -5,6 +5,7 @@ Provides type-safe, declarative validation with clear error messages.
 """
 
 from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR, DEFAULT_TEMP_FRAME_MAX_AGE
@@ -129,7 +130,11 @@ class EventMatch(BaseModel):
         None
         | (
             Literal[
-                "LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL", "NIGHTTIME_CAR"
+                "LINE_CROSS",
+                "ZONE_ENTER",
+                "ZONE_EXIT",
+                "NIGHTTIME_CAR",
+                "DETECTED",
             ]
         )
     ) = None
@@ -252,7 +257,6 @@ class RuntimeConfig(BaseModel):
     queue_size: int = Field(default=1000, gt=0)
     analyzer_startup_delay: int = Field(default=1, ge=0)
     detector_shutdown_timeout: int = Field(default=5, ge=0)
-    analyzer_shutdown_timeout: int = Field(default=10, ge=0)
 
 
 class ConsoleOutputConfig(BaseModel):
@@ -268,12 +272,6 @@ class FrameStorageConfig(BaseModel):
     type: Literal["local"] = "local"
     local_dir: str = "frames"
     retention_days: int = Field(default=7, ge=1, description="Days to retain frames")
-
-
-class SpeedCalculationConfig(BaseModel):
-    """Speed calculation configuration."""
-
-    enabled: bool = False
 
 
 class Config(StrictModel):
@@ -292,12 +290,8 @@ class Config(StrictModel):
     console_output: ConsoleOutputConfig = Field(default_factory=ConsoleOutputConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     frame_storage: FrameStorageConfig = Field(default_factory=FrameStorageConfig)
-    speed_calculation: SpeedCalculationConfig = Field(
-        default_factory=SpeedCalculationConfig
-    )
     temp_frames_enabled: bool = False
     temp_frame_dir: str = DEFAULT_TEMP_FRAME_DIR
-    temp_frame_interval: int = 5
     temp_frame_max_age_seconds: int = DEFAULT_TEMP_FRAME_MAX_AGE
 
     @model_validator(mode="after")
