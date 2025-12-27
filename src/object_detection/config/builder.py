@@ -1066,50 +1066,55 @@ class ConfigBuilder:
             print("  Match criteria:")
             match = {}
 
-            # Event type
-            print("    Event type:")
-            print("      1. LINE_CROSS (object crosses a line)")
+            # Build dynamic event type menu based on available lines/zones
+            event_options = []
+            if lines:
+                event_options.append(("LINE_CROSS", "object crosses a line"))
             if zones:
-                print("      2. ZONE_ENTER (object enters a zone)")
-                print("      3. ZONE_EXIT (object exits a zone)")
-                print("      4. NIGHTTIME_CAR (headlight blob detection in zone)")
-            print("      5. DETECTED (any detection, no geometry required)")
+                event_options.append(("ZONE_ENTER", "object enters a zone"))
+                event_options.append(("ZONE_EXIT", "object exits a zone"))
+                event_options.append(("NIGHTTIME_CAR", "headlight blob detection in zone"))
+            event_options.append(("DETECTED", "any detection, no geometry required"))
+
+            print("    Event type:")
+            for i, (etype, desc) in enumerate(event_options, 1):
+                print(f"      {i}. {etype} ({desc})")
             type_choice = input("    Choice [1]: ").strip() or "1"
 
             is_nighttime_event = False
             is_detected_event = False
 
-            if type_choice == "1":
-                match["event_type"] = "LINE_CROSS"
-                if lines:
-                    print("    Which line?")
-                    for i, line in enumerate(lines, 1):
-                        print(f"      {i}. {line['description']}")
-                    line_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                    match["line"] = lines[line_choice]["description"]
-            elif type_choice == "2":
-                match["event_type"] = "ZONE_ENTER"
-                if zones:
-                    print("    Which zone?")
-                    for i, zone in enumerate(zones, 1):
-                        print(f"      {i}. {zone['description']}")
-                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                    match["zone"] = zones[zone_choice]["description"]
-            elif type_choice == "3" and zones:
-                match["event_type"] = "ZONE_EXIT"
+            try:
+                selected_type = event_options[int(type_choice) - 1][0]
+            except (ValueError, IndexError):
+                selected_type = event_options[0][0]
+
+            match["event_type"] = selected_type
+
+            if selected_type == "LINE_CROSS":
+                print("    Which line?")
+                for i, line in enumerate(lines, 1):
+                    print(f"      {i}. {line['description']}")
+                line_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                match["line"] = lines[line_choice]["description"]
+            elif selected_type == "ZONE_ENTER":
                 print("    Which zone?")
                 for i, zone in enumerate(zones, 1):
                     print(f"      {i}. {zone['description']}")
                 zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
                 match["zone"] = zones[zone_choice]["description"]
-            elif type_choice == "5":
-                match["event_type"] = "DETECTED"
+            elif selected_type == "ZONE_EXIT":
+                print("    Which zone?")
+                for i, zone in enumerate(zones, 1):
+                    print(f"      {i}. {zone['description']}")
+                zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                match["zone"] = zones[zone_choice]["description"]
+            elif selected_type == "DETECTED":
                 is_detected_event = True
                 print(
                     f"    {Colors.GRAY}DETECTED fires for every detection - no tracking needed{Colors.RESET}"
                 )
-            elif type_choice == "4" and zones:
-                match["event_type"] = "NIGHTTIME_CAR"
+            elif selected_type == "NIGHTTIME_CAR":
                 is_nighttime_event = True
                 print("    Which zone to monitor for headlights?")
                 for i, zone in enumerate(zones, 1):
