@@ -5,13 +5,10 @@ Each emitter handles a single event type. The registry maps event types
 to emitter classes. Active emitters are determined from config at startup.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from .registry import EMITTER_REGISTRY, build_active_emitters
 from .tracking_state import TrackingState
-
-if TYPE_CHECKING:
-    from .tracking_state import TrackingState
 
 __all__ = ["EMITTER_REGISTRY", "Emitter", "TrackingState", "build_active_emitters"]
 
