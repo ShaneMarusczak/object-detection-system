@@ -27,10 +27,10 @@ class DetectedEmitter:
 
     def process(
         self,
-        _frame,
+        frame,  # noqa: ARG002 - unused, interface requirement
         yolo_results,
         timestamp: float,
-        _tracking_state: "TrackingState | None" = None,
+        tracking_state: "TrackingState | None" = None,  # noqa: ARG002
         frame_id: str | None = None,
     ) -> list[dict]:
         """
