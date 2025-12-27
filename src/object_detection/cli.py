@@ -11,9 +11,12 @@ Supports Terraform-like workflow:
 import argparse
 import json
 import logging
+import select
 import signal
 import sys
+import termios
 import time
+import tty
 from multiprocessing import Event, Process, Queue
 from pathlib import Path
 from threading import Event as ThreadEvent
