@@ -38,7 +38,7 @@ def build_active_emitters(config: dict, frame_dims: tuple) -> list:
         List of configured emitter instances
     """
     # Import emitters to populate registry (decorators register on import)
-    from . import detected, line_cross, nighttime_car, zone_enter, zone_exit
+    from . import detected, line_cross, nighttime_car, zone_enter, zone_exit  # noqa: F401
 
     # Find event types used in config
     event_types_needed = set()

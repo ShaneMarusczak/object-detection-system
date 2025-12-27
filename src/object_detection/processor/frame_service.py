@@ -143,7 +143,7 @@ class FrameService:
 
     def read_frame_bytes(self, event_id: str) -> bytes | None:
         """
-        Read frame file as bytes (for email embedding).
+        Read frame file as bytes.
 
         Args:
             event_id: Event identifier
