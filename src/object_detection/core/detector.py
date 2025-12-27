@@ -22,6 +22,8 @@ from ..utils.constants import (
     DEFAULT_TEMP_FRAME_DIR,
     FPS_REPORT_INTERVAL,
     FPS_WINDOW_SIZE,
+    SNAPSHOT_DIR,
+    SNAPSHOT_INTERVAL,
 )
 from .camera import initialize_camera
 from .frame_saver import save_temp_frame
@@ -145,6 +147,11 @@ def _detection_loop(
         os.makedirs(temp_frame_dir, exist_ok=True)
         logger.info(f"Temp frames: {temp_frame_dir} ({temp_frame_max_age}s retention)")
 
+    # Snapshot for on-demand preview
+    os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+    snapshot_path = os.path.join(SNAPSHOT_DIR, "latest.jpg")
+    last_snapshot_time = 0.0
+
     logger.info("Detection started")
 
     try:
@@ -210,6 +217,11 @@ def _detection_loop(
             # Periodic status
             if frame_count % FPS_REPORT_INTERVAL == 0:
                 _log_status(frame_count, fps_list, start_time, event_count)
+
+            # Periodic snapshot for preview server
+            if current_time - last_snapshot_time >= SNAPSHOT_INTERVAL:
+                cv2.imwrite(snapshot_path, frame)
+                last_snapshot_time = current_time
 
     except KeyboardInterrupt:
         logger.info("Detection stopped by user")

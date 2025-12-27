@@ -614,8 +614,7 @@ def main() -> None:
     print_banner(config, duration_hours)
 
     # Start snapshot server for on-demand camera preview
-    camera_url = config["camera"]["url"]
-    snapshot_url = start_snapshot_server(camera_url)
+    snapshot_url, snapshot_server = start_snapshot_server()
     print(f"Snapshot server: {snapshot_url}")
     print()
 
@@ -660,6 +659,14 @@ def main() -> None:
 
     # Graceful shutdown
     shutdown_processes(detector, analyzer, shutdown_event, config, queue)
+
+    # Stop snapshot server
+    if snapshot_server is not None:
+        snapshot_server.terminate()
+        try:
+            snapshot_server.wait(timeout=2)
+        except Exception:
+            snapshot_server.kill()
 
     # Print final status
     print_final_status(detector, analyzer, config, reason, elapsed)
