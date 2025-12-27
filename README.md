@@ -18,11 +18,12 @@ pip install -r requirements.txt
 ./run.sh
 ```
 
-The run script is the preferred entry point. It offers three options:
+The run script is the preferred entry point. It offers four options:
 
-1. **Run with existing config** - Validates, plans, dry-runs, then executes
+1. **Run** - Validates, plans, dry-runs, then executes with current config
 2. **Pick a config** - Choose from saved configs in `configs/`
 3. **Build new config** - Interactive wizard that guides you through setup
+4. **Edit a config** - Modify an existing config file
 
 ### Config Builder
 
@@ -37,7 +38,7 @@ python -m object_detection --build-config
 Features:
 - Connects to camera and serves preview frames via HTTP (for visual feedback)
 - Guides through lines, zones, events, reports, and email setup
-- Validates inputs (zone bounds, COCO classes)
+- Validates inputs (zone bounds, model classes)
 - Saves to `configs/` and optionally runs immediately
 
 ### Manual Commands
@@ -148,7 +149,7 @@ src/object_detection/
 **Console**:
 ```
 json_writer INFO #   1 | Track 42 (car) crossed V1 (entrance gate) LTR
-json_writer INFO #   2 | NIGHTTIME_CAR in driveway (score=92)
+json_writer INFO #   2 | nighttime_car detected in driveway (score=92)
 ```
 
 ## License
