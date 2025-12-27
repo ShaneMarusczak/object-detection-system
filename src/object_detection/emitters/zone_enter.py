@@ -124,7 +124,6 @@ class ZoneEnterEmitter:
                             "bbox": tracked_obj.bbox,
                             "frame_id": frame_id,
                             "zone_id": zone.zone_id,
-                            "timestamp_relative": timestamp,
                         }
                     )
 

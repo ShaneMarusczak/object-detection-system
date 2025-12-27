@@ -132,7 +132,6 @@ class LineCrossEmitter:
                         "frame_id": frame_id,
                         "line_id": line.line_id,
                         "direction": direction,
-                        "timestamp_relative": timestamp,
                     }
 
                     events.append(event)

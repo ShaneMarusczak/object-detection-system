@@ -102,8 +102,8 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
         )
         return
 
-    # All other event types have track_id
-    track_id = event["track_id"]
+    # Get track_id (may be None for DETECTED when tracking disabled)
+    track_id = event.get("track_id")
 
     if event_type == "LINE_CROSS":
         line_id = event["line_id"]

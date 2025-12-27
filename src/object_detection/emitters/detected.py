@@ -71,7 +71,6 @@ class DetectedEmitter:
                 "object_class": obj_class,
                 "confidence": conf,
                 "bbox": bbox,
-                "timestamp_relative": timestamp,
                 "frame_id": frame_id,
             }
 

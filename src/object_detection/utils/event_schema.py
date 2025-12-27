@@ -46,7 +46,6 @@ class BaseEvent(TypedDict, total=False):
         event_type: Type of event (LINE_CROSS, ZONE_ENTER, etc.)
         track_id: Unique identifier for the tracked object
         object_class: COCO class ID (0-79) or synthetic ID (1000 for nighttime_car)
-        timestamp_relative: Seconds since detection started
 
     Optional fields:
         bbox: Bounding box as (x1, y1, x2, y2) tuple
@@ -56,7 +55,6 @@ class BaseEvent(TypedDict, total=False):
     event_type: EventType
     track_id: int | str  # int for YOLO, "nc_N" for nighttime car
     object_class: int
-    timestamp_relative: float
     bbox: tuple[int, int, int, int]
     frame_id: str | None
 
@@ -109,15 +107,11 @@ class NighttimeCarEvent(BaseEvent):
     Additional fields:
         zone_id: Zone where detection occurred
         score: Detection confidence score (0-100+)
-
-    Debug fields:
-        was_primed: True if zone was primed (brightness rose before blob)
         had_taillight: True if taillight matched headlight
     """
 
     zone_id: str
     score: float
-    was_primed: bool
     had_taillight: bool
 
 
@@ -159,9 +153,9 @@ def is_valid_event(event: dict) -> bool:
     """
     # DETECTED events don't require track_id (tracking may be disabled)
     if event.get("event_type") == EVENT_TYPE_DETECTED:
-        required = {"event_type", "object_class", "timestamp_relative", "confidence"}
+        required = {"event_type", "object_class", "confidence"}
     else:
-        required = {"event_type", "track_id", "object_class", "timestamp_relative"}
+        required = {"event_type", "track_id", "object_class"}
     return required.issubset(event.keys())
 
 

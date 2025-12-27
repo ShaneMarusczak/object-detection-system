@@ -275,9 +275,7 @@ class NighttimeCarEmitter:
                         "track_id": f"nc_{blob.blob_id}",
                         "bbox": blob.bbox,
                         "frame_id": frame_id,
-                        "timestamp_relative": timestamp,
                         "score": score,
-                        "was_primed": zone.primed,
                         "had_taillight": has_taillight,
                     }
                 )
