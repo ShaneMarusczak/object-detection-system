@@ -30,6 +30,8 @@ def initialize_camera(camera_url: str) -> cv2.VideoCapture:
         cap = cv2.VideoCapture(camera_url)
 
         if cap.isOpened():
+            # Reduce buffer to minimize latency and prevent blocking on read
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             logger.info("Camera connected successfully")
             return cap
 
