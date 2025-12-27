@@ -17,8 +17,6 @@ class TrackedObject:
     current_pos: tuple[float, float]
     bbox: tuple[int, int, int, int] | None = None
     previous_pos: tuple[float, float] | None = None
-    first_pos: tuple[float, float] | None = None
-    first_seen_time: float | None = None
     crossed_lines: set[str] = field(default_factory=set)
     active_zones: dict[str, float] = field(
         default_factory=dict
@@ -56,7 +54,7 @@ class TrackingState:
 
         Args:
             yolo_results: YOLO detection results
-            current_time: Current timestamp for first_seen tracking
+            current_time: Current timestamp
         """
         self.current_time = current_time
 
@@ -80,8 +78,6 @@ class TrackingState:
                     object_class=obj_class,
                     current_pos=(center_x, center_y),
                     bbox=bbox,
-                    first_pos=(center_x, center_y),
-                    first_seen_time=current_time,
                 )
             else:
                 self.tracked_objects[track_id].update_position(center_x, center_y, bbox)
