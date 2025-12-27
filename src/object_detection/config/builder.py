@@ -1185,31 +1185,39 @@ class ConfigBuilder:
 
             # DETECTED events can optionally filter by class
             if is_detected_event:
-                filter_class = (
-                    input("    Filter by object class? (y/N): ").strip().lower()
-                )
-                if filter_class == "y":
-                    if self.model_classes:
-                        valid_classes = set(self.model_classes)
-                        display_classes = self.model_classes
-                        default_class = self.model_classes[0]
-                    else:
-                        valid_classes = set(COCO_CLASSES.values())
-                        display_classes = COMMON_CLASSES
-                        default_class = "car"
-
+                # Single-class model: auto-select the only class
+                if self.model_classes and len(self.model_classes) == 1:
+                    single_class = self.model_classes[0]
+                    match["object_class"] = single_class
                     print(
-                        f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}"
+                        f"    {Colors.CYAN}Single-class model: using '{single_class}'{Colors.RESET}"
                     )
-                    class_str = (
-                        input(f"    Class [{default_class}]: ").strip() or default_class
+                else:
+                    filter_class = (
+                        input("    Filter by object class? (y/N): ").strip().lower()
                     )
-                    if class_str in valid_classes:
-                        match["object_class"] = class_str
-                    else:
+                    if filter_class == "y":
+                        if self.model_classes:
+                            valid_classes = set(self.model_classes)
+                            display_classes = self.model_classes
+                            default_class = self.model_classes[0]
+                        else:
+                            valid_classes = set(COCO_CLASSES.values())
+                            display_classes = COMMON_CLASSES
+                            default_class = "car"
+
                         print(
-                            f"    {Colors.YELLOW}Unknown class, skipping filter{Colors.RESET}"
+                            f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}"
                         )
+                        class_str = (
+                            input(f"    Class [{default_class}]: ").strip() or default_class
+                        )
+                        if class_str in valid_classes:
+                            match["object_class"] = class_str
+                        else:
+                            print(
+                                f"    {Colors.YELLOW}Unknown class, skipping filter{Colors.RESET}"
+                            )
 
             event["match"] = match
 
