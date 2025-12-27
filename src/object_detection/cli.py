@@ -399,7 +399,7 @@ def monitor_processes(
 
 
 def shutdown_processes(
-    detector: Process, analyzer: Process, shutdown_event, config: dict
+    detector: Process, analyzer: Process, shutdown_event, config: dict, queue: Queue
 ) -> None:
     """Gracefully shutdown detector and analyzer processes."""
     logger.info("Shutting down...")
@@ -419,6 +419,10 @@ def shutdown_processes(
             detector.join()
         else:
             logger.info("Detector stopped")
+
+    # Ensure dispatcher gets shutdown signal even if detector was killed
+    # (detector's finally block doesn't run on SIGKILL)
+    queue.put(None)
 
     # Wait for analyzer to finish processing remaining events and generate reports
     # No timeout - PDF report generation can take significant time for large reports
@@ -648,7 +652,7 @@ def main() -> None:
     elapsed = time.time() - start_time
 
     # Graceful shutdown
-    shutdown_processes(detector, analyzer, shutdown_event, config)
+    shutdown_processes(detector, analyzer, shutdown_event, config, queue)
 
     # Print final status
     print_final_status(detector, analyzer, config, reason, elapsed)

@@ -159,17 +159,9 @@ def _detection_loop(
 
             # Read next frame (skip first iteration if we already have first_frame)
             if frame_count > 0 or first_frame is None:
-                # Use grab/retrieve pattern for more responsive shutdown
-                if not cap.grab():
-                    logger.warning("Failed to grab frame")
-                    break
-                # Check shutdown again after grab (which can block)
-                if shutdown_event and shutdown_event.is_set():
-                    logger.info("Shutdown signal received")
-                    break
-                ret, frame = cap.retrieve()
+                ret, frame = cap.read()
                 if not ret:
-                    logger.warning("Failed to retrieve frame")
+                    logger.warning("Failed to read frame")
                     break
 
             frame_count += 1
