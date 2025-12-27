@@ -17,7 +17,6 @@ DEFAULT_TEMP_FRAME_MAX_AGE = 30  # Seconds before cleanup
 
 # Snapshot server (on-demand preview while detection runs)
 SNAPSHOT_DIR = "snapshots"
-SNAPSHOT_INTERVAL = 2.0  # Seconds between snapshot updates
 
 # Camera reconnection
 MAX_CAMERA_RECONNECT_ATTEMPTS = 2
