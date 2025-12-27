@@ -5,35 +5,7 @@ Maintains tracked objects, their positions, and zone membership.
 Updated once per frame, then queried by emitters.
 """
 
-from dataclasses import dataclass, field
-
-
-@dataclass
-class TrackedObject:
-    """A tracked object with position and state."""
-
-    track_id: int
-    object_class: int
-    current_pos: tuple[float, float]
-    bbox: tuple[int, int, int, int] | None = None
-    previous_pos: tuple[float, float] | None = None
-    crossed_lines: set[str] = field(default_factory=set)
-    active_zones: dict[str, float] = field(
-        default_factory=dict
-    )  # zone_id -> entry_time
-
-    def update_position(
-        self, x: float, y: float, bbox: tuple[int, int, int, int] | None = None
-    ) -> None:
-        """Update position, moving current to previous."""
-        self.previous_pos = self.current_pos
-        self.current_pos = (x, y)
-        if bbox:
-            self.bbox = bbox
-
-    def is_new(self) -> bool:
-        """True if this is first frame for this object."""
-        return self.previous_pos is None
+from ..models import TrackedObject
 
 
 class TrackingState:
