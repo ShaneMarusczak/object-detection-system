@@ -345,7 +345,6 @@ def _validate_events(
             "LINE_CROSS",
             "ZONE_ENTER",
             "ZONE_EXIT",
-            "ZONE_DWELL",
             "NIGHTTIME_CAR",
             "DETECTED",
         ]

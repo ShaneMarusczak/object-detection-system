@@ -133,7 +133,6 @@ class EventMatch(BaseModel):
                 "LINE_CROSS",
                 "ZONE_ENTER",
                 "ZONE_EXIT",
-                "ZONE_DWELL",
                 "NIGHTTIME_CAR",
                 "DETECTED",
             ]
@@ -276,12 +275,6 @@ class FrameStorageConfig(BaseModel):
     retention_days: int = Field(default=7, ge=1, description="Days to retain frames")
 
 
-class SpeedCalculationConfig(BaseModel):
-    """Speed calculation configuration."""
-
-    enabled: bool = False
-
-
 class Config(StrictModel):
     """Complete configuration schema."""
 
@@ -298,12 +291,8 @@ class Config(StrictModel):
     console_output: ConsoleOutputConfig = Field(default_factory=ConsoleOutputConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     frame_storage: FrameStorageConfig = Field(default_factory=FrameStorageConfig)
-    speed_calculation: SpeedCalculationConfig = Field(
-        default_factory=SpeedCalculationConfig
-    )
     temp_frames_enabled: bool = False
     temp_frame_dir: str = DEFAULT_TEMP_FRAME_DIR
-    temp_frame_interval: int = 5
     temp_frame_max_age_seconds: int = DEFAULT_TEMP_FRAME_MAX_AGE
 
     @model_validator(mode="after")

@@ -1075,9 +1075,8 @@ class ConfigBuilder:
             print("      1. LINE_CROSS (object crosses a line)")
             if zones:
                 print("      2. ZONE_ENTER (object enters a zone)")
-                print("      3. ZONE_DWELL (object stays in zone)")
-                print("      4. NIGHTTIME_CAR (headlight blob detection in zone)")
-            print("      5. DETECTED (any detection, no geometry required)")
+                print("      3. NIGHTTIME_CAR (headlight blob detection in zone)")
+            print("      4. DETECTED (any detection, no geometry required)")
             type_choice = input("    Choice [1]: ").strip() or "1"
 
             is_nighttime_event = False
@@ -1099,21 +1098,13 @@ class ConfigBuilder:
                         print(f"      {i}. {zone['description']}")
                     zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
                     match["zone"] = zones[zone_choice]["description"]
-            elif type_choice == "3":
-                match["event_type"] = "ZONE_DWELL"
-                if zones:
-                    print("    Which zone?")
-                    for i, zone in enumerate(zones, 1):
-                        print(f"      {i}. {zone['description']}")
-                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                    match["zone"] = zones[zone_choice]["description"]
-            elif type_choice == "5":
+            elif type_choice == "4":
                 match["event_type"] = "DETECTED"
                 is_detected_event = True
                 print(
                     f"    {Colors.GRAY}DETECTED fires for every detection - no tracking needed{Colors.RESET}"
                 )
-            elif type_choice == "4" and zones:
+            elif type_choice == "3" and zones:
                 match["event_type"] = "NIGHTTIME_CAR"
                 is_nighttime_event = True
                 print("    Which zone to monitor for headlights?")

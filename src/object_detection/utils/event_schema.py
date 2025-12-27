@@ -49,7 +49,6 @@ class BaseEvent(TypedDict, total=False):
         timestamp_relative: Seconds since detection started
 
     Optional fields:
-        device_id: Device identifier (edge mode only)
         bbox: Bounding box as (x1, y1, x2, y2) tuple
         frame_id: UUID of saved frame in temp storage
     """
@@ -58,7 +57,6 @@ class BaseEvent(TypedDict, total=False):
     track_id: int | str  # int for YOLO, "nc_N" for nighttime car
     object_class: int
     timestamp_relative: float
-    device_id: str
     bbox: tuple[int, int, int, int]
     frame_id: str | None
 
@@ -70,16 +68,10 @@ class LineCrossEvent(BaseEvent):
     Additional fields:
         line_id: Line identifier (V1, V2, H1, etc.)
         direction: Crossing direction (LTR, RTL, TTB, BTT)
-
-    Optional speed fields (when speed_calculation enabled):
-        distance_pixels: Pixels traveled since first seen
-        time_elapsed: Seconds since first seen
     """
 
     line_id: str
     direction: Direction
-    distance_pixels: float
-    time_elapsed: float
 
 
 class ZoneEnterEvent(BaseEvent):

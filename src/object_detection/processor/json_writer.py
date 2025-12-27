@@ -109,18 +109,10 @@ def _print_event(event: dict, level: str, event_count: int) -> None:
         line_id = event["line_id"]
         line_desc = event["line_description"]
         direction = event["direction"]
-
-        if "speed_px_per_sec" in event:
-            speed = event["speed_px_per_sec"]
-            logger.info(
-                f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                f"crossed {line_id} ({line_desc}) {direction} @ {speed:.1f} px/s"
-            )
-        else:
-            logger.info(
-                f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
-                f"crossed {line_id} ({line_desc}) {direction}"
-            )
+        logger.info(
+            f"#{event_count:4d} | Track {track_id:3d} ({obj_name}) "
+            f"crossed {line_id} ({line_desc}) {direction}"
+        )
 
     elif event_type == "ZONE_ENTER":
         zone_id = event["zone_id"]

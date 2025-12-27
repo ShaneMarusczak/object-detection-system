@@ -42,7 +42,6 @@ class LineCrossEmitter:
         """
         self.frame_dims = frame_dims
         self.lines = self._parse_lines(config)
-        self.speed_enabled = config.get("speed_calculation", {}).get("enabled", False)
 
     def _parse_lines(self, config: dict) -> list[LineConfig]:
         """Parse line configurations from config."""
@@ -136,12 +135,6 @@ class LineCrossEmitter:
                         "timestamp_relative": timestamp,
                     }
 
-                    # Add speed data if enabled
-                    if self.speed_enabled:
-                        self._add_speed_data(
-                            event, tracked_obj, line, tracking_state.current_time
-                        )
-
                     events.append(event)
 
         return events
@@ -171,26 +164,3 @@ class LineCrossEmitter:
                 return True, "BTT"
 
         return False, None
-
-    def _add_speed_data(
-        self, event: dict, tracked_obj, line: LineConfig, current_time: float
-    ) -> None:
-        """Add speed calculation data to event."""
-        if not tracked_obj.first_pos or not tracked_obj.first_seen_time:
-            return
-
-        first_x, first_y = tracked_obj.first_pos
-        curr_x, curr_y = tracked_obj.current_pos
-
-        if line.type == "vertical":
-            distance = abs(curr_x - first_x)
-        else:
-            distance = abs(curr_y - first_y)
-
-        time_elapsed = current_time - tracked_obj.first_seen_time
-
-        if time_elapsed > 0.1:  # MIN_TRACKING_TIME
-            speed_px_per_sec = distance / time_elapsed
-            event["distance_pixels"] = distance
-            event["time_elapsed"] = time_elapsed
-            event["speed_px_per_sec"] = speed_px_per_sec
