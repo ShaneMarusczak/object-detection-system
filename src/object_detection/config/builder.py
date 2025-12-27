@@ -109,8 +109,6 @@ class ConfigBuilder:
             self._print_progress()
             self._setup_events()
             self._setup_pdf_reports()
-            self._setup_digests()
-            self._setup_email()
 
             # Step 5: Output
             self.current_step = 5
@@ -257,27 +255,6 @@ class ConfigBuilder:
             ids = [r.get("id", "?") for r in reports]
             return ", ".join(ids)
 
-        elif section == "digests":
-            digests = self.config.get("digests", [])
-            if not digests:
-                return "disabled"
-            ids = [d.get("id", "?") for d in digests]
-            return ", ".join(ids)
-
-        elif section == "email":
-            notifications = self.config.get("notifications", {})
-            email = notifications.get("email", {})
-            if not email or not email.get("enabled"):
-                return "not configured"
-            to_addrs = email.get("to_addresses", [])
-            if to_addrs:
-                return (
-                    to_addrs[0]
-                    if len(to_addrs) == 1
-                    else f"{to_addrs[0]} +{len(to_addrs) - 1}"
-                )
-            return "configured"
-
         elif section == "output":
             output = self.config.get("output", {})
             json_dir = output.get("json_dir", "data")
@@ -315,16 +292,6 @@ class ConfigBuilder:
                     f"Event '{event.get('name')}' references missing zone '{ref_zone}'"
                 )
 
-        # Check for email actions without email config
-        has_email_action = any(
-            e.get("actions", {}).get("email_immediate")
-            or e.get("actions", {}).get("email_digest")
-            for e in events
-        )
-        email_config = self.config.get("notifications", {}).get("email", {})
-        if has_email_action and not email_config.get("enabled"):
-            warnings.append("Email actions configured but email settings missing")
-
         # Check for no events
         if not events and (lines or zones):
             warnings.append("Lines/zones defined but no events to use them")
@@ -340,8 +307,6 @@ class ConfigBuilder:
             ("zones", "Zones"),
             ("events", "Events"),
             ("pdf_reports", "PDF Reports"),
-            ("digests", "Digests"),
-            ("email", "Email"),
             ("output", "Output"),
         ]
 
@@ -402,10 +367,6 @@ class ConfigBuilder:
             self._edit_events()
         elif section == "pdf_reports":
             self._setup_pdf_reports()
-        elif section == "digests":
-            self._setup_digests()
-        elif section == "email":
-            self._setup_email()
         elif section == "output":
             self._setup_output()
 
@@ -1223,26 +1184,27 @@ class ConfigBuilder:
 
             # Actions - outcome based selection
             print("  Actions:")
-            print("    1. PDF with photos")
-            print("    2. PDF stats only")
-            print("    3. Email alert")
-            print("    4. Email digest")
-            print("    5. JSON only")
-            action_input = input("  Choose (e.g. 1,3) [1]: ").strip() or "1"
+            print("    1. Run command/script")
+            print("    2. PDF with photos")
+            print("    3. PDF stats only")
+            print("    4. JSON log only")
+            action_input = input("  Choose (e.g. 1,2) [1]: ").strip() or "1"
 
             # Parse choices
             choices = {c.strip() for c in action_input.replace(" ", ",").split(",")}
             actions = {}
 
-            want_pdf_photos = "1" in choices
-            want_pdf_only = "2" in choices
-            want_email = "3" in choices
-            want_digest = "4" in choices
-            want_json_only = "5" in choices
+            want_command = "1" in choices
+            want_pdf_photos = "2" in choices
+            want_pdf_only = "3" in choices
+            want_json_only = "4" in choices
 
             # Build enabled list for display
             enabled = []
 
+            # Command action
+            if want_command:
+                enabled.append("command")
             # PDF with photos (implies json)
             if want_pdf_photos:
                 enabled.extend(["pdf_report", "frame_capture", "json_log"])
@@ -1250,16 +1212,6 @@ class ConfigBuilder:
             if want_pdf_only:
                 if "pdf_report" not in enabled:
                     enabled.append("pdf_report")
-                if "json_log" not in enabled:
-                    enabled.append("json_log")
-            # Email alert (implies json)
-            if want_email:
-                enabled.append("email_immediate")
-                if "json_log" not in enabled:
-                    enabled.append("json_log")
-            # Digest (implies json)
-            if want_digest:
-                enabled.append("email_digest")
                 if "json_log" not in enabled:
                     enabled.append("json_log")
             # JSON only
@@ -1270,7 +1222,29 @@ class ConfigBuilder:
             if enabled:
                 print(f"    {Colors.GRAY}→ Enables: {', '.join(enabled)}{Colors.RESET}")
 
-            # Configure each selected action
+            # Configure command action
+            if want_command:
+                exec_path = input("    Command/script path: ").strip()
+                if exec_path:
+                    timeout = input("    Timeout seconds [30]: ").strip() or "30"
+                    actions["command"] = {
+                        "exec": exec_path,
+                        "timeout_seconds": int(timeout),
+                    }
+
+                    # Ask about shutdown
+                    shutdown_str = (
+                        input("    Stop detector after this event? (y/N): ")
+                        .strip()
+                        .lower()
+                    )
+                    if shutdown_str == "y":
+                        actions["shutdown"] = True
+                        print(
+                            f"    {Colors.RED}SHUTDOWN enabled - detector will stop after this event{Colors.RESET}"
+                        )
+
+            # Configure PDF report
             if want_pdf_photos or want_pdf_only:
                 report_id = (
                     input("    PDF report ID [traffic_report]: ").strip()
@@ -1282,17 +1256,8 @@ class ConfigBuilder:
                 max_photos_str = input("    Max photos [100]: ").strip() or "100"
                 actions["frame_capture"] = {"max_photos": int(max_photos_str)}
 
-            if want_email:
-                actions["email_immediate"] = True
-
-            if want_digest:
-                digest_id = (
-                    input("    Digest ID [daily_digest]: ").strip() or "daily_digest"
-                )
-                actions["email_digest"] = digest_id
-
-            # JSON is implicit for all except json-only where it's explicit
-            if enabled:
+            # JSON is implicit for PDF, explicit for json-only
+            if want_pdf_photos or want_pdf_only or want_json_only:
                 actions["json_log"] = True
 
             event["actions"] = actions
@@ -1380,103 +1345,6 @@ class ConfigBuilder:
             )
 
         self.config["pdf_reports"] = pdf_reports
-
-    def _setup_digests(self):
-        """Setup email digest configurations."""
-        events = self.config.get("events", [])
-
-        # Collect unique digest IDs from events
-        digest_ids = set()
-        for event in events:
-            digest_id = event.get("actions", {}).get("email_digest")
-            if digest_id:
-                digest_ids.add(digest_id)
-
-        if not digest_ids:
-            return
-
-        print(f"\n{Colors.BOLD}--- Email Digests Setup ---{Colors.RESET}")
-
-        digests = []
-        for digest_id in digest_ids:
-            print(f"\n  Digest: {digest_id}")
-
-            # Get events for this digest
-            digest_events = [
-                e["name"]
-                for e in events
-                if e.get("actions", {}).get("email_digest") == digest_id
-            ]
-            print(f"    Events: {', '.join(digest_events)}")
-
-            # Schedule
-            print("    Schedule type:")
-            print("      1. interval (every N minutes)")
-            print("      2. daily (at specific time)")
-            sched_choice = input("    Choice [1]: ").strip() or "1"
-
-            schedule = {}
-            if sched_choice == "1":
-                interval = input("    Interval in minutes [60]: ").strip() or "60"
-                schedule = {"interval_minutes": int(interval)}
-            else:
-                time_str = input("    Time (HH:MM) [08:00]: ").strip() or "08:00"
-                schedule = {"daily_at": time_str}
-
-            # Include photos?
-            photos = input("    Include photos in digest? (y/N): ").strip().lower()
-
-            digests.append(
-                {
-                    "id": digest_id,
-                    "events": digest_events,
-                    "schedule": schedule,
-                    "photos": photos == "y",
-                }
-            )
-
-        self.config["digests"] = digests
-
-    def _setup_email(self):
-        """Setup email configuration (SMTP settings)."""
-        events = self.config.get("events", [])
-
-        # Check if any email actions are configured
-        has_email = any(
-            e.get("actions", {}).get("email_immediate")
-            or e.get("actions", {}).get("email_digest")
-            for e in events
-        )
-
-        if not has_email:
-            return
-
-        print(f"\n{Colors.BOLD}--- Email Configuration ---{Colors.RESET}")
-        print(
-            f"{Colors.GRAY}Configure SMTP settings for email notifications{Colors.RESET}"
-        )
-
-        smtp_server = input("  SMTP server [smtp.gmail.com]: ").strip() or "smtp.gmail.com"
-        smtp_port = input("  SMTP port [587]: ").strip() or "587"
-        username = input("  SMTP username (email): ").strip()
-        password = input("  SMTP password (app password): ").strip()
-        from_addr = input(f"  From address [{username}]: ").strip() or username
-        to_addr = input("  To address(es) (comma-separated): ").strip()
-
-        self.config["notifications"] = {
-            "enabled": True,
-            "email": {
-                "enabled": True,
-                "smtp_server": smtp_server,
-                "smtp_port": int(smtp_port),
-                "username": username,
-                "password": password,
-                "from_address": from_addr,
-                "to_addresses": [addr.strip() for addr in to_addr.split(",")],
-            },
-        }
-
-        print(f"  {Colors.GREEN}Email configured{Colors.RESET}")
 
     def _setup_output(self):
         """Setup output directories and runtime settings."""

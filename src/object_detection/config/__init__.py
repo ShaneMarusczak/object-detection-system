@@ -38,7 +38,6 @@ from .schemas import (
     Config,
     # Sub-schemas for type hints
     DetectionConfig,
-    DigestConfig,
     EventConfig,
     LineConfig,
     PDFReportConfig,
@@ -57,7 +56,6 @@ __all__ = [
     # Exception
     "ConfigValidationError",
     "DetectionConfig",
-    "DigestConfig",
     "EventConfig",
     "EventPlan",
     "LineConfig",
