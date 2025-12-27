@@ -111,6 +111,8 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                 }
 
         logger.info(f"Dispatcher initialized with {len(consumers)} consumer(s)")
+        if "command" in needed_actions:
+            logger.info("Command actions enabled")
 
         # Process and route events
         event_count = 0
