@@ -5,10 +5,24 @@ Runs in a daemon thread alongside detection. Browse to the URL
 to see what the camera sees right now.
 """
 
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import cv2
+
+
+def _get_local_ip() -> str:
+    """Get local IP address for remote access."""
+    try:
+        # Connect to external address to determine local IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "localhost"
 
 
 class SnapshotHandler(BaseHTTPRequestHandler):
@@ -63,4 +77,5 @@ def start_snapshot_server(camera_url: str, port: int = 8085) -> str:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
-    return f"http://localhost:{port}/snapshot"
+    local_ip = _get_local_ip()
+    return f"http://{local_ip}:{port}/snapshot"
