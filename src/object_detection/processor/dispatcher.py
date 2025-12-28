@@ -19,7 +19,7 @@ from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .command_runner import run_command
 from .frame_capture import frame_capture_consumer
 from .json_writer import json_writer_consumer
-from .pdf_report import generate_pdf_reports
+from .html_report import generate_html_reports
 
 logger = logging.getLogger(__name__)
 
@@ -209,8 +209,8 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         json_dir = config.get("output", {}).get("json_dir", "data")
 
         if pdf_shutdown_config:
-            logger.info("Generating PDF report...")
-            generate_pdf_reports(json_dir, pdf_shutdown_config, start_time)
+            logger.info("Generating HTML report...")
+            generate_html_reports(json_dir, pdf_shutdown_config, start_time)
 
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")
 

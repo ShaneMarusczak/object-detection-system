@@ -190,10 +190,10 @@ class FrameConfig(BaseModel):
 
 
 class PDFReportConfig(StrictModel):
-    """PDF report configuration. Generated on shutdown covering the entire run."""
+    """Report configuration. Generated as HTML on shutdown covering the entire run."""
 
     id: str = Field(..., min_length=1)
-    output_dir: str = Field(default="reports", description="Directory for PDF output")
+    output_dir: str = Field(default="reports", description="Directory for report output")
     title: str = Field(default="Object Detection Report", description="Report title")
     events: list[str] = Field(
         default_factory=list, description="Event definition names to include"

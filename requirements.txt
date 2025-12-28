@@ -31,8 +31,8 @@ pydantic>=2.0.0             # Configuration validation
 # ============================================================================
 # Uncomment if needed for your use case
 
-# PDF report generation
-reportlab>=4.0.0
+# PDF report generation (no longer needed - reports are HTML)
+# reportlab>=4.0.0
 
 # Data analysis
 # pandas>=1.3.0
