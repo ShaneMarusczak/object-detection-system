@@ -201,10 +201,10 @@ class TestEventDrivenWiring(unittest.TestCase):
 
 
 class TestImpliedActions(unittest.TestCase):
-    """Test AWS-style implied action composition."""
+    """Test implied action composition."""
 
-    def get_digest_config(self):
-        """Return config with digest that requires implied actions."""
+    def get_report_config(self):
+        """Return config with report that requires implied actions."""
         return {
             "detection": {
                 "model_file": "yolo11n.pt",
@@ -225,43 +225,30 @@ class TestImpliedActions(unittest.TestCase):
                         "line": "driveway",
                         "object_class": "car",
                     },
-                    "actions": {"email_digest": "daily_traffic"},
+                    "actions": {"pdf_report": "traffic_report"},
                 }
             ],
-            "digests": [
+            "pdf_reports": [
                 {
-                    "id": "daily_traffic",
-                    "period_minutes": 1440,
-                    "period_label": "Daily Traffic",
+                    "id": "traffic_report",
+                    "output_dir": "reports",
                     "photos": True,
                 }
             ],
-            "notifications": {
-                "enabled": True,
-                "email": {
-                    "enabled": True,
-                    "smtp_server": "smtp.test.com",
-                    "smtp_port": 587,
-                    "username": "test",
-                    "password": "test",
-                    "from_address": "test@test.com",
-                    "to_addresses": ["test@test.com"],
-                },
-            },
         }
 
-    def test_email_digest_implies_json_log(self):
-        """Test that email_digest action implies json_log."""
-        config = self.get_digest_config()
+    def test_pdf_report_implies_json_log(self):
+        """Test that pdf_report action implies json_log."""
+        config = self.get_report_config()
         plan = build_plan(config)
 
         event = plan.events[0]
-        # email_digest should imply json_log
-        self.assertIn("json_log (required by email_digest)", event.implied_actions)
+        # pdf_report should imply json_log
+        self.assertIn("json_log (required by pdf_report)", event.implied_actions)
 
-    def test_photo_digest_implies_frame_capture(self):
-        """Test that digest with photos implies frame_capture."""
-        config = self.get_digest_config()
+    def test_photo_report_implies_frame_capture(self):
+        """Test that report with photos implies frame_capture."""
+        config = self.get_report_config()
         plan = build_plan(config)
 
         event = plan.events[0]
@@ -292,26 +279,11 @@ class TestNighttimeCarZones(unittest.TestCase):
                     "x2_pct": 100,
                     "y2_pct": 100,
                     "pdf_report": "traffic_report",
-                    "email_immediate": True,
-                    "email_digest": "daily_digest",
                 }
             ],
             "pdf_reports": [
-                {"id": "traffic_report", "output_dir": "reports", "events": []}
+                {"id": "traffic_report", "output_dir": "reports", "events": [], "photos": True}
             ],
-            "digests": [{"id": "daily_digest", "period_minutes": 1440, "events": []}],
-            "notifications": {
-                "enabled": True,
-                "email": {
-                    "enabled": True,
-                    "smtp_server": "smtp.test.com",
-                    "smtp_port": 587,
-                    "username": "test",
-                    "password": "test",
-                    "from_address": "test@test.com",
-                    "to_addresses": ["test@test.com"],
-                },
-            },
         }
 
     def test_nighttime_car_zones_in_geometry(self):
@@ -328,10 +300,8 @@ class TestNighttimeCarZones(unittest.TestCase):
         plan = build_plan(config)
 
         self.assertIn("json_writer", plan.consumers)
-        self.assertIn("email_notifier", plan.consumers)
-        self.assertIn("email_digest", plan.consumers)
         self.assertIn("pdf_report", plan.consumers)
-        self.assertIn("frame_capture", plan.consumers)  # Always captured for reports
+        self.assertIn("frame_capture", plan.consumers)  # Always captured for reports with photos
 
 
 class TestLoadConfigWithEnv(unittest.TestCase):
