@@ -416,7 +416,7 @@ def simulate_dry_run(
                         pdf_report_counts.get(report_id, 0) + 1
                     )
                     print(
-                        f"         {Colors.GRAY}-> Include in PDF: {report_id}{Colors.RESET}"
+                        f"         {Colors.GRAY}-> Include in report: {report_id}{Colors.RESET}"
                     )
                 elif "frame_capture" in consumer:
                     actions_taken["frame_capture"] += 1
@@ -439,13 +439,13 @@ def simulate_dry_run(
     print(f"\n{Colors.CYAN}Actions that would be taken:{Colors.RESET}")
     print(f"  JSON log writes: {actions_taken['json_log']}")
     print(f"  Commands executed: {actions_taken['command']}")
-    print(f"  PDF report queue adds: {actions_taken['pdf_report']}")
+    print(f"  Report queue adds: {actions_taken['pdf_report']}")
     print(f"  Frame captures: {actions_taken['frame_capture']}")
 
     if pdf_report_counts:
         pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
         print(
-            f"\n{Colors.CYAN}PDF report contents (what would be generated):{Colors.RESET}"
+            f"\n{Colors.CYAN}Report contents (what would be generated):{Colors.RESET}"
         )
         for report_id, count in pdf_report_counts.items():
             report = pdf_reports.get(report_id, {})

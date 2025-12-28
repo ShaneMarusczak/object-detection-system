@@ -306,7 +306,7 @@ class ConfigBuilder:
             ("lines", "Lines"),
             ("zones", "Zones"),
             ("events", "Events"),
-            ("pdf_reports", "PDF Reports"),
+            ("pdf_reports", "Reports"),
             ("output", "Output"),
         ]
 
@@ -1230,8 +1230,8 @@ class ConfigBuilder:
             # Actions - outcome based selection
             print("  Actions:")
             print("    1. Run command/script")
-            print("    2. PDF with photos")
-            print("    3. PDF stats only")
+            print("    2. Report with photos")
+            print("    3. Report stats only")
             print("    4. JSON log only")
             action_input = input("  Choose (e.g. 1,2) [1]: ").strip() or "1"
 
@@ -1289,10 +1289,10 @@ class ConfigBuilder:
                             f"    {Colors.RED}SHUTDOWN enabled - detector will stop after this event{Colors.RESET}"
                         )
 
-            # Configure PDF report
+            # Configure report
             if want_pdf_photos or want_pdf_only:
                 report_id = (
-                    input("    PDF report ID [traffic_report]: ").strip()
+                    input("    Report ID [traffic_report]: ").strip()
                     or "traffic_report"
                 )
                 actions["pdf_report"] = report_id
@@ -1320,7 +1320,7 @@ class ConfigBuilder:
             self.config["events"] = events
 
     def _setup_pdf_reports(self):
-        """Setup PDF report configurations."""
+        """Setup report configurations (generates HTML)."""
         events = self.config.get("events", [])
 
         # Collect unique report IDs from events
@@ -1333,7 +1333,7 @@ class ConfigBuilder:
         if not report_ids:
             return
 
-        print(f"\n{Colors.BOLD}--- PDF Reports Setup ---{Colors.RESET}")
+        print(f"\n{Colors.BOLD}--- Reports Setup ---{Colors.RESET}")
 
         pdf_reports = []
         for report_id in report_ids:

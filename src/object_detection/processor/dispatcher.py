@@ -101,7 +101,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             consumers.append(frame_process)
             logger.info("Started FrameCapture consumer")
 
-        # PDF Report config - generates synchronously at shutdown
+        # Report config - generates HTML synchronously at shutdown
         if "pdf_report" in needed_actions:
             pdf_report_list = config.get("pdf_reports", [])
             if pdf_report_list:

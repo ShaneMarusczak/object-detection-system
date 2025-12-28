@@ -426,9 +426,9 @@ def shutdown_processes(
     queue.put(None)
 
     # Wait for analyzer to finish processing remaining events and generate reports
-    # No timeout - PDF report generation can take significant time for large reports
+    # No timeout - report generation can take significant time for large reports
     if analyzer.is_alive():
-        logger.info("Waiting for analyzer to complete (PDF reports may take time)...")
+        logger.info("Waiting for analyzer to complete (reports may take time)...")
         analyzer.join()
         logger.info("Analyzer completed")
 
