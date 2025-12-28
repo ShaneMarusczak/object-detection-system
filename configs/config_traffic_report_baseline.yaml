@@ -1,0 +1,43 @@
+camera:
+  url: http://192.168.86.33:4747/video
+detection:
+  model_file: yolo11n.pt
+  confidence_threshold: 0.3
+lines:
+- type: vertical
+  position_pct: 25
+  description: signal
+events:
+- name: traffic_passing
+  match:
+    event_type: LINE_CROSS
+    line: signal
+    object_class:
+    - car
+    - truck
+    - bus
+    - motorcycle
+  actions:
+    pdf_report: traffic_report
+    frame_capture:
+      max_photos: 100
+      expected_duration_seconds: 1800
+pdf_reports:
+- id: traffic_report
+  title: Traffic Report
+  output_dir: reports
+  events:
+  - traffic_passing
+  photos: true
+  annotate: true
+output:
+  json_dir: data
+frame_storage:
+  type: local
+  local_dir: frames
+console_output:
+  enabled: true
+  level: detailed
+runtime:
+  queue_size: 500
+  default_duration_hours: 0.5
