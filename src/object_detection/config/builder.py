@@ -1250,10 +1250,10 @@ class ConfigBuilder:
             # Command action
             if want_command:
                 enabled.append("command")
-            # PDF with photos (implies json)
+            # Report with photos (implies json)
             if want_pdf_photos:
                 enabled.extend(["pdf_report", "frame_capture", "json_log"])
-            # PDF only (implies json)
+            # Report only (implies json)
             if want_pdf_only:
                 if "pdf_report" not in enabled:
                     enabled.append("pdf_report")
@@ -1301,7 +1301,7 @@ class ConfigBuilder:
                 max_photos_str = input("    Max photos [100]: ").strip() or "100"
                 actions["frame_capture"] = {"max_photos": int(max_photos_str)}
 
-            # JSON is implicit for PDF, explicit for json-only
+            # JSON is implicit for reports, explicit for json-only
             if want_pdf_photos or want_pdf_only or want_json_only:
                 actions["json_log"] = True
 
