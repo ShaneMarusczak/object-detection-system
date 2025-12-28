@@ -106,7 +106,7 @@ def prepare_runtime_config(
             logger.warning("No events defined - nothing will be tracked!")
             config["detection"]["track_classes"] = []
 
-    # Resolve all implied actions (e.g., pdf_report → json_log)
+    # Resolve all implied actions (e.g., report → json_log)
     _resolve_implied_actions(config)
 
     # Always enable temp_frames - consumers are always available
@@ -120,28 +120,28 @@ def _resolve_implied_actions(config: dict) -> None:
     Resolve all implied actions and modify event configs in place.
 
     This applies the cascading rules:
-    - pdf_report with photos=true → frame_capture enabled
-    - pdf_report with annotate=true → frame_capture.annotate=true
-    - pdf_report → json_log=true
+    - report with photos=true → frame_capture enabled
+    - report with annotate=true → frame_capture.annotate=true
+    - report → json_log=true
     """
     events = config.get("events", [])
-    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+    reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
 
     for event in events:
         actions = event.get("actions", {})
 
-        # --- Handle pdf_report implied actions ---
-        pdf_report_id = actions.get("pdf_report")
-        if pdf_report_id:
-            # pdf_report always requires json_log
+        # --- Handle report implied actions ---
+        report_id = actions.get("report")
+        if report_id:
+            # report always requires json_log
             if not actions.get("json_log"):
                 actions["json_log"] = True
                 logger.debug(
-                    f"Auto-enabled json_log for '{event.get('name')}' (required by pdf_report)"
+                    f"Auto-enabled json_log for '{event.get('name')}' (required by report)"
                 )
 
             # Check if report wants photos
-            report = pdf_reports.get(pdf_report_id, {})
+            report = reports.get(report_id, {})
             if report.get("photos"):
                 if not actions.get("frame_capture"):
                     # Auto-enable frame_capture with annotate from report
@@ -160,7 +160,7 @@ def _resolve_implied_actions(config: dict) -> None:
                     # Merge annotate flag into existing frame_capture
                     actions["frame_capture"]["annotate"] = True
                     logger.debug(
-                        f"Auto-enabled annotate for '{event.get('name')}' (from pdf_report)"
+                        f"Auto-enabled annotate for '{event.get('name')}' (from report)"
                     )
 
         # --- Normalize frame_capture config ---

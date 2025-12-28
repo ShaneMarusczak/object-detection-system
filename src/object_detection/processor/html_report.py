@@ -123,11 +123,10 @@ def generate_html_reports(json_dir: str, config: dict, start_time: datetime) -> 
 
     Args:
         json_dir: Directory containing JSON log files
-        config: Consumer configuration with 'pdf_reports' list (generates HTML)
+        config: Consumer configuration with 'reports' list
         start_time: When the run started (for filtering events)
     """
-    # Config key is still 'pdf_reports' for backward compatibility
-    report_configs = config.get("pdf_reports", [])
+    report_configs = config.get("reports", [])
 
     if not report_configs:
         return

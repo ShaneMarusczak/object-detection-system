@@ -108,7 +108,7 @@ class ConfigBuilder:
             self.current_step = 4
             self._print_progress()
             self._setup_events()
-            self._setup_pdf_reports()
+            self._setup_reports()
 
             # Step 5: Output
             self.current_step = 5
@@ -248,8 +248,8 @@ class ConfigBuilder:
                 return "none"
             return f"{len(events)} defined"
 
-        elif section == "pdf_reports":
-            reports = self.config.get("pdf_reports", [])
+        elif section == "reports":
+            reports = self.config.get("reports", [])
             if not reports:
                 return "disabled"
             ids = [r.get("id", "?") for r in reports]
@@ -306,7 +306,7 @@ class ConfigBuilder:
             ("lines", "Lines"),
             ("zones", "Zones"),
             ("events", "Events"),
-            ("pdf_reports", "Reports"),
+            ("reports", "Reports"),
             ("output", "Output"),
         ]
 
@@ -380,8 +380,8 @@ class ConfigBuilder:
             self._edit_zones()
         elif section == "events":
             self._edit_events()
-        elif section == "pdf_reports":
-            self._setup_pdf_reports()
+        elif section == "reports":
+            self._setup_reports()
         elif section == "output":
             self._setup_output()
 
@@ -1252,11 +1252,11 @@ class ConfigBuilder:
                 enabled.append("command")
             # Report with photos (implies json)
             if want_pdf_photos:
-                enabled.extend(["pdf_report", "frame_capture", "json_log"])
+                enabled.extend(["report", "frame_capture", "json_log"])
             # Report only (implies json)
             if want_pdf_only:
-                if "pdf_report" not in enabled:
-                    enabled.append("pdf_report")
+                if "report" not in enabled:
+                    enabled.append("report")
                 if "json_log" not in enabled:
                     enabled.append("json_log")
             # JSON only
@@ -1295,7 +1295,7 @@ class ConfigBuilder:
                     input("    Report ID [traffic_report]: ").strip()
                     or "traffic_report"
                 )
-                actions["pdf_report"] = report_id
+                actions["report"] = report_id
 
             if want_pdf_photos:
                 max_photos_str = input("    Max photos [100]: ").strip() or "100"
@@ -1319,14 +1319,14 @@ class ConfigBuilder:
         if events:
             self.config["events"] = events
 
-    def _setup_pdf_reports(self):
+    def _setup_reports(self):
         """Setup report configurations (generates HTML)."""
         events = self.config.get("events", [])
 
         # Collect unique report IDs from events
         report_ids = set()
         for event in events:
-            report_id = event.get("actions", {}).get("pdf_report")
+            report_id = event.get("actions", {}).get("report")
             if report_id:
                 report_ids.add(report_id)
 
@@ -1335,7 +1335,7 @@ class ConfigBuilder:
 
         print(f"\n{Colors.BOLD}--- Reports Setup ---{Colors.RESET}")
 
-        pdf_reports = []
+        reports = []
         for report_id in report_ids:
             print(f"\n  Report: {report_id}")
 
@@ -1343,7 +1343,7 @@ class ConfigBuilder:
             report_events = [
                 e["name"]
                 for e in events
-                if e.get("actions", {}).get("pdf_report") == report_id
+                if e.get("actions", {}).get("report") == report_id
             ]
             print(f"    Events: {', '.join(report_events)}")
 
@@ -1359,7 +1359,7 @@ class ConfigBuilder:
             has_photos = any(
                 e.get("actions", {}).get("frame_capture")
                 for e in events
-                if e.get("actions", {}).get("pdf_report") == report_id
+                if e.get("actions", {}).get("report") == report_id
             )
 
             # Ask about photos if not already enabled via frame_capture
@@ -1378,7 +1378,7 @@ class ConfigBuilder:
                 )
                 annotate = annotate_str != "n"
 
-            pdf_reports.append(
+            reports.append(
                 {
                     "id": report_id,
                     "title": title,
@@ -1389,7 +1389,7 @@ class ConfigBuilder:
                 }
             )
 
-        self.config["pdf_reports"] = pdf_reports
+        self.config["reports"] = reports
 
     def _setup_output(self):
         """Setup output directories and runtime settings."""

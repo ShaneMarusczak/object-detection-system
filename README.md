@@ -88,7 +88,7 @@ events:
       object_class: [car, truck]
     actions:
       json_log: true
-      pdf_report: "traffic_report"
+      report: "traffic_report"
 
   # Raw detection: Fire on every detection (no tracking)
   - name: "print_failure"
@@ -109,9 +109,9 @@ events:
         score_threshold: 85
     actions:
       json_log: true
-      pdf_report: "traffic_report"
+      report: "traffic_report"
 
-pdf_reports:
+reports:
   - id: "traffic_report"
     title: "Traffic Report"
     photos: true

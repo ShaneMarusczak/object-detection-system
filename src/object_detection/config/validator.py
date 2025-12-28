@@ -379,7 +379,7 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
     """Derive which consumers will be active (for validation display only)."""
     consumers = set()
     events = config.get("events", [])
-    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+    reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
 
     for event in events:
         actions = event.get("actions", {})
@@ -390,10 +390,10 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
         if actions.get("command"):
             consumers.add("command_runner")
 
-        pdf_report_id = actions.get("pdf_report")
-        if pdf_report_id:
-            consumers.add("pdf_report")
-            if pdf_reports.get(pdf_report_id, {}).get("photos"):
+        report_id = actions.get("report")
+        if report_id:
+            consumers.add("report")
+            if reports.get(report_id, {}).get("photos"):
                 consumers.add("frame_capture")
 
         if actions.get("frame_capture"):

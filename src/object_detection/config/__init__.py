@@ -40,7 +40,7 @@ from .schemas import (
     DetectionConfig,
     EventConfig,
     LineConfig,
-    PDFReportConfig,
+    ReportConfig,
     ZoneConfig,
     validate_config_pydantic,
 )
@@ -59,7 +59,7 @@ __all__ = [
     "EventConfig",
     "EventPlan",
     "LineConfig",
-    "PDFReportConfig",
+    "ReportConfig",
     "ValidationResult",
     "ZoneConfig",
     # Planning

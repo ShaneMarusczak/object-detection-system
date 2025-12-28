@@ -168,7 +168,7 @@ class EventActions(BaseModel):
 
     json_log: bool | None = None
     command: CommandAction | None = None
-    pdf_report: str | None = None
+    report: str | None = None
     frame_capture: bool | FrameCaptureAction | None = None
     shutdown: bool = Field(
         default=False, description="Stop detector after this event triggers"
@@ -189,7 +189,7 @@ class FrameConfig(BaseModel):
     cooldown_seconds: int = Field(default=300, ge=0)
 
 
-class PDFReportConfig(StrictModel):
+class ReportConfig(StrictModel):
     """Report configuration. Generated as HTML on shutdown covering the entire run."""
 
     id: str = Field(..., min_length=1)
@@ -247,7 +247,7 @@ class Config(StrictModel):
     lines: list[LineConfig] = Field(default_factory=list)
     zones: list[ZoneConfig] = Field(default_factory=list)
     events: list[EventConfig] = Field(default_factory=list)
-    pdf_reports: list[PDFReportConfig] = Field(default_factory=list)
+    reports: list[ReportConfig] = Field(default_factory=list)
     output: OutputConfig = Field(default_factory=OutputConfig)
     camera: CameraConfig
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
@@ -262,7 +262,7 @@ class Config(StrictModel):
         """Validate that events reference existing lines/zones."""
         line_names = {line.description for line in self.lines}
         zone_names = {zone.description for zone in self.zones}
-        pdf_report_ids = {report.id for report in self.pdf_reports}
+        report_ids = {report.id for report in self.reports}
 
         for event in self.events:
             if event.match.line and event.match.line not in line_names:
@@ -278,12 +278,9 @@ class Config(StrictModel):
                 raise ValueError(
                     f"Event '{event.name}' with event_type NIGHTTIME_CAR must specify a zone"
                 )
-            if (
-                event.actions.pdf_report
-                and event.actions.pdf_report not in pdf_report_ids
-            ):
+            if event.actions.report and event.actions.report not in report_ids:
                 raise ValueError(
-                    f"Event '{event.name}' references non-existent pdf_report: '{event.actions.pdf_report}'"
+                    f"Event '{event.name}' references non-existent report: '{event.actions.report}'"
                 )
 
         return self

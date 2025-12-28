@@ -61,7 +61,7 @@ class EventPlan:
     actions: dict[str, Any]
     implied_actions: list[str]
     consumers: list[str]
-    pdf_report_id: str | None = None
+    report_id: str | None = None
     has_shutdown: bool = False
 
 
@@ -70,7 +70,7 @@ class ConfigPlan:
     """Complete configuration plan."""
 
     events: list[EventPlan]
-    pdf_reports: dict[str, dict]
+    reports: dict[str, dict]
     track_classes: list[tuple[int, str]]  # (id, name) pairs
     consumers: list[str]
     geometry: dict[str, list[str]]  # lines/zones descriptions
@@ -111,7 +111,7 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
         model_names: Optional mapping of class ID -> class name from loaded model
     """
     events = []
-    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+    reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
 
     # Build reverse mapping (name -> id) from model
     name_to_id: dict[str, int] = {}
@@ -126,39 +126,39 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
         # Track implied actions
         implied = []
         consumers = []
-        pdf_report_id = actions.get("pdf_report")
+        report_id = actions.get("report")
         has_shutdown = actions.get("shutdown", False)
 
-        # Apply implied action rules for pdf_report
-        if pdf_report_id:
+        # Apply implied action rules for report
+        if report_id:
             if not actions.get("json_log"):
                 actions["json_log"] = True
-                implied.append("json_log (required by pdf_report)")
+                implied.append("json_log (required by report)")
 
-            pdf_report = pdf_reports.get(pdf_report_id, {})
-            if pdf_report.get("photos"):
+            report = reports.get(report_id, {})
+            if report.get("photos"):
                 if not actions.get("frame_capture"):
                     actions["frame_capture"] = {
                         "enabled": True,
-                        "annotate": pdf_report.get("annotate", False),
+                        "annotate": report.get("annotate", False),
                     }
                     implied.append(
-                        f"frame_capture (required by {pdf_report_id} with photos=true)"
+                        f"frame_capture (required by {report_id} with photos=true)"
                     )
-                elif pdf_report.get("annotate") and isinstance(
+                elif report.get("annotate") and isinstance(
                     actions["frame_capture"], dict
                 ):
                     # Merge annotate flag into existing frame_capture
                     actions["frame_capture"]["annotate"] = True
-                    implied.append(f"annotate (from {pdf_report_id})")
+                    implied.append(f"annotate (from {report_id})")
 
         # Determine consumers/handlers
         if actions.get("json_log"):
             consumers.append("json_writer")
         if actions.get("command"):
             consumers.append("command_runner")
-        if pdf_report_id:
-            consumers.append(f"pdf_report:{pdf_report_id}")
+        if report_id:
+            consumers.append(f"report:{report_id}")
         if actions.get("frame_capture", {}).get(
             "enabled", actions.get("frame_capture") is True
         ):
@@ -171,7 +171,7 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
                 actions=actions,
                 implied_actions=implied,
                 consumers=consumers,
-                pdf_report_id=pdf_report_id,
+                report_id=report_id,
                 has_shutdown=has_shutdown,
             )
         )
@@ -220,7 +220,7 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
 
     return ConfigPlan(
         events=events,
-        pdf_reports=pdf_reports,
+        reports=reports,
         track_classes=sorted(track_classes),
         consumers=sorted(all_consumers),
         geometry=geometry,
@@ -373,10 +373,10 @@ def simulate_dry_run(
     actions_taken = {
         "json_log": 0,
         "command": 0,
-        "pdf_report": 0,
+        "report": 0,
         "frame_capture": 0,
     }
-    pdf_report_counts = {}
+    report_counts = {}
     shutdown_triggered = False
 
     for i, sample_event in enumerate(sample_events, 1):
@@ -409,11 +409,11 @@ def simulate_dry_run(
                 elif "command_runner" in consumer:
                     actions_taken["command"] += 1
                     print(f"         {Colors.GRAY}-> Run command{Colors.RESET}")
-                elif "pdf_report" in consumer:
-                    actions_taken["pdf_report"] += 1
-                    report_id = matched_event.pdf_report_id
-                    pdf_report_counts[report_id] = (
-                        pdf_report_counts.get(report_id, 0) + 1
+                elif "report" in consumer:
+                    actions_taken["report"] += 1
+                    report_id = matched_event.report_id
+                    report_counts[report_id] = (
+                        report_counts.get(report_id, 0) + 1
                     )
                     print(
                         f"         {Colors.GRAY}-> Include in report: {report_id}{Colors.RESET}"
@@ -439,16 +439,16 @@ def simulate_dry_run(
     print(f"\n{Colors.CYAN}Actions that would be taken:{Colors.RESET}")
     print(f"  JSON log writes: {actions_taken['json_log']}")
     print(f"  Commands executed: {actions_taken['command']}")
-    print(f"  Report queue adds: {actions_taken['pdf_report']}")
+    print(f"  Report queue adds: {actions_taken['report']}")
     print(f"  Frame captures: {actions_taken['frame_capture']}")
 
-    if pdf_report_counts:
-        pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+    if report_counts:
+        reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
         print(
             f"\n{Colors.CYAN}Report contents (what would be generated):{Colors.RESET}"
         )
-        for report_id, count in pdf_report_counts.items():
-            report = pdf_reports.get(report_id, {})
+        for report_id, count in report_counts.items():
+            report = reports.get(report_id, {})
             photos = " + photos" if report.get("photos") else ""
             print(f"  {report_id}: {count} event(s){photos}")
 
