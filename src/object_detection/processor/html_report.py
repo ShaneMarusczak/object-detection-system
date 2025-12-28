@@ -2,8 +2,7 @@
 HTML Report Generator
 Generates HTML reports synchronously on shutdown covering the entire run.
 
-Replaces PDF reports - no external dependencies needed.
-View in browser or print-to-PDF if needed.
+No external dependencies needed. View in browser or print if needed.
 """
 
 import base64

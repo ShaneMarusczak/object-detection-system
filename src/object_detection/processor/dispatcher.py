@@ -38,7 +38,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
     """
     try:
         # Initialize shutdown service variables
-        pdf_shutdown_config = None
+        report_shutdown_config = None
         start_time = datetime.now(timezone.utc)
 
         # Parse event definitions
@@ -105,7 +105,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         if "report" in needed_actions:
             report_list = config.get("reports", [])
             if report_list:
-                pdf_shutdown_config = {
+                report_shutdown_config = {
                     "reports": report_list,
                     "frame_service_config": {"storage": frame_storage_config},
                 }
@@ -208,9 +208,9 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         # Generate reports at shutdown (after all consumers finish)
         json_dir = config.get("output", {}).get("json_dir", "data")
 
-        if pdf_shutdown_config:
+        if report_shutdown_config:
             logger.info("Generating HTML report...")
-            generate_html_reports(json_dir, pdf_shutdown_config, start_time)
+            generate_html_reports(json_dir, report_shutdown_config, start_time)
 
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")
 

@@ -1240,8 +1240,8 @@ class ConfigBuilder:
             actions = {}
 
             want_command = "1" in choices
-            want_pdf_photos = "2" in choices
-            want_pdf_only = "3" in choices
+            want_report_photos = "2" in choices
+            want_report_only = "3" in choices
             want_json_only = "4" in choices
 
             # Build enabled list for display
@@ -1251,10 +1251,10 @@ class ConfigBuilder:
             if want_command:
                 enabled.append("command")
             # Report with photos (implies json)
-            if want_pdf_photos:
+            if want_report_photos:
                 enabled.extend(["report", "frame_capture", "json_log"])
             # Report only (implies json)
-            if want_pdf_only:
+            if want_report_only:
                 if "report" not in enabled:
                     enabled.append("report")
                 if "json_log" not in enabled:
@@ -1290,19 +1290,19 @@ class ConfigBuilder:
                         )
 
             # Configure report
-            if want_pdf_photos or want_pdf_only:
+            if want_report_photos or want_report_only:
                 report_id = (
                     input("    Report ID [traffic_report]: ").strip()
                     or "traffic_report"
                 )
                 actions["report"] = report_id
 
-            if want_pdf_photos:
+            if want_report_photos:
                 max_photos_str = input("    Max photos [100]: ").strip() or "100"
                 actions["frame_capture"] = {"max_photos": int(max_photos_str)}
 
             # JSON is implicit for reports, explicit for json-only
-            if want_pdf_photos or want_pdf_only or want_json_only:
+            if want_report_photos or want_report_only or want_json_only:
                 actions["json_log"] = True
 
             event["actions"] = actions
