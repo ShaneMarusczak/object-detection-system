@@ -11,12 +11,15 @@ NC='\033[0m'
 # Parse flags
 # -y = auto mode (skip prompts, use defaults)
 # -s = skip menu (go straight to run, for use after builder)
+# -b = background mode (run in tmux, detach immediately)
 YES_MODE=false
 SKIP_MENU=false
-while getopts "ys" opt; do
+BACKGROUND_MODE=false
+while getopts "ysb" opt; do
     case $opt in
         y) YES_MODE=true ;;
         s) SKIP_MENU=true ;;
+        b) BACKGROUND_MODE=true; YES_MODE=true ;;
     esac
 done
 shift $((OPTIND-1))
@@ -196,4 +199,23 @@ fi
 
 echo ""
 echo -e "${GREEN}=== Running ===${NC}"
-python -m object_detection $CONFIG_ARGS $RUN_ARGS
+
+if [ "$BACKGROUND_MODE" = true ]; then
+    # Run in tmux session, detached
+    SESSION_NAME="detector"
+
+    # Kill existing session if any
+    tmux kill-session -t $SESSION_NAME 2>/dev/null || true
+
+    # Start new detached session
+    tmux new-session -d -s $SESSION_NAME "python -m object_detection $CONFIG_ARGS $RUN_ARGS"
+
+    echo -e "${GREEN}Started in background (tmux session: $SESSION_NAME)${NC}"
+    echo ""
+    echo "Commands:"
+    echo "  tmux attach -t $SESSION_NAME   # view output"
+    echo "  tmux kill-session -t $SESSION_NAME   # stop"
+    echo ""
+else
+    python -m object_detection $CONFIG_ARGS $RUN_ARGS
+fi
