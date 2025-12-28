@@ -57,15 +57,18 @@ fi
 if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
     echo "What would you like to do?"
     echo "  1. Run"
-    echo "  2. Pick a config"
-    echo "  3. Build new config"
-    echo "  4. Edit a config"
+    echo "  2. Run in background (tmux)"
+    echo "  3. Pick a config"
+    echo "  4. Build new config"
+    echo "  5. Edit a config"
     read -p "Choice [1]: " ENTRY_CHOICE
 
-    if [ "$ENTRY_CHOICE" = "3" ]; then
+    if [ "$ENTRY_CHOICE" = "2" ]; then
+        BACKGROUND_MODE=true
+    elif [ "$ENTRY_CHOICE" = "4" ]; then
         python -m object_detection --build-config
         exit 0
-    elif [ "$ENTRY_CHOICE" = "4" ]; then
+    elif [ "$ENTRY_CHOICE" = "5" ]; then
         # List configs in configs/ folder for editing
         echo ""
         echo "Select config to edit:"
@@ -99,7 +102,7 @@ if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
         echo ""
         python -c "from object_detection.config import run_editor; run_editor('$SELECTED_CONFIG')"
         exit 0
-    elif [ "$ENTRY_CHOICE" = "2" ]; then
+    elif [ "$ENTRY_CHOICE" = "3" ]; then
         # List configs in configs/ folder
         echo ""
         echo "Available configs:"
@@ -112,7 +115,7 @@ if [ "$SKIP_MENU" = false ] && [ "$YES_MODE" = false ]; then
 
         if [ ${#valid_configs[@]} -eq 0 ]; then
             echo -e "  ${YELLOW}No configs found in configs/${NC}"
-            echo "  Run option 3 to build one"
+            echo "  Run option 4 to build one"
             exit 1
         fi
 
