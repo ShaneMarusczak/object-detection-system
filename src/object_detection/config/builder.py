@@ -318,11 +318,16 @@ class ConfigBuilder:
                 for w in warnings:
                     print(f"  {Colors.YELLOW}! {w}{Colors.RESET}")
 
+            # Show preview URL reminder
+            local_ip = self._get_local_ip()
+            print(f"\n{Colors.GRAY}Preview: http://{local_ip}:8000/preview.jpg{Colors.RESET}")
+
             print(f"\n{Colors.BOLD}Which section to edit?{Colors.RESET}")
             for i, (key, label) in enumerate(sections, 1):
                 summary = self._get_section_summary(key)
                 print(f"  {i}. {label} ({summary})")
 
+            print(f"  {Colors.GRAY}p. Refresh preview{Colors.RESET}")
             print(f"  {Colors.GREEN}r. Save and run{Colors.RESET}")
             print(f"  {Colors.CYAN}s. Save and exit{Colors.RESET}")
             print(f"  {Colors.YELLOW}q. Quit without saving{Colors.RESET}")
@@ -333,6 +338,14 @@ class ConfigBuilder:
                 confirm = input("Are you sure? (y/N): ").strip().lower()
                 if confirm == "y":
                     return None
+                continue
+
+            if choice == "p":
+                self._capture_annotated_preview(
+                    lines=self.config.get("lines", []),
+                    zones=self.config.get("zones", []),
+                )
+                print(f"{Colors.GREEN}Preview refreshed{Colors.RESET}")
                 continue
 
             if choice == "s":
@@ -347,6 +360,8 @@ class ConfigBuilder:
                 if 0 <= section_idx < len(sections):
                     section_key = sections[section_idx][0]
                     self._edit_section(section_key)
+                else:
+                    print(f"{Colors.RED}Invalid choice{Colors.RESET}")
             except ValueError:
                 print(f"{Colors.RED}Invalid choice{Colors.RESET}")
 
@@ -657,25 +672,31 @@ class ConfigBuilder:
 
         return True
 
-    def _scan_for_models(self, directory: str = ".") -> list[Path]:
-        """Scan a directory for .pt model files."""
-        dir_path = Path(directory)
-        if not dir_path.is_dir():
-            return []
-        return sorted(dir_path.glob("*.pt"))
+    def _scan_for_models(self, directories: list[str] | None = None) -> list[Path]:
+        """Scan directories for .pt model files."""
+        if directories is None:
+            directories = [".", "models"]
 
-    def _select_model_interactively(self, directory: str = ".") -> str | None:
+        all_models = []
+        for directory in directories:
+            dir_path = Path(directory)
+            if dir_path.is_dir():
+                all_models.extend(dir_path.glob("*.pt"))
+
+        return sorted(set(all_models))
+
+    def _select_model_interactively(self) -> str | None:
         """
-        Scan directory for .pt files and let user select one.
+        Scan for .pt files and let user select one.
 
         Returns the selected model path or None if no models found.
         """
-        models = self._scan_for_models(directory)
+        models = self._scan_for_models()
 
         if not models:
             return None
 
-        print(f"\n  {Colors.CYAN}Available models in {directory}:{Colors.RESET}")
+        print(f"\n  {Colors.CYAN}Available models:{Colors.RESET}")
         print("  " + "-" * 45)
         for i, model_path in enumerate(models, 1):
             size_mb = model_path.stat().st_size / (1024 * 1024)
@@ -718,13 +739,13 @@ class ConfigBuilder:
         """Setup detection parameters."""
         print(f"\n{Colors.BOLD}--- Detection Settings ---{Colors.RESET}")
 
-        # Model - check for .pt files in current directory
-        models_in_cwd = self._scan_for_models(".")
+        # Model - check for .pt files in current directory and models/
+        available_models = self._scan_for_models()
         default_model = "yolo11n.pt"
 
-        if models_in_cwd:
+        if available_models:
             # Show available models for selection
-            model = self._select_model_interactively(".")
+            model = self._select_model_interactively()
             if not model:
                 model = (
                     input(f"Model file [{default_model}]: ").strip() or default_model
@@ -1056,20 +1077,38 @@ class ConfigBuilder:
                 print("    Which line?")
                 for i, line in enumerate(lines, 1):
                     print(f"      {i}. {line['description']}")
-                line_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                match["line"] = lines[line_choice]["description"]
+                try:
+                    line_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                    if 0 <= line_choice < len(lines):
+                        match["line"] = lines[line_choice]["description"]
+                    else:
+                        match["line"] = lines[0]["description"]
+                except (ValueError, IndexError):
+                    match["line"] = lines[0]["description"]
             elif selected_type == "ZONE_ENTER":
                 print("    Which zone?")
                 for i, zone in enumerate(zones, 1):
                     print(f"      {i}. {zone['description']}")
-                zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                match["zone"] = zones[zone_choice]["description"]
+                try:
+                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                    if 0 <= zone_choice < len(zones):
+                        match["zone"] = zones[zone_choice]["description"]
+                    else:
+                        match["zone"] = zones[0]["description"]
+                except (ValueError, IndexError):
+                    match["zone"] = zones[0]["description"]
             elif selected_type == "ZONE_EXIT":
                 print("    Which zone?")
                 for i, zone in enumerate(zones, 1):
                     print(f"      {i}. {zone['description']}")
-                zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                match["zone"] = zones[zone_choice]["description"]
+                try:
+                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                    if 0 <= zone_choice < len(zones):
+                        match["zone"] = zones[zone_choice]["description"]
+                    else:
+                        match["zone"] = zones[0]["description"]
+                except (ValueError, IndexError):
+                    match["zone"] = zones[0]["description"]
             elif selected_type == "DETECTED":
                 is_detected_event = True
                 print(
@@ -1080,8 +1119,14 @@ class ConfigBuilder:
                 print("    Which zone to monitor for headlights?")
                 for i, zone in enumerate(zones, 1):
                     print(f"      {i}. {zone['description']}")
-                zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                match["zone"] = zones[zone_choice]["description"]
+                try:
+                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
+                    if 0 <= zone_choice < len(zones):
+                        match["zone"] = zones[zone_choice]["description"]
+                    else:
+                        match["zone"] = zones[0]["description"]
+                except (ValueError, IndexError):
+                    match["zone"] = zones[0]["description"]
 
                 # Nighttime detection parameters
                 print("    Nighttime detection settings (press Enter for defaults):")
