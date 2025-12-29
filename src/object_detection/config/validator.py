@@ -61,21 +61,16 @@ def validate_config_full(
     zone_descriptions = _validate_zones(config, result)
     line_descriptions = _validate_lines(config, result)
 
-    # Events and digests
-    digest_ids = _validate_digests(config, result)
+    # Events
     _validate_events(
         config,
         result,
         zone_descriptions,
         line_descriptions,
-        digest_ids,
         model_name_to_id,
     )
 
-    # Notifications (if events use email)
-    _validate_notifications(config, result)
-
-    # Frame storage (if events use frame_capture or photo digests)
+    # Frame storage (if events use frame_capture)
     _validate_frame_storage(config, result)
 
     # Derive track_classes from events
@@ -260,53 +255,11 @@ def _validate_lines(config: dict, result: ValidationResult) -> set[str]:
     return descriptions
 
 
-def _validate_digests(config: dict, result: ValidationResult) -> set[str]:
-    """Validate digest definitions. Returns set of digest IDs."""
-    digest_ids = set()
-    digests = config.get("digests", [])
-
-    if not isinstance(digests, list):
-        result.errors.append("'digests' must be a list")
-        return digest_ids
-
-    for i, digest in enumerate(digests):
-        digest_ref = f"digests[{i}]"
-
-        # ID
-        digest_id = digest.get("id")
-        if not digest_id or not isinstance(digest_id, str):
-            result.errors.append(f"{digest_ref}.id is required and must be a string")
-        else:
-            if digest_id in digest_ids:
-                result.errors.append(f"{digest_ref}: duplicate digest id '{digest_id}'")
-            digest_ids.add(digest_id)
-
-        # Period - either period_minutes or schedule (cron) required
-        period = digest.get("period_minutes")
-        schedule = digest.get("schedule")
-        if period is None and schedule is None:
-            result.errors.append(
-                f"{digest_ref}: either period_minutes or schedule is required"
-            )
-        elif period is not None and (
-            not isinstance(period, (int, float)) or period <= 0
-        ):
-            result.errors.append(f"{digest_ref}.period_minutes must be positive")
-
-        # Photos flag
-        photos = digest.get("photos")
-        if photos is not None and not isinstance(photos, bool):
-            result.errors.append(f"{digest_ref}.photos must be a boolean")
-
-    return digest_ids
-
-
 def _validate_events(
     config: dict,
     result: ValidationResult,
     zone_descriptions: set[str],
     line_descriptions: set[str],
-    digest_ids: set[str],
     model_name_to_id: dict[str, int] | None = None,
 ) -> None:
     """Validate event definitions."""
@@ -388,85 +341,30 @@ def _validate_events(
             result.errors.append(f"{event_ref}.actions is required")
             continue
 
-        # Validate digest reference
-        digest_ref = actions.get("email_digest")
-        if digest_ref and digest_ref not in digest_ids:
-            result.errors.append(
-                f"{event_ref}.actions.email_digest '{digest_ref}' does not exist"
-            )
-
-        # Validate email_immediate
-        email_immediate = actions.get("email_immediate")
-        if email_immediate and isinstance(email_immediate, dict):
-            cooldown = email_immediate.get("cooldown_minutes")
-            if cooldown is not None and (
-                not isinstance(cooldown, (int, float)) or cooldown < 0
+        # Validate command action
+        command = actions.get("command")
+        if command and isinstance(command, dict):
+            exec_path = command.get("exec")
+            if not exec_path:
+                result.errors.append(f"{event_ref}.actions.command.exec is required")
+            timeout = command.get("timeout_seconds")
+            if timeout is not None and (
+                not isinstance(timeout, (int, float)) or timeout <= 0
             ):
                 result.errors.append(
-                    f"{event_ref}.actions.email_immediate.cooldown_minutes must be non-negative"
+                    f"{event_ref}.actions.command.timeout_seconds must be positive"
                 )
-
-
-def _validate_notifications(config: dict, result: ValidationResult) -> None:
-    """Validate notification settings if email actions are used."""
-    events = config.get("events", [])
-
-    # Check if any event uses email
-    uses_email = False
-    for event in events:
-        actions = event.get("actions", {})
-        if actions.get("email_digest") or actions.get("email_immediate"):
-            uses_email = True
-            break
-
-    if not uses_email:
-        return
-
-    notifications = config.get("notifications", {})
-    if not notifications.get("enabled"):
-        result.errors.append(
-            "Events use email actions but notifications.enabled is false"
-        )
-        return
-
-    email = notifications.get("email", {})
-    # Email is implicitly enabled if smtp_server is configured
-    if not email.get("enabled") and not email.get("smtp_server"):
-        result.errors.append(
-            "Events use email actions but notifications.email is not configured"
-        )
-        return
-
-    # Required email fields
-    required_fields = [
-        "smtp_server",
-        "smtp_port",
-        "username",
-        "password",
-        "from_address",
-        "to_addresses",
-    ]
-    for field_name in required_fields:
-        if not email.get(field_name):
-            result.errors.append(
-                f"notifications.email.{field_name} is required for email actions"
-            )
 
 
 def _validate_frame_storage(config: dict, _result: ValidationResult) -> None:
     """Validate frame storage if frame capture is needed."""
     events = config.get("events", [])
-    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
 
     # Check if any event needs frame capture
     needs_frames = False
     for event in events:
         actions = event.get("actions", {})
         if actions.get("frame_capture"):
-            needs_frames = True
-            break
-        digest_id = actions.get("email_digest")
-        if digest_id and digests.get(digest_id, {}).get("photos"):
             needs_frames = True
             break
 
@@ -481,8 +379,7 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
     """Derive which consumers will be active (for validation display only)."""
     consumers = set()
     events = config.get("events", [])
-    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
-    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+    reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
 
     for event in events:
         actions = event.get("actions", {})
@@ -490,19 +387,13 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
         if actions.get("json_log", False):
             consumers.add("json_writer")
 
-        if actions.get("email_immediate"):
-            consumers.add("email_immediate")
+        if actions.get("command"):
+            consumers.add("command_runner")
 
-        digest_id = actions.get("email_digest")
-        if digest_id:
-            consumers.add("email_digest")
-            if digests.get(digest_id, {}).get("photos"):
-                consumers.add("frame_capture")
-
-        pdf_report_id = actions.get("pdf_report")
-        if pdf_report_id:
-            consumers.add("pdf_report")
-            if pdf_reports.get(pdf_report_id, {}).get("photos"):
+        report_id = actions.get("report")
+        if report_id:
+            consumers.add("report")
+            if reports.get(report_id, {}).get("photos"):
                 consumers.add("frame_capture")
 
         if actions.get("frame_capture"):

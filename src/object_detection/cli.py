@@ -35,6 +35,7 @@ from .config import (
 from .core import run_detection
 from .processor import dispatch_events
 from .utils import DEFAULT_QUEUE_SIZE
+from .utils.snapshot_server import start_snapshot_server
 
 logger = logging.getLogger(__name__)
 
@@ -425,9 +426,9 @@ def shutdown_processes(
     queue.put(None)
 
     # Wait for analyzer to finish processing remaining events and generate reports
-    # No timeout - PDF report generation can take significant time for large reports
+    # No timeout - report generation can take significant time for large reports
     if analyzer.is_alive():
-        logger.info("Waiting for analyzer to complete (PDF reports may take time)...")
+        logger.info("Waiting for analyzer to complete (reports may take time)...")
         analyzer.join()
         logger.info("Analyzer completed")
 
@@ -612,6 +613,11 @@ def main() -> None:
     # Print banner
     print_banner(config, duration_hours)
 
+    # Start snapshot server for on-demand camera preview
+    snapshot_url, snapshot_server = start_snapshot_server()
+    print(f"Snapshot server: {snapshot_url}")
+    print()
+
     # Setup signal handlers for graceful shutdown (SIGTERM from systemd/Docker)
     _setup_signal_handlers()
 
@@ -653,6 +659,14 @@ def main() -> None:
 
     # Graceful shutdown
     shutdown_processes(detector, analyzer, shutdown_event, config, queue)
+
+    # Stop snapshot server
+    if snapshot_server is not None:
+        snapshot_server.terminate()
+        try:
+            snapshot_server.wait(timeout=2)
+        except Exception:
+            snapshot_server.kill()
 
     # Print final status
     print_final_status(detector, analyzer, config, reason, elapsed)

@@ -6,7 +6,7 @@ In local mode, events flow via multiprocessing.Queue.
 In distributed mode, events flow via Redis Streams.
 
 All producers (detector, edge detector, nighttime zones) and consumers
-(dispatcher, json_writer, email_notifier, etc.) must adhere to this schema.
+(dispatcher, json_writer, command_runner, etc.) must adhere to this schema.
 
 Event Types:
     LINE_CROSS: Object crossed a counting line

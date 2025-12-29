@@ -16,12 +16,10 @@ from multiprocessing import Process, Queue
 
 from ..models import EventDefinition
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
-from .digest_scheduler import DigestScheduler
-from .email_digest import generate_email_digest
-from .email_immediate import ImmediateEmailHandler
+from .command_runner import run_command
 from .frame_capture import frame_capture_consumer
 from .json_writer import json_writer_consumer
-from .pdf_report import generate_pdf_reports
+from .html_report import generate_html_reports
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +38,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
     """
     try:
         # Initialize shutdown service variables
-        pdf_shutdown_config = None
+        report_shutdown_config = None
         start_time = datetime.now(timezone.utc)
 
         # Parse event definitions
@@ -60,9 +58,9 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
 
         consumers = []
         consumer_queues = {}
-        notification_config = config.get("notifications", {})
         output_config = config.get("output", {})
         frame_storage_config = config.get("frame_storage", {})
+        temp_frame_dir = config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR)
 
         # JSON Writer - start if json_log action is used
         if "json_log" in needed_actions:
@@ -82,39 +80,6 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             json_process.start()
             consumers.append(json_process)
             logger.info("Started JSONWriter consumer")
-
-        # Email Immediate - inline handler (fire-and-forget threads)
-        email_handler = None
-        if "email_immediate" in needed_actions:
-            email_handler = ImmediateEmailHandler(
-                notification_config,
-                config.get("temp_frame_dir", DEFAULT_TEMP_FRAME_DIR),
-            )
-
-        # Email Digest - scheduled and/or on shutdown
-        digest_scheduler = None
-        digest_shutdown_config = None
-        if "email_digest" in needed_actions:
-            digest_configs = config.get("digests", [])
-
-            # Start scheduler for digests with interval_hours
-            json_dir = output_config.get("json_dir", "data")
-            digest_scheduler = DigestScheduler(
-                json_dir=json_dir,
-                digest_configs=digest_configs,
-                notification_config=notification_config,
-                frame_storage_config=frame_storage_config,
-            )
-            digest_scheduler.start()
-
-            # Track digests that should run on shutdown
-            shutdown_digests = [d for d in digest_configs if d.get("on_shutdown", True)]
-            if shutdown_digests:
-                digest_shutdown_config = {
-                    "digests": shutdown_digests,
-                    "notification_config": notification_config,
-                    "frame_service_config": {"storage": frame_storage_config},
-                }
 
         # Frame Capture - start if frame_capture action is used
         if "frame_capture" in needed_actions:
@@ -136,20 +101,24 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             consumers.append(frame_process)
             logger.info("Started FrameCapture consumer")
 
-        # PDF Report config - generates synchronously at shutdown
-        if "pdf_report" in needed_actions:
-            pdf_report_list = config.get("pdf_reports", [])
-            if pdf_report_list:
-                pdf_shutdown_config = {
-                    "pdf_reports": pdf_report_list,
+        # Report config - generates HTML synchronously at shutdown
+        if "report" in needed_actions:
+            report_list = config.get("reports", [])
+            if report_list:
+                report_shutdown_config = {
+                    "reports": report_list,
                     "frame_service_config": {"storage": frame_storage_config},
                 }
 
         logger.info(f"Dispatcher initialized with {len(consumers)} consumer(s)")
+        if "command" in needed_actions:
+            logger.info("Command actions enabled")
 
         # Process and route events
         event_count = 0
         events_by_class = Counter()
+        shutdown_requested = False
+
         while True:
             raw_event = data_queue.get()
 
@@ -176,12 +145,18 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                     enriched_event["event_definition"] = event_def.name
 
                     # Route to consumers based on actions
-                    _route_event(
+                    should_shutdown = _route_event(
                         enriched_event,
                         event_def.actions,
                         consumer_queues,
-                        email_handler,
+                        temp_frame_dir,
                     )
+
+                    if should_shutdown:
+                        logger.info(
+                            f"Shutdown requested by event '{event_def.name}'"
+                        )
+                        shutdown_requested = True
 
                     # Only match first definition (events are mutually exclusive)
                     break
@@ -194,6 +169,11 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                     "line_description"
                 )
                 logger.debug(f"No match: {event_type} {obj_class} {loc}")
+
+            # Check if shutdown was requested by an action
+            if shutdown_requested:
+                logger.info("Breaking event loop due to shutdown action")
+                break
 
     except Exception as e:
         logger.error(f"Error in dispatcher: {e}", exc_info=True)
@@ -214,10 +194,6 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             logger.info(f"  {class_summary}")
         logger.info("=" * 50)
 
-        # Stop digest scheduler first (uses threading.Event, exits cleanly)
-        if digest_scheduler:
-            digest_scheduler.stop()
-
         # Shutdown all consumers
         logger.info("Shutting down consumers...")
         for queue_name, queue in consumer_queues.items():
@@ -232,13 +208,9 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         # Generate reports at shutdown (after all consumers finish)
         json_dir = config.get("output", {}).get("json_dir", "data")
 
-        if pdf_shutdown_config:
-            logger.info("Generating PDF report...")
-            generate_pdf_reports(json_dir, pdf_shutdown_config, start_time)
-
-        if digest_shutdown_config:
-            logger.info("Sending shutdown email digest...")
-            generate_email_digest(json_dir, digest_shutdown_config, start_time)
+        if report_shutdown_config:
+            logger.info("Generating HTML report...")
+            generate_html_reports(json_dir, report_shutdown_config, start_time)
 
         logger.info(f"Dispatcher shutdown complete ({event_count} events processed)")
 
@@ -295,25 +267,31 @@ def _route_event(
     event: dict,
     actions: dict,
     consumer_queues: dict[str, Queue],
-    email_handler: ImmediateEmailHandler | None = None,
-):
-    """Route event to appropriate consumers based on action configuration."""
+    temp_frame_dir: str | None = None,
+) -> bool:
+    """
+    Route event to appropriate consumers based on action configuration.
 
+    Args:
+        event: Enriched event dict
+        actions: Action configuration from event definition
+        consumer_queues: Dict of consumer name -> queue
+        temp_frame_dir: Directory for temp frames (passed to command runner)
+
+    Returns:
+        True if shutdown was requested, False otherwise
+    """
     # JSON logging
     if actions.get("json_log", False):
         if "json_log" in consumer_queues:
             consumer_queues["json_log"].put(event)
 
-    # Immediate email - fire and forget via handler
-    email_immediate = actions.get("email_immediate")
-    if email_immediate and email_immediate.get("enabled", False):
-        if email_handler:
-            # Tag event with email config and send
-            event["_email_immediate_config"] = email_immediate
-            email_handler.handle_event(event)
-
-    # Email digest - event logged to JSON, digest generated at shutdown
-    # No action needed here - digest reads from JSON logs at shutdown
+    # Command execution
+    command_config = actions.get("command")
+    if command_config:
+        success, error = run_command(command_config, event, temp_frame_dir)
+        if not success:
+            logger.warning(f"Command action failed: {error}")
 
     # Frame capture
     frame_capture = actions.get("frame_capture")
@@ -322,6 +300,9 @@ def _route_event(
             # Tag event with frame config
             event["_frame_capture_config"] = frame_capture
             consumer_queues["frame_capture"].put(event)
+
+    # Return shutdown flag
+    return actions.get("shutdown", False)
 
 
 def _build_zone_lookup(config: dict) -> dict[str, dict]:

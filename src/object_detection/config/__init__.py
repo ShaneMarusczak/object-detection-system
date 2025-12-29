@@ -38,10 +38,9 @@ from .schemas import (
     Config,
     # Sub-schemas for type hints
     DetectionConfig,
-    DigestConfig,
     EventConfig,
     LineConfig,
-    PDFReportConfig,
+    ReportConfig,
     ZoneConfig,
     validate_config_pydantic,
 )
@@ -57,11 +56,10 @@ __all__ = [
     # Exception
     "ConfigValidationError",
     "DetectionConfig",
-    "DigestConfig",
     "EventConfig",
     "EventPlan",
     "LineConfig",
-    "PDFReportConfig",
+    "ReportConfig",
     "ValidationResult",
     "ZoneConfig",
     # Planning

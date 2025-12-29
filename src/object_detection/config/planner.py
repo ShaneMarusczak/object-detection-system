@@ -61,8 +61,8 @@ class EventPlan:
     actions: dict[str, Any]
     implied_actions: list[str]
     consumers: list[str]
-    digest_id: str | None = None
-    pdf_report_id: str | None = None
+    report_id: str | None = None
+    has_shutdown: bool = False
 
 
 @dataclass
@@ -70,8 +70,7 @@ class ConfigPlan:
     """Complete configuration plan."""
 
     events: list[EventPlan]
-    digests: dict[str, dict]
-    pdf_reports: dict[str, dict]
+    reports: dict[str, dict]
     track_classes: list[tuple[int, str]]  # (id, name) pairs
     consumers: list[str]
     geometry: dict[str, list[str]]  # lines/zones descriptions
@@ -112,8 +111,7 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
         model_names: Optional mapping of class ID -> class name from loaded model
     """
     events = []
-    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
-    pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+    reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
 
     # Build reverse mapping (name -> id) from model
     name_to_id: dict[str, int] = {}
@@ -128,54 +126,39 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
         # Track implied actions
         implied = []
         consumers = []
-        digest_id = actions.get("email_digest")
-        pdf_report_id = actions.get("pdf_report")
+        report_id = actions.get("report")
+        has_shutdown = actions.get("shutdown", False)
 
-        # Apply implied action rules for email_digest
-        if digest_id:
+        # Apply implied action rules for report
+        if report_id:
             if not actions.get("json_log"):
                 actions["json_log"] = True
-                implied.append("json_log (required by email_digest)")
+                implied.append("json_log (required by report)")
 
-            digest = digests.get(digest_id, {})
-            if digest.get("photos") and not actions.get("frame_capture"):
-                actions["frame_capture"] = {"enabled": True}
-                implied.append(
-                    f"frame_capture (required by {digest_id} with photos=true)"
-                )
-
-        # Apply implied action rules for pdf_report
-        if pdf_report_id:
-            if not actions.get("json_log"):
-                actions["json_log"] = True
-                implied.append("json_log (required by pdf_report)")
-
-            pdf_report = pdf_reports.get(pdf_report_id, {})
-            if pdf_report.get("photos"):
+            report = reports.get(report_id, {})
+            if report.get("photos"):
                 if not actions.get("frame_capture"):
                     actions["frame_capture"] = {
                         "enabled": True,
-                        "annotate": pdf_report.get("annotate", False),
+                        "annotate": report.get("annotate", False),
                     }
                     implied.append(
-                        f"frame_capture (required by {pdf_report_id} with photos=true)"
+                        f"frame_capture (required by {report_id} with photos=true)"
                     )
-                elif pdf_report.get("annotate") and isinstance(
+                elif report.get("annotate") and isinstance(
                     actions["frame_capture"], dict
                 ):
                     # Merge annotate flag into existing frame_capture
                     actions["frame_capture"]["annotate"] = True
-                    implied.append(f"annotate (from {pdf_report_id})")
+                    implied.append(f"annotate (from {report_id})")
 
         # Determine consumers/handlers
         if actions.get("json_log"):
             consumers.append("json_writer")
-        if actions.get("email_immediate", {}).get("enabled"):
-            consumers.append("email_immediate")
-        if digest_id:
-            consumers.append(f"email_digest:{digest_id}")
-        if pdf_report_id:
-            consumers.append(f"pdf_report:{pdf_report_id}")
+        if actions.get("command"):
+            consumers.append("command_runner")
+        if report_id:
+            consumers.append(f"report:{report_id}")
         if actions.get("frame_capture", {}).get(
             "enabled", actions.get("frame_capture") is True
         ):
@@ -188,8 +171,8 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
                 actions=actions,
                 implied_actions=implied,
                 consumers=consumers,
-                digest_id=digest_id,
-                pdf_report_id=pdf_report_id,
+                report_id=report_id,
+                has_shutdown=has_shutdown,
             )
         )
 
@@ -237,8 +220,7 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
 
     return ConfigPlan(
         events=events,
-        digests=digests,
-        pdf_reports=pdf_reports,
+        reports=reports,
         track_classes=sorted(track_classes),
         consumers=sorted(all_consumers),
         geometry=geometry,
@@ -357,28 +339,9 @@ def print_plan(plan: ConfigPlan) -> None:
             for implied in event.implied_actions:
                 print(f"      {Colors.YELLOW}+{Colors.RESET} {implied}")
 
-    # Digest schedule
-    if plan.digests:
-        print(f"\n{Colors.CYAN}Digest Schedule:{Colors.RESET}")
-        for digest_id, digest in plan.digests.items():
-            period = digest.get("period_minutes", 0)
-            schedule = digest.get("schedule")
-            label = digest.get("period_label", digest_id)
-            photos = "with photos" if digest.get("photos") else "counts only"
-
-            if schedule:
-                period_str = f"cron: {schedule}"
-            elif period >= 1440:
-                period_str = f"{period // 1440} day(s)"
-            elif period >= 60:
-                period_str = f"{period // 60} hour(s)"
-            else:
-                period_str = f"{period} minute(s)"
-
-            print(
-                f"  {Colors.BOLD}{digest_id}{Colors.RESET}: every {period_str} ({photos})"
-            )
-            print(f'    Label: "{label}"')
+        # Shutdown flag
+        if event.has_shutdown:
+            print(f"    {Colors.RED}SHUTDOWN: Detector stops after this event{Colors.RESET}")
 
     # Consumer summary
     print(f"\n{Colors.CYAN}Active Consumers:{Colors.RESET}")
@@ -401,9 +364,6 @@ def simulate_dry_run(
 
     plan = build_plan(config, model_names)
 
-    # Build lookup tables
-    digests = {d["id"]: d for d in config.get("digests", []) if d.get("id")}
-
     print(
         f"\n{Colors.CYAN}Processing {len(sample_events)} sample event(s):{Colors.RESET}\n"
     )
@@ -412,13 +372,12 @@ def simulate_dry_run(
     unmatched_count = 0
     actions_taken = {
         "json_log": 0,
-        "email_immediate": 0,
-        "email_digest": 0,
-        "pdf_report": 0,
+        "command": 0,
+        "report": 0,
         "frame_capture": 0,
     }
-    digest_counts = {}
-    pdf_report_counts = {}
+    report_counts = {}
+    shutdown_triggered = False
 
     for i, sample_event in enumerate(sample_events, 1):
         event_type = sample_event.get("event_type", "UNKNOWN")
@@ -447,30 +406,26 @@ def simulate_dry_run(
                 if "json_writer" in consumer:
                     actions_taken["json_log"] += 1
                     print(f"         {Colors.GRAY}-> Write to JSON log{Colors.RESET}")
-                elif "email_immediate" in consumer:
-                    actions_taken["email_immediate"] += 1
-                    print(
-                        f"         {Colors.GRAY}-> Send immediate email{Colors.RESET}"
-                    )
-                elif "email_digest" in consumer:
-                    actions_taken["email_digest"] += 1
-                    digest_id = matched_event.digest_id
-                    digest_counts[digest_id] = digest_counts.get(digest_id, 0) + 1
-                    print(
-                        f"         {Colors.GRAY}-> Include in digest: {digest_id}{Colors.RESET}"
-                    )
-                elif "pdf_report" in consumer:
-                    actions_taken["pdf_report"] += 1
-                    report_id = matched_event.pdf_report_id
-                    pdf_report_counts[report_id] = (
-                        pdf_report_counts.get(report_id, 0) + 1
+                elif "command_runner" in consumer:
+                    actions_taken["command"] += 1
+                    print(f"         {Colors.GRAY}-> Run command{Colors.RESET}")
+                elif "report" in consumer:
+                    actions_taken["report"] += 1
+                    report_id = matched_event.report_id
+                    report_counts[report_id] = (
+                        report_counts.get(report_id, 0) + 1
                     )
                     print(
-                        f"         {Colors.GRAY}-> Include in PDF: {report_id}{Colors.RESET}"
+                        f"         {Colors.GRAY}-> Include in report: {report_id}{Colors.RESET}"
                     )
                 elif "frame_capture" in consumer:
                     actions_taken["frame_capture"] += 1
                     print(f"         {Colors.GRAY}-> Capture frame{Colors.RESET}")
+
+            # Check for shutdown
+            if matched_event.has_shutdown:
+                shutdown_triggered = True
+                print(f"         {Colors.RED}-> SHUTDOWN triggered{Colors.RESET}")
         else:
             unmatched_count += 1
             print(f"      {Colors.YELLOW}-> No match (discarded){Colors.RESET}")
@@ -483,27 +438,22 @@ def simulate_dry_run(
 
     print(f"\n{Colors.CYAN}Actions that would be taken:{Colors.RESET}")
     print(f"  JSON log writes: {actions_taken['json_log']}")
-    print(f"  Immediate emails: {actions_taken['email_immediate']}")
-    print(f"  Digest queue adds: {actions_taken['email_digest']}")
-    print(f"  PDF report queue adds: {actions_taken['pdf_report']}")
+    print(f"  Commands executed: {actions_taken['command']}")
+    print(f"  Report queue adds: {actions_taken['report']}")
     print(f"  Frame captures: {actions_taken['frame_capture']}")
 
-    if digest_counts:
-        print(f"\n{Colors.CYAN}Digest contents (what would be sent):{Colors.RESET}")
-        for digest_id, count in digest_counts.items():
-            digest = digests.get(digest_id, {})
-            photos = " + photos" if digest.get("photos") else ""
-            print(f"  {digest_id}: {count} event(s){photos}")
-
-    if pdf_report_counts:
-        pdf_reports = {r["id"]: r for r in config.get("pdf_reports", []) if r.get("id")}
+    if report_counts:
+        reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
         print(
-            f"\n{Colors.CYAN}PDF report contents (what would be generated):{Colors.RESET}"
+            f"\n{Colors.CYAN}Report contents (what would be generated):{Colors.RESET}"
         )
-        for report_id, count in pdf_report_counts.items():
-            report = pdf_reports.get(report_id, {})
+        for report_id, count in report_counts.items():
+            report = reports.get(report_id, {})
             photos = " + photos" if report.get("photos") else ""
             print(f"  {report_id}: {count} event(s){photos}")
+
+    if shutdown_triggered:
+        print(f"\n{Colors.RED}SHUTDOWN would be triggered - detector would stop{Colors.RESET}")
 
     print()
 

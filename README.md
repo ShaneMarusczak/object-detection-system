@@ -8,8 +8,8 @@ GPU-accelerated object detection for tracking movement across lines and through 
 - **Pluggable emitters**: Each event type (LINE_CROSS, ZONE_ENTER, DETECTED, etc.) is handled by a dedicated emitter
 - **DETECTED event**: Raw detection → event for maximum sensitivity (no tracking required)
 - **Nighttime detection**: Headlight/taillight blob scoring when YOLO can't see
-- **PDF reports**: Generated on shutdown with event summaries and photos
-- **Email digests**: Periodic summaries with optional frame captures
+- **HTML reports**: Generated on shutdown with event summaries and photos
+- **Command actions**: Run shell scripts on events (webhooks, notifications, etc.)
 - **Terraform workflow**: `--validate`, `--plan`, `--dry-run` before running
 - **42+ FPS** on Jetson Orin Nano
 
@@ -39,7 +39,7 @@ python -m object_detection --build-config
 
 Features:
 - Connects to camera and serves preview frames via HTTP (for visual feedback)
-- Guides through lines, zones, events, reports, and email setup
+- Guides through lines, zones, events, and report setup
 - Validates inputs (zone bounds, model classes)
 - Saves to `configs/` and optionally runs immediately
 
@@ -88,7 +88,7 @@ events:
       object_class: [car, truck]
     actions:
       json_log: true
-      pdf_report: "traffic_report"
+      report: "traffic_report"
 
   # Raw detection: Fire on every detection (no tracking)
   - name: "print_failure"
@@ -97,7 +97,8 @@ events:
       object_class: spaghetti
     actions:
       json_log: true
-      email_immediate: true
+      command:
+        exec: "./scripts/notify.sh"
 
   # Nighttime: Blob detection for headlights/taillights
   - name: "nighttime_car"
@@ -108,9 +109,9 @@ events:
         score_threshold: 85
     actions:
       json_log: true
-      pdf_report: "traffic_report"
+      report: "traffic_report"
 
-pdf_reports:
+reports:
   - id: "traffic_report"
     title: "Traffic Report"
     photos: true
@@ -140,15 +141,17 @@ src/object_detection/
 ├── processor/
 │   ├── dispatcher.py      # Event routing to consumers
 │   ├── json_writer.py     # JSONL logging + console output
-│   ├── pdf_report.py      # PDF generation on shutdown
-│   └── email_digest.py    # Periodic email summaries
+│   ├── html_report.py     # HTML report generation on shutdown
+│   ├── command_runner.py  # Execute shell commands on events
+│   └── frame_capture.py   # Save frames for reports
 ├── config/
 │   ├── planner.py         # validate/plan/dry-run logic
 │   ├── schemas.py         # Pydantic config validation
 │   └── builder.py         # Interactive config wizard
 └── utils/
-    ├── event_schema.py    # Event format documentation
-    └── queue_protocol.py  # Queue abstraction for distributed mode
+    ├── constants.py       # Shared constants
+    ├── snapshot_server.py # Live preview server
+    └── event_schema.py    # Event format documentation
 ```
 
 ## Output
@@ -160,7 +163,7 @@ src/object_detection/
 {"event_type":"NIGHTTIME_CAR","track_id":"nc_1","zone_description":"driveway","score":92,"timestamp":"2025-12-23T22:45:03Z"}
 ```
 
-**PDF**: Generated on shutdown with event tables and captured frames.
+**HTML**: Generated on shutdown with event tables and captured frames. Open in browser or print-to-PDF.
 
 **Console**:
 ```

@@ -146,14 +146,13 @@ class EventMatch(BaseModel):
     nighttime_detection: NighttimeDetectionConfig | None = None
 
 
-class EmailImmediateAction(BaseModel):
-    """Immediate email action configuration."""
+class CommandAction(BaseModel):
+    """Command execution action configuration."""
 
-    enabled: bool = True
-    cooldown_minutes: int = Field(default=30, ge=0)
-    message: str | None = None
-    subject: str | None = None
-    include_frame: bool = False
+    exec: str = Field(..., min_length=1, description="Command or script to execute")
+    timeout_seconds: int = Field(
+        default=30, ge=1, le=300, description="Command timeout in seconds"
+    )
 
 
 class FrameCaptureAction(BaseModel):
@@ -168,10 +167,12 @@ class EventActions(BaseModel):
     """Event actions configuration."""
 
     json_log: bool | None = None
-    email_immediate: bool | EmailImmediateAction | None = None
-    email_digest: str | None = None
-    pdf_report: str | None = None
+    command: CommandAction | None = None
+    report: str | None = None
     frame_capture: bool | FrameCaptureAction | None = None
+    shutdown: bool = Field(
+        default=False, description="Stop detector after this event triggers"
+    )
 
 
 class EventConfig(StrictModel):
@@ -183,32 +184,16 @@ class EventConfig(StrictModel):
 
 
 class FrameConfig(BaseModel):
-    """Frame configuration for digests."""
+    """Frame configuration for reports."""
 
     cooldown_seconds: int = Field(default=300, ge=0)
 
 
-class DigestConfig(StrictModel):
-    """Digest configuration."""
+class ReportConfig(StrictModel):
+    """Report configuration. Generated as HTML on shutdown covering the entire run."""
 
     id: str = Field(..., min_length=1)
-    period_minutes: int = Field(
-        ..., gt=0, description="Period in minutes between digest emails"
-    )
-    period_label: str = Field(default="")
-    subject: str = Field(default="", description="Email subject line")
-    events: list[str] = Field(
-        default_factory=list, description="Event definition names to include"
-    )
-    photos: bool = False
-    frame_config: FrameConfig | None = None
-
-
-class PDFReportConfig(StrictModel):
-    """PDF report configuration. Generated on shutdown covering the entire run."""
-
-    id: str = Field(..., min_length=1)
-    output_dir: str = Field(default="reports", description="Directory for PDF output")
+    output_dir: str = Field(default="reports", description="Directory for report output")
     title: str = Field(default="Object Detection Report", description="Report title")
     events: list[str] = Field(
         default_factory=list, description="Event definition names to include"
@@ -216,26 +201,6 @@ class PDFReportConfig(StrictModel):
     photos: bool = False
     annotate: bool = False  # Draw lines/zones/bboxes on photos
     frame_config: FrameConfig | None = None
-
-
-class EmailConfig(BaseModel):
-    """Email notification settings."""
-
-    enabled: bool = False
-    smtp_server: str | None = None
-    smtp_port: int | None = Field(default=587, ge=1, le=65535)
-    use_tls: bool = True
-    username: str | None = None
-    password: str | None = None
-    from_address: str | None = None
-    to_addresses: list[str] | None = None
-
-
-class NotificationsConfig(BaseModel):
-    """Notifications configuration."""
-
-    enabled: bool = False
-    email: EmailConfig = Field(default_factory=EmailConfig)
 
 
 class OutputConfig(BaseModel):
@@ -282,13 +247,11 @@ class Config(StrictModel):
     lines: list[LineConfig] = Field(default_factory=list)
     zones: list[ZoneConfig] = Field(default_factory=list)
     events: list[EventConfig] = Field(default_factory=list)
-    digests: list[DigestConfig] = Field(default_factory=list)
-    pdf_reports: list[PDFReportConfig] = Field(default_factory=list)
+    reports: list[ReportConfig] = Field(default_factory=list)
     output: OutputConfig = Field(default_factory=OutputConfig)
     camera: CameraConfig
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     console_output: ConsoleOutputConfig = Field(default_factory=ConsoleOutputConfig)
-    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     frame_storage: FrameStorageConfig = Field(default_factory=FrameStorageConfig)
     temp_frames_enabled: bool = False
     temp_frame_dir: str = DEFAULT_TEMP_FRAME_DIR
@@ -299,8 +262,7 @@ class Config(StrictModel):
         """Validate that events reference existing lines/zones."""
         line_names = {line.description for line in self.lines}
         zone_names = {zone.description for zone in self.zones}
-        digest_ids = {digest.id for digest in self.digests}
-        pdf_report_ids = {report.id for report in self.pdf_reports}
+        report_ids = {report.id for report in self.reports}
 
         for event in self.events:
             if event.match.line and event.match.line not in line_names:
@@ -316,19 +278,9 @@ class Config(StrictModel):
                 raise ValueError(
                     f"Event '{event.name}' with event_type NIGHTTIME_CAR must specify a zone"
                 )
-            if (
-                event.actions.email_digest
-                and event.actions.email_digest not in digest_ids
-            ):
+            if event.actions.report and event.actions.report not in report_ids:
                 raise ValueError(
-                    f"Event '{event.name}' references non-existent digest: '{event.actions.email_digest}'"
-                )
-            if (
-                event.actions.pdf_report
-                and event.actions.pdf_report not in pdf_report_ids
-            ):
-                raise ValueError(
-                    f"Event '{event.name}' references non-existent pdf_report: '{event.actions.pdf_report}'"
+                    f"Event '{event.name}' references non-existent report: '{event.actions.report}'"
                 )
 
         return self
