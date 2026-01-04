@@ -611,20 +611,19 @@ def _add_notifier_to_config(config: dict) -> str | None:
         ).ask()
 
         if webhook_url:
-            notifier_id = "webhook_1"
             if "notifiers" not in config:
                 config["notifiers"] = []
 
-            notifier_exists = any(
-                n.get("id") == notifier_id for n in config["notifiers"]
+            # Generate unique webhook ID
+            existing_webhooks = [
+                n for n in config["notifiers"] if n.get("type") == "webhook"
+            ]
+            notifier_id = f"webhook_{len(existing_webhooks) + 1}"
+
+            config["notifiers"].append(
+                {"id": notifier_id, "type": "webhook", "url": webhook_url}
             )
-            if not notifier_exists:
-                config["notifiers"].append(
-                    {"id": notifier_id, "type": "webhook", "url": webhook_url}
-                )
-                print(
-                    f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}"
-                )
+            print(f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}")
 
             return notifier_id
 

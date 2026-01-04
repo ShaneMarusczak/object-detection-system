@@ -126,8 +126,8 @@ def frame_capture_consumer(event_queue: Queue, config: dict) -> None:
                 if should_annotate and annotated and annotated != temp_frame:
                     try:
                         os.remove(annotated)
-                    except Exception:
-                        pass
+                    except OSError as e:
+                        logger.debug(f"Could not remove temp file {annotated}: {e}")
 
                 if saved_path:
                     logger.info(f"Captured frame for: {event.get('event_definition')}")
