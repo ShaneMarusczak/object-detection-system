@@ -19,6 +19,7 @@ from ..models import EventDefinition
 from .json_writer import json_writer_consumer
 from .frame_capture import frame_capture_consumer
 from .vlm_analyzer import vlm_analyzer_consumer
+from .direct_notifier import direct_notifier_consumer
 
 # Command execution
 from .command_runner import run_command
@@ -41,6 +42,7 @@ __all__ = [
     "json_writer_consumer",
     "frame_capture_consumer",
     "vlm_analyzer_consumer",
+    "direct_notifier_consumer",
     # Command execution
     "run_command",
     # Notifiers

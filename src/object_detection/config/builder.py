@@ -320,7 +320,9 @@ class ConfigBuilder:
 
             # Show preview URL reminder
             local_ip = self._get_local_ip()
-            print(f"\n{Colors.GRAY}Preview: http://{local_ip}:8000/preview.jpg{Colors.RESET}")
+            print(
+                f"\n{Colors.GRAY}Preview: http://{local_ip}:8000/preview.jpg{Colors.RESET}"
+            )
 
             print(f"\n{Colors.BOLD}Which section to edit?{Colors.RESET}")
             for i, (key, label) in enumerate(sections, 1):
@@ -1055,7 +1057,9 @@ class ConfigBuilder:
             if zones:
                 event_options.append(("ZONE_ENTER", "object enters a zone"))
                 event_options.append(("ZONE_EXIT", "object exits a zone"))
-                event_options.append(("NIGHTTIME_CAR", "headlight blob detection in zone"))
+                event_options.append(
+                    ("NIGHTTIME_CAR", "headlight blob detection in zone")
+                )
             event_options.append(("DETECTED", "any detection, no geometry required"))
 
             print("    Event type:")
@@ -1216,7 +1220,8 @@ class ConfigBuilder:
                             f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}"
                         )
                         class_str = (
-                            input(f"    Class [{default_class}]: ").strip() or default_class
+                            input(f"    Class [{default_class}]: ").strip()
+                            or default_class
                         )
                         if class_str in valid_classes:
                             match["object_class"] = class_str
@@ -1234,6 +1239,7 @@ class ConfigBuilder:
             print("    3. Report stats only")
             print("    4. JSON log only")
             print("    5. VLM analyze + notify")
+            print("    6. Direct notify (no VLM)")
             action_input = input("  Choose (e.g. 1,2) [1]: ").strip() or "1"
 
             # Parse choices
@@ -1245,6 +1251,7 @@ class ConfigBuilder:
             want_report_only = "3" in choices
             want_json_only = "4" in choices
             want_vlm_analyze = "5" in choices
+            want_direct_notify = "6" in choices
 
             # Build enabled list for display
             enabled = []
@@ -1268,6 +1275,12 @@ class ConfigBuilder:
             # VLM analyze
             if want_vlm_analyze:
                 enabled.append("vlm_analyze")
+                if "json_log" not in enabled:
+                    enabled.append("json_log")
+
+            # Direct notify
+            if want_direct_notify:
+                enabled.append("notify")
                 if "json_log" not in enabled:
                     enabled.append("json_log")
 
@@ -1320,11 +1333,11 @@ class ConfigBuilder:
                 )
 
                 # Analyzer setup
-                analyzer_id = (
-                    input("      Analyzer ID [orin2]: ").strip() or "orin2"
-                )
+                analyzer_id = input("      Analyzer ID [orin2]: ").strip() or "orin2"
                 analyzer_url = (
-                    input("      Analyzer URL [http://orin-nvme:8080/analyze]: ").strip()
+                    input(
+                        "      Analyzer URL [http://orin-nvme:8080/analyze]: "
+                    ).strip()
                     or "http://orin-nvme:8080/analyze"
                 )
 
@@ -1338,7 +1351,9 @@ class ConfigBuilder:
                     self.config["analyzers"].append(
                         {"id": analyzer_id, "url": analyzer_url, "timeout_seconds": 60}
                     )
-                    print(f"      {Colors.GREEN}Added analyzer: {analyzer_id}{Colors.RESET}")
+                    print(
+                        f"      {Colors.GREEN}Added analyzer: {analyzer_id}{Colors.RESET}"
+                    )
 
                 # Prompt
                 default_prompt = "Describe what you see. Be concise."
@@ -1400,6 +1415,99 @@ class ConfigBuilder:
                     "prompt": prompt,
                     "notify": notifier_ids,
                 }
+
+            # Configure direct notify (no VLM)
+            if want_direct_notify:
+                print(f"\n    {Colors.BOLD}Direct Notify Setup:{Colors.RESET}")
+                print(
+                    f"    {Colors.GRAY}Send notifications without VLM analysis{Colors.RESET}"
+                )
+
+                notify_items = []
+                while True:
+                    add_more = (
+                        "y"
+                        if not notify_items
+                        else input("      Add another notifier? (y/N): ")
+                        .strip()
+                        .lower()
+                    )
+                    if add_more != "y" and notify_items:
+                        break
+                    if add_more != "y" and not notify_items:
+                        add_more = "y"  # Force at least one
+
+                    # Notifier type
+                    print("      Notifier type:")
+                    print("        1. ntfy (push notification)")
+                    print("        2. webhook (HTTP POST)")
+                    notifier_type = input("      Choose [1]: ").strip() or "1"
+
+                    notifier_id = None
+                    if notifier_type == "1":
+                        topic = input("      ntfy topic: ").strip() or "alerts"
+                        notifier_id = f"ntfy_{topic}"
+                        if "notifiers" not in self.config:
+                            self.config["notifiers"] = []
+                        notifier_exists = any(
+                            n.get("id") == notifier_id for n in self.config["notifiers"]
+                        )
+                        if not notifier_exists:
+                            self.config["notifiers"].append(
+                                {"id": notifier_id, "type": "ntfy", "topic": topic}
+                            )
+                            print(
+                                f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}"
+                            )
+                    elif notifier_type == "2":
+                        webhook_url = input("      Webhook URL: ").strip()
+                        if webhook_url:
+                            notifier_id = "webhook_1"
+                            if "notifiers" not in self.config:
+                                self.config["notifiers"] = []
+                            notifier_exists = any(
+                                n.get("id") == notifier_id
+                                for n in self.config["notifiers"]
+                            )
+                            if not notifier_exists:
+                                self.config["notifiers"].append(
+                                    {
+                                        "id": notifier_id,
+                                        "type": "webhook",
+                                        "url": webhook_url,
+                                    }
+                                )
+                                print(
+                                    f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}"
+                                )
+
+                    if notifier_id:
+                        # Message template
+                        default_msg = (
+                            "{object_class} detected in {zone} ({confidence_pct})"
+                        )
+                        message = (
+                            input(f"      Message [{default_msg[:30]}...]: ").strip()
+                            or default_msg
+                        )
+
+                        # Include image option
+                        include_img_str = (
+                            input("      Include image? (y/N): ").strip().lower()
+                        )
+                        include_image = include_img_str == "y"
+
+                        notify_items.append(
+                            {
+                                "notifier": notifier_id,
+                                "message": message,
+                                "include_image": include_image,
+                            }
+                        )
+                        print(f"      {Colors.GREEN}Added notify action{Colors.RESET}")
+
+                if notify_items:
+                    actions["notify"] = notify_items
 
             event["actions"] = actions
             events.append(event)

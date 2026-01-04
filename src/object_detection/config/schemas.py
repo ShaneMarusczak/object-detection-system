@@ -173,6 +173,22 @@ class VLMAnalyzeAction(BaseModel):
     )
 
 
+class NotifyActionItem(BaseModel):
+    """
+    Direct notification action item.
+
+    Sends notifications directly without VLM analysis.
+    """
+
+    notifier: str = Field(..., min_length=1, description="References notifiers[].id")
+    message: str = Field(
+        ..., min_length=1, description="Message template with {variable} placeholders"
+    )
+    include_image: bool = Field(
+        default=False, description="Attach captured frame to notification"
+    )
+
+
 class EventActions(BaseModel):
     """Event actions configuration."""
 
@@ -181,6 +197,7 @@ class EventActions(BaseModel):
     report: str | None = None
     frame_capture: bool | FrameCaptureAction | None = None
     vlm_analyze: VLMAnalyzeAction | None = None
+    notify: list[NotifyActionItem] | None = None
     shutdown: bool = Field(
         default=False, description="Stop detector after this event triggers"
     )
@@ -204,7 +221,9 @@ class ReportConfig(StrictModel):
     """Report configuration. Generated as HTML on shutdown covering the entire run."""
 
     id: str = Field(..., min_length=1)
-    output_dir: str = Field(default="reports", description="Directory for report output")
+    output_dir: str = Field(
+        default="reports", description="Directory for report output"
+    )
     title: str = Field(default="Object Detection Report", description="Report title")
     events: list[str] = Field(
         default_factory=list, description="Event definition names to include"
@@ -258,9 +277,7 @@ class NotifierConfig(StrictModel):
     """
 
     id: str = Field(..., min_length=1, description="Unique notifier identifier")
-    type: Literal["ntfy", "webhook"] = Field(
-        ..., description="Notifier type"
-    )
+    type: Literal["ntfy", "webhook"] = Field(..., description="Notifier type")
     # ntfy-specific
     topic: str | None = Field(default=None, description="ntfy topic name")
     # webhook-specific
@@ -355,6 +372,13 @@ class Config(StrictModel):
                     if notify_id not in notifier_ids:
                         raise ValueError(
                             f"Event '{event.name}' references non-existent notifier: '{notify_id}'"
+                        )
+            # Validate direct notify references
+            if event.actions.notify:
+                for notify_item in event.actions.notify:
+                    if notify_item.notifier not in notifier_ids:
+                        raise ValueError(
+                            f"Event '{event.name}' references non-existent notifier: '{notify_item.notifier}'"
                         )
 
         return self

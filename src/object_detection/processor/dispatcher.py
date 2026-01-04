@@ -17,6 +17,7 @@ from multiprocessing import Process, Queue
 from ..models import EventDefinition
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .command_runner import run_command
+from .direct_notifier import direct_notifier_consumer
 from .frame_capture import frame_capture_consumer
 from .json_writer import json_writer_consumer
 from .html_report import generate_html_reports
@@ -120,6 +121,23 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             consumers.append(vlm_process)
             logger.info("Started VLMAnalyzer consumer")
 
+        # Direct Notifier - start if notify action is used
+        if "notify" in needed_actions:
+            notify_queue = Queue()
+            consumer_queues["notify"] = notify_queue
+            notify_consumer_config = {
+                "notifiers": config.get("notifiers", []),
+                "temp_frame_dir": temp_frame_dir,
+            }
+            notify_process = Process(
+                target=direct_notifier_consumer,
+                args=(notify_queue, notify_consumer_config),
+                name="DirectNotifier",
+            )
+            notify_process.start()
+            consumers.append(notify_process)
+            logger.info("Started DirectNotifier consumer")
+
         # Report config - generates HTML synchronously at shutdown
         if "report" in needed_actions:
             report_list = config.get("reports", [])
@@ -172,9 +190,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                     )
 
                     if should_shutdown:
-                        logger.info(
-                            f"Shutdown requested by event '{event_def.name}'"
-                        )
+                        logger.info(f"Shutdown requested by event '{event_def.name}'")
                         shutdown_requested = True
 
                     # Only match first definition (events are mutually exclusive)
@@ -331,6 +347,18 @@ def _route_event(
             if temp_frame_dir and "frame_id" in event:
                 event["_frame_path"] = f"{temp_frame_dir}/{event['frame_id']}.jpg"
             consumer_queues["vlm_analyze"].put(event.copy())
+
+    # Direct notify
+    notify_list = actions.get("notify")
+    if notify_list:
+        if "notify" in consumer_queues:
+            # Tag event with notify config and event name
+            event["_notify_config"] = notify_list
+            event["_event_name"] = event.get("event_definition", "detection")
+            # Set frame path from temp frame (for include_image)
+            if temp_frame_dir and "frame_id" in event:
+                event["_frame_path"] = f"{temp_frame_dir}/{event['frame_id']}.jpg"
+            consumer_queues["notify"].put(event.copy())
 
     # Return shutdown flag
     return actions.get("shutdown", False)

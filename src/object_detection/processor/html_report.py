@@ -342,57 +342,76 @@ def _generate_html(
 
         # Summary boxes
         content.append('<div class="summary">')
-        content.append(f'''<div class="summary-item">
+        content.append(f"""<div class="summary-item">
             <div class="summary-value">{stats["total_events"]}</div>
             <div class="summary-label">Total Events</div>
-        </div>''')
-        content.append(f'''<div class="summary-item">
+        </div>""")
+        content.append(f"""<div class="summary-item">
             <div class="summary-value">{len(stats.get("events_by_class", {}))}</div>
             <div class="summary-label">Object Types</div>
-        </div>''')
-        content.append(f'''<div class="summary-item">
+        </div>""")
+        content.append(f"""<div class="summary-item">
             <div class="summary-value">{duration_str}</div>
             <div class="summary-label">Duration</div>
-        </div>''')
+        </div>""")
         content.append("</div>")
 
         # Events by class table
         by_class = stats.get("events_by_class", {})
         if by_class:
             content.append("<h2>Events by Object Class</h2>")
-            content.append(_make_table(
-                ["Object Class", "Count"],
-                [(cls.capitalize(), str(cnt)) for cls, cnt in sorted(by_class.items(), key=lambda x: -x[1])]
-            ))
+            content.append(
+                _make_table(
+                    ["Object Class", "Count"],
+                    [
+                        (cls.capitalize(), str(cnt))
+                        for cls, cnt in sorted(by_class.items(), key=lambda x: -x[1])
+                    ],
+                )
+            )
 
         # Line crossings table
         by_line = stats.get("events_by_line", {})
         if by_line:
             content.append("<h2>Line Crossings</h2>")
-            content.append(_make_table(
-                ["Line", "Crossings"],
-                [(line, str(cnt)) for line, cnt in sorted(by_line.items(), key=lambda x: -x[1])]
-            ))
+            content.append(
+                _make_table(
+                    ["Line", "Crossings"],
+                    [
+                        (line, str(cnt))
+                        for line, cnt in sorted(by_line.items(), key=lambda x: -x[1])
+                    ],
+                )
+            )
 
         # Zone activity table
         by_zone = stats.get("events_by_zone", {})
         if by_zone:
             content.append("<h2>Zone Activity</h2>")
-            content.append(_make_table(
-                ["Zone", "Events"],
-                [(zone, str(cnt)) for zone, cnt in sorted(by_zone.items(), key=lambda x: -x[1])]
-            ))
+            content.append(
+                _make_table(
+                    ["Zone", "Events"],
+                    [
+                        (zone, str(cnt))
+                        for zone, cnt in sorted(by_zone.items(), key=lambda x: -x[1])
+                    ],
+                )
+            )
 
         # Event timeline
         events = stats.get("events", [])
         if events:
             num_photos = len(frame_data_map)
             content.append("<h2>Event Timeline</h2>")
-            content.append(f'<p class="subtitle">{len(events)} events, {num_photos} photos captured</p>')
+            content.append(
+                f'<p class="subtitle">{len(events)} events, {num_photos} photos captured</p>'
+            )
             content.append('<div class="timeline">')
 
             for i, event in enumerate(events, 1):
-                location = event.get("zone_description") or event.get("line_description", "detection")
+                location = event.get("zone_description") or event.get(
+                    "line_description", "detection"
+                )
                 obj_class = event.get("object_class_name", "unknown").capitalize()
                 direction = event.get("direction", "")
                 direction_str = f" {direction}" if direction else ""
@@ -412,10 +431,10 @@ def _generate_html(
                     frame_bytes = frame_data_map[event_id]
                     b64 = base64.b64encode(frame_bytes).decode("ascii")
                     caption = f"#{i} — {time_str} — {_escape(obj_class)} at {_escape(location)}{_escape(direction_str)}"
-                    content.append(f'''<div class="event-photo">
+                    content.append(f"""<div class="event-photo">
                         <div class="event-photo-caption">{caption}</div>
                         <img src="data:image/jpeg;base64,{b64}" alt="Event {i}">
-                    </div>''')
+                    </div>""")
                 else:
                     # Event without photo
                     line = f"#{i}  {time_str}  {_escape(obj_class)} at {_escape(location)}{_escape(direction_str)}"
@@ -424,10 +443,7 @@ def _generate_html(
             content.append("</div>")
 
         # Build final HTML
-        html = HTML_TEMPLATE.format(
-            title=_escape(title),
-            content="\n".join(content)
-        )
+        html = HTML_TEMPLATE.format(title=_escape(title), content="\n".join(content))
 
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(html)

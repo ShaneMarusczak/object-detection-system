@@ -74,6 +74,7 @@ def validate_config_full(
     analyzer_ids = _validate_analyzers(config, result)
     notifier_ids = _validate_notifiers(config, result)
     _validate_vlm_references(config, result, analyzer_ids, notifier_ids)
+    _validate_notify_references(config, result, notifier_ids)
 
     # Frame storage (if events use frame_capture)
     _validate_frame_storage(config, result)
@@ -453,7 +454,9 @@ def _validate_vlm_references(
         # Validate analyzer reference
         analyzer = vlm.get("analyzer")
         if not analyzer:
-            result.errors.append(f"{event_ref}.actions.vlm_analyze.analyzer is required")
+            result.errors.append(
+                f"{event_ref}.actions.vlm_analyze.analyzer is required"
+            )
         elif analyzer not in analyzer_ids:
             result.errors.append(
                 f"Event '{name}' references non-existent analyzer: '{analyzer}'"
@@ -476,6 +479,49 @@ def _validate_vlm_references(
                     result.errors.append(
                         f"Event '{name}' references non-existent notifier: '{notify_id}'"
                     )
+
+
+def _validate_notify_references(
+    config: dict,
+    result: ValidationResult,
+    notifier_ids: set[str],
+) -> None:
+    """Validate that direct notify actions reference valid notifiers."""
+    events = config.get("events", [])
+
+    for i, event in enumerate(events):
+        event_ref = f"events[{i}]"
+        name = event.get("name", f"event_{i}")
+        actions = event.get("actions", {})
+        notify_list = actions.get("notify")
+
+        if not notify_list:
+            continue
+
+        if not isinstance(notify_list, list):
+            result.errors.append(f"{event_ref}.actions.notify must be a list")
+            continue
+
+        for j, notify_item in enumerate(notify_list):
+            item_ref = f"{event_ref}.actions.notify[{j}]"
+
+            if not isinstance(notify_item, dict):
+                result.errors.append(f"{item_ref} must be an object")
+                continue
+
+            # Validate notifier reference
+            notifier = notify_item.get("notifier")
+            if not notifier:
+                result.errors.append(f"{item_ref}.notifier is required")
+            elif notifier not in notifier_ids:
+                result.errors.append(
+                    f"Event '{name}' references non-existent notifier: '{notifier}'"
+                )
+
+            # Validate message
+            message = notify_item.get("message")
+            if not message or not isinstance(message, str):
+                result.errors.append(f"{item_ref}.message is required")
 
 
 def _validate_frame_storage(config: dict, _result: ValidationResult) -> None:
@@ -524,6 +570,9 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
 
         if actions.get("vlm_analyze"):
             consumers.add("vlm_analyzer")
+
+        if actions.get("notify"):
+            consumers.add("direct_notifier")
 
     return sorted(consumers)
 
