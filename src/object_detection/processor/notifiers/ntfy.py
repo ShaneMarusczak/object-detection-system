@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-from . import Notifier, format_title
+from . import Notifier, format_title, with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +73,14 @@ class NtfyNotifier(Notifier):
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"detection_{timestamp}.jpg"
 
+                # Read file once before retry loop
                 with open(image_path, "rb") as f:
-                    response = requests.post(
+                    image_data = f.read()
+
+                response = with_retry(
+                    lambda: requests.post(
                         self._url,
-                        data=f.read(),
+                        data=image_data,
                         headers={
                             "Title": title,
                             "Priority": self._priority,
@@ -84,6 +88,7 @@ class NtfyNotifier(Notifier):
                         },
                         timeout=self._timeout,
                     )
+                )
 
                 if not response.ok:
                     logger.warning(
@@ -101,13 +106,15 @@ class NtfyNotifier(Notifier):
 
         # Send analysis text
         try:
-            response = requests.post(
-                self._url,
-                data=analysis,
-                headers={
-                    "Priority": self._priority,
-                },
-                timeout=self._timeout,
+            response = with_retry(
+                lambda: requests.post(
+                    self._url,
+                    data=analysis,
+                    headers={
+                        "Priority": self._priority,
+                    },
+                    timeout=self._timeout,
+                )
             )
 
             if not response.ok:

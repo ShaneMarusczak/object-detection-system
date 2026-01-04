@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-from . import Notifier, format_title
+from . import Notifier, format_title, with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +92,13 @@ class WebhookNotifier(Notifier):
                 logger.warning(f"Failed to read image: {e}")
 
         try:
-            response = requests.post(
-                self._url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=self._timeout,
+            response = with_retry(
+                lambda: requests.post(
+                    self._url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=self._timeout,
+                )
             )
 
             if not response.ok:

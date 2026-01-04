@@ -9,10 +9,74 @@ Used by both VLM analyzer (sends analysis text) and direct notifier (sends forma
 """
 
 import logging
+import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
+
+import requests
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration
+DEFAULT_MAX_RETRIES = 2
+DEFAULT_BASE_DELAY = 1.0  # seconds
+
+
+def with_retry(
+    func: Callable[[], requests.Response],
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    base_delay: float = DEFAULT_BASE_DELAY,
+) -> requests.Response:
+    """
+    Execute a request function with exponential backoff retry.
+
+    Retries on transient network errors (timeout, connection error).
+    Does NOT retry on 4xx client errors (bad request, unauthorized, etc).
+
+    Args:
+        func: Callable that performs the request and returns Response
+        max_retries: Maximum number of retry attempts (default: 2)
+        base_delay: Initial delay in seconds, doubles each retry (default: 1.0)
+
+    Returns:
+        The successful Response object
+
+    Raises:
+        requests.RequestException: If all retries exhausted
+    """
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = func()
+            # Don't retry client errors (4xx) - those won't fix themselves
+            if response.status_code < 500:
+                return response
+            # Server error (5xx) - worth retrying
+            if attempt < max_retries:
+                delay = base_delay * (2**attempt)
+                logger.warning(
+                    f"Server error {response.status_code}, retry {attempt + 1}/{max_retries} in {delay}s"
+                )
+                time.sleep(delay)
+                continue
+            return response
+
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_exception = e
+            if attempt < max_retries:
+                delay = base_delay * (2**attempt)
+                logger.warning(
+                    f"Network error, retry {attempt + 1}/{max_retries} in {delay}s: {e}"
+                )
+                time.sleep(delay)
+            else:
+                raise
+
+    # Should not reach here, but satisfy type checker
+    if last_exception:
+        raise last_exception
+    raise requests.RequestException("Retry exhausted")
 
 
 def format_title(template: str | None, event: dict[str, Any]) -> str:
@@ -148,4 +212,10 @@ def create_notifiers(configs: list[dict[str, Any]]) -> dict[str, Notifier]:
     return notifiers
 
 
-__all__ = ["Notifier", "create_notifier", "create_notifiers", "format_title"]
+__all__ = [
+    "Notifier",
+    "create_notifier",
+    "create_notifiers",
+    "format_title",
+    "with_retry",
+]
