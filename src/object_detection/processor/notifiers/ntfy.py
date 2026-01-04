@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-from . import Notifier, create_retry_session, format_title
+from . import Notifier, create_retry_session, format_title, read_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -71,37 +71,34 @@ class NtfyNotifier(Notifier):
 
         # Send image if available
         if image_path:
-            try:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"detection_{timestamp}.jpg"
+            image_data = read_image_file(image_path)
+            if image_data:
+                try:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"detection_{timestamp}.jpg"
 
-                with open(image_path, "rb") as f:
-                    image_data = f.read()
-
-                response = self._session.post(
-                    self._url,
-                    data=image_data,
-                    headers={
-                        "Title": title,
-                        "Priority": self._priority,
-                        "Filename": filename,
-                    },
-                    timeout=self._timeout,
-                )
-
-                if not response.ok:
-                    logger.warning(
-                        f"ntfy image upload failed: {response.status_code} {response.text}"
+                    response = self._session.post(
+                        self._url,
+                        data=image_data,
+                        headers={
+                            "Title": title,
+                            "Priority": self._priority,
+                            "Filename": filename,
+                        },
+                        timeout=self._timeout,
                     )
-                    success = False
-                else:
-                    logger.debug(f"ntfy image sent to {self._topic}")
 
-            except FileNotFoundError:
-                logger.warning(f"Image file not found: {image_path}")
-            except requests.RequestException as e:
-                logger.error(f"ntfy image upload error: {e}")
-                success = False
+                    if not response.ok:
+                        logger.warning(
+                            f"ntfy image upload failed: {response.status_code} {response.text}"
+                        )
+                        success = False
+                    else:
+                        logger.debug(f"ntfy image sent to {self._topic}")
+
+                except requests.RequestException as e:
+                    logger.error(f"ntfy image upload error: {e}")
+                    success = False
 
         # Send analysis text
         try:

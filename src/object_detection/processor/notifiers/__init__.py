@@ -65,11 +65,88 @@ def create_retry_session(
     return session
 
 
+def read_image_file(path: str) -> bytes | None:
+    """
+    Read an image file and return its contents.
+
+    Handles common errors and logs warnings.
+
+    Args:
+        path: Path to the image file
+
+    Returns:
+        Image data as bytes, or None if read failed
+    """
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.warning(f"Image file not found: {path}")
+        return None
+    except OSError as e:
+        logger.warning(f"Failed to read image: {e}")
+        return None
+
+
+def build_template_vars(event: dict[str, Any]) -> dict[str, Any]:
+    """
+    Build standard template variables from an event.
+
+    This is the single source of truth for template variables used
+    across all notification formatting (titles, messages, etc.).
+
+    Args:
+        event: Event dictionary with metadata
+
+    Returns:
+        Dictionary of template variables
+
+    Available variables:
+        {event_name} - Event definition name
+        {event_type} - Event type (LINE_CROSS, ZONE_ENTER, etc.)
+        {object_class} - Detected object class name
+        {confidence} - Detection confidence (float)
+        {confidence_pct} - Detection confidence as percentage string
+        {zone} - Zone description (if applicable)
+        {line} - Line description (if applicable)
+        {timestamp} - Event timestamp
+        {track_id} - Tracking ID
+    """
+    confidence = event.get("confidence", 0)
+    return {
+        "event_name": event.get("_event_name", "Detection"),
+        "event_type": event.get("event_type", "DETECTED"),
+        "object_class": event.get("object_class_name", "object"),
+        "confidence": confidence,
+        "confidence_pct": f"{confidence:.0%}",
+        "zone": event.get("zone_description", ""),
+        "line": event.get("line_description", ""),
+        "timestamp": event.get("timestamp", ""),
+        "track_id": event.get("track_id", ""),
+    }
+
+
+def format_template(template: str, event: dict[str, Any]) -> str:
+    """
+    Format a template string with event data.
+
+    Args:
+        template: Template string with {variable} placeholders
+        event: Event dictionary with metadata
+
+    Returns:
+        Formatted string
+    """
+    try:
+        return template.format(**build_template_vars(event))
+    except KeyError as e:
+        logger.warning(f"Template error: missing key {e}")
+        return template
+
+
 def format_title(template: str | None, event: dict[str, Any]) -> str:
     """
     Format notification title using template and event data.
-
-    This is a shared utility used by all notifier implementations.
 
     Args:
         template: Optional title template with {variable} placeholders.
@@ -78,15 +155,6 @@ def format_title(template: str | None, event: dict[str, Any]) -> str:
 
     Returns:
         Formatted title string
-
-    Available template variables:
-        {event_name} - Event definition name
-        {event_type} - Event type (LINE_CROSS, ZONE_ENTER, etc.)
-        {object_class} - Detected object class name
-        {confidence} - Detection confidence (float)
-        {zone} - Zone description (if applicable)
-        {line} - Line description (if applicable)
-        {timestamp} - Event timestamp
     """
     if not template:
         # Default title based on event type
@@ -94,20 +162,7 @@ def format_title(template: str | None, event: dict[str, Any]) -> str:
         obj_class = event.get("object_class_name", "object")
         return f"{event_name}: {obj_class}"
 
-    try:
-        template_vars = {
-            "event_name": event.get("_event_name", "Detection"),
-            "event_type": event.get("event_type", "DETECTED"),
-            "object_class": event.get("object_class_name", "object"),
-            "confidence": event.get("confidence", 0),
-            "zone": event.get("zone_description", ""),
-            "line": event.get("line_description", ""),
-            "timestamp": event.get("timestamp", ""),
-        }
-        return template.format(**template_vars)
-    except KeyError as e:
-        logger.warning(f"Title template error: missing key {e}")
-        return template
+    return format_template(template, event)
 
 
 class Notifier(ABC):
@@ -200,8 +255,11 @@ def create_notifiers(configs: list[dict[str, Any]]) -> dict[str, Notifier]:
 
 __all__ = [
     "Notifier",
+    "build_template_vars",
     "create_notifier",
     "create_notifiers",
     "create_retry_session",
+    "format_template",
     "format_title",
+    "read_image_file",
 ]

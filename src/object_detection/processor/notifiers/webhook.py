@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-from . import Notifier, create_retry_session, format_title
+from . import Notifier, create_retry_session, format_title, read_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -83,14 +83,9 @@ class WebhookNotifier(Notifier):
 
         # Optionally include base64-encoded image
         if self._include_image and image_path:
-            try:
-                with open(image_path, "rb") as f:
-                    image_data = base64.b64encode(f.read()).decode("utf-8")
-                    payload["image_base64"] = image_data
-            except FileNotFoundError:
-                logger.warning(f"Image file not found: {image_path}")
-            except Exception as e:
-                logger.warning(f"Failed to read image: {e}")
+            image_data = read_image_file(image_path)
+            if image_data:
+                payload["image_base64"] = base64.b64encode(image_data).decode("utf-8")
 
         try:
             response = self._session.post(

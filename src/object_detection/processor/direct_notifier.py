@@ -12,52 +12,9 @@ import logging
 from multiprocessing import Queue
 from typing import Any
 
-from .notifiers import Notifier, create_notifiers
+from .notifiers import Notifier, create_notifiers, format_template
 
 logger = logging.getLogger(__name__)
-
-
-def format_message(template: str, event: dict[str, Any]) -> str:
-    """
-    Format message template with event data.
-
-    Available template variables:
-        {event_name} - Event definition name
-        {event_type} - Event type (LINE_CROSS, ZONE_ENTER, etc.)
-        {object_class} - Detected object class name
-        {confidence} - Detection confidence (float)
-        {confidence_pct} - Detection confidence as percentage string
-        {zone} - Zone description (if applicable)
-        {line} - Line description (if applicable)
-        {timestamp} - Event timestamp
-        {track_id} - Tracking ID
-
-    Args:
-        template: Message template with {variable} placeholders
-        event: Event dictionary
-
-    Returns:
-        Formatted message string
-    """
-    confidence = event.get("confidence", 0)
-
-    template_vars = {
-        "event_name": event.get("_event_name", "Detection"),
-        "event_type": event.get("event_type", "DETECTED"),
-        "object_class": event.get("object_class_name", "object"),
-        "confidence": confidence,
-        "confidence_pct": f"{confidence:.0%}",
-        "zone": event.get("zone_description", ""),
-        "line": event.get("line_description", ""),
-        "timestamp": event.get("timestamp", ""),
-        "track_id": event.get("track_id", ""),
-    }
-
-    try:
-        return template.format(**template_vars)
-    except KeyError as e:
-        logger.warning(f"Message template error: missing key {e}")
-        return template
 
 
 def process_notify_event(
@@ -88,7 +45,7 @@ def process_notify_event(
             continue
 
         # Format the message
-        message = format_message(message_template, event)
+        message = format_template(message_template, event)
 
         # Determine image path
         image_path = frame_path if include_image else None
