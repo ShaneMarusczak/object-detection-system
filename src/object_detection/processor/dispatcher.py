@@ -20,6 +20,7 @@ from .command_runner import run_command
 from .frame_capture import frame_capture_consumer
 from .json_writer import json_writer_consumer
 from .html_report import generate_html_reports
+from .vlm_analyzer import vlm_analyzer_consumer
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,24 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             frame_process.start()
             consumers.append(frame_process)
             logger.info("Started FrameCapture consumer")
+
+        # VLM Analyzer - start if vlm_analyze action is used
+        if "vlm_analyze" in needed_actions:
+            vlm_queue = Queue()
+            consumer_queues["vlm_analyze"] = vlm_queue
+            vlm_consumer_config = {
+                "notifiers": config.get("notifiers", []),
+                "analyzers": config.get("analyzers", []),
+                "temp_frame_dir": temp_frame_dir,
+            }
+            vlm_process = Process(
+                target=vlm_analyzer_consumer,
+                args=(vlm_queue, vlm_consumer_config),
+                name="VLMAnalyzer",
+            )
+            vlm_process.start()
+            consumers.append(vlm_process)
+            logger.info("Started VLMAnalyzer consumer")
 
         # Report config - generates HTML synchronously at shutdown
         if "report" in needed_actions:
@@ -300,6 +319,18 @@ def _route_event(
             # Tag event with frame config
             event["_frame_capture_config"] = frame_capture
             consumer_queues["frame_capture"].put(event)
+
+    # VLM analyze
+    vlm_analyze = actions.get("vlm_analyze")
+    if vlm_analyze:
+        if "vlm_analyze" in consumer_queues:
+            # Tag event with VLM config and event name
+            event["_vlm_config"] = vlm_analyze
+            event["_event_name"] = event.get("event_definition", "detection")
+            # Set frame path from temp frame
+            if temp_frame_dir and "frame_id" in event:
+                event["_frame_path"] = f"{temp_frame_dir}/{event['frame_id']}.jpg"
+            consumer_queues["vlm_analyze"].put(event.copy())
 
     # Return shutdown flag
     return actions.get("shutdown", False)

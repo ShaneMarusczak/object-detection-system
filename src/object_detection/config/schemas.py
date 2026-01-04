@@ -163,6 +163,16 @@ class FrameCaptureAction(BaseModel):
     annotate: bool = False
 
 
+class VLMAnalyzeAction(BaseModel):
+    """VLM analysis action configuration."""
+
+    analyzer: str = Field(..., min_length=1, description="References analyzers[].id")
+    prompt: str = Field(..., min_length=1, description="Prompt to send with image")
+    notify: list[str] = Field(
+        default_factory=list, description="References notifiers[].id"
+    )
+
+
 class EventActions(BaseModel):
     """Event actions configuration."""
 
@@ -170,6 +180,7 @@ class EventActions(BaseModel):
     command: CommandAction | None = None
     report: str | None = None
     frame_capture: bool | FrameCaptureAction | None = None
+    vlm_analyze: VLMAnalyzeAction | None = None
     shutdown: bool = Field(
         default=False, description="Stop detector after this event triggers"
     )
@@ -239,6 +250,53 @@ class FrameStorageConfig(BaseModel):
     retention_days: int = Field(default=7, ge=1, description="Days to retain frames")
 
 
+class NotifierConfig(StrictModel):
+    """
+    Top-level notifier definition.
+
+    Notifiers are reusable notification endpoints referenced by vlm_analyze actions.
+    """
+
+    id: str = Field(..., min_length=1, description="Unique notifier identifier")
+    type: Literal["ntfy", "webhook"] = Field(
+        ..., description="Notifier type"
+    )
+    # ntfy-specific
+    topic: str | None = Field(default=None, description="ntfy topic name")
+    # webhook-specific
+    url: str | None = Field(default=None, description="Webhook URL")
+    # Common
+    priority: Literal["min", "low", "default", "high", "urgent"] = Field(
+        default="default", description="Notification priority"
+    )
+    title_template: str | None = Field(
+        default=None, description="Title template with {variable} placeholders"
+    )
+
+    @model_validator(mode="after")
+    def validate_type_fields(self):
+        """Validate that required fields are present for each type."""
+        if self.type == "ntfy" and not self.topic:
+            raise ValueError("ntfy notifier requires 'topic' field")
+        if self.type == "webhook" and not self.url:
+            raise ValueError("webhook notifier requires 'url' field")
+        return self
+
+
+class AnalyzerConfig(StrictModel):
+    """
+    Top-level analyzer definition.
+
+    Analyzers are VLM endpoints (e.g., Orin 2) that process images.
+    """
+
+    id: str = Field(..., min_length=1, description="Unique analyzer identifier")
+    url: str = Field(..., min_length=1, description="Analyzer endpoint URL")
+    timeout_seconds: int = Field(
+        default=60, ge=1, le=300, description="Request timeout"
+    )
+
+
 class Config(StrictModel):
     """Complete configuration schema."""
 
@@ -248,6 +306,8 @@ class Config(StrictModel):
     zones: list[ZoneConfig] = Field(default_factory=list)
     events: list[EventConfig] = Field(default_factory=list)
     reports: list[ReportConfig] = Field(default_factory=list)
+    notifiers: list[NotifierConfig] = Field(default_factory=list)
+    analyzers: list[AnalyzerConfig] = Field(default_factory=list)
     output: OutputConfig = Field(default_factory=OutputConfig)
     camera: CameraConfig
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
@@ -259,10 +319,12 @@ class Config(StrictModel):
 
     @model_validator(mode="after")
     def validate_references(self):
-        """Validate that events reference existing lines/zones."""
+        """Validate that events reference existing lines/zones/analyzers/notifiers."""
         line_names = {line.description for line in self.lines}
         zone_names = {zone.description for zone in self.zones}
         report_ids = {report.id for report in self.reports}
+        analyzer_ids = {analyzer.id for analyzer in self.analyzers}
+        notifier_ids = {notifier.id for notifier in self.notifiers}
 
         for event in self.events:
             if event.match.line and event.match.line not in line_names:
@@ -282,6 +344,18 @@ class Config(StrictModel):
                 raise ValueError(
                     f"Event '{event.name}' references non-existent report: '{event.actions.report}'"
                 )
+            # Validate vlm_analyze references
+            if event.actions.vlm_analyze:
+                vlm = event.actions.vlm_analyze
+                if vlm.analyzer not in analyzer_ids:
+                    raise ValueError(
+                        f"Event '{event.name}' references non-existent analyzer: '{vlm.analyzer}'"
+                    )
+                for notify_id in vlm.notify:
+                    if notify_id not in notifier_ids:
+                        raise ValueError(
+                            f"Event '{event.name}' references non-existent notifier: '{notify_id}'"
+                        )
 
         return self
 

@@ -1233,6 +1233,7 @@ class ConfigBuilder:
             print("    2. Report with photos")
             print("    3. Report stats only")
             print("    4. JSON log only")
+            print("    5. VLM analyze + notify")
             action_input = input("  Choose (e.g. 1,2) [1]: ").strip() or "1"
 
             # Parse choices
@@ -1243,6 +1244,7 @@ class ConfigBuilder:
             want_report_photos = "2" in choices
             want_report_only = "3" in choices
             want_json_only = "4" in choices
+            want_vlm_analyze = "5" in choices
 
             # Build enabled list for display
             enabled = []
@@ -1261,6 +1263,11 @@ class ConfigBuilder:
                     enabled.append("json_log")
             # JSON only
             if want_json_only:
+                if "json_log" not in enabled:
+                    enabled.append("json_log")
+            # VLM analyze
+            if want_vlm_analyze:
+                enabled.append("vlm_analyze")
                 if "json_log" not in enabled:
                     enabled.append("json_log")
 
@@ -1304,6 +1311,95 @@ class ConfigBuilder:
             # JSON is implicit for reports, explicit for json-only
             if want_report_photos or want_report_only or want_json_only:
                 actions["json_log"] = True
+
+            # Configure VLM analyze
+            if want_vlm_analyze:
+                print(f"\n    {Colors.BOLD}VLM Analyze Setup:{Colors.RESET}")
+                print(
+                    f"    {Colors.GRAY}Sends frame to remote VLM for analysis{Colors.RESET}"
+                )
+
+                # Analyzer setup
+                analyzer_id = (
+                    input("      Analyzer ID [orin2]: ").strip() or "orin2"
+                )
+                analyzer_url = (
+                    input("      Analyzer URL [http://orin-nvme:8080/analyze]: ").strip()
+                    or "http://orin-nvme:8080/analyze"
+                )
+
+                # Ensure analyzer exists in config
+                if "analyzers" not in self.config:
+                    self.config["analyzers"] = []
+                analyzer_exists = any(
+                    a.get("id") == analyzer_id for a in self.config["analyzers"]
+                )
+                if not analyzer_exists:
+                    self.config["analyzers"].append(
+                        {"id": analyzer_id, "url": analyzer_url, "timeout_seconds": 60}
+                    )
+                    print(f"      {Colors.GREEN}Added analyzer: {analyzer_id}{Colors.RESET}")
+
+                # Prompt
+                default_prompt = "Describe what you see. Be concise."
+                prompt = (
+                    input(f"      Prompt [{default_prompt[:30]}...]: ").strip()
+                    or default_prompt
+                )
+
+                # Notifier setup
+                notifier_ids = []
+                add_notifier = input("      Add notification? (Y/n): ").strip().lower()
+                if add_notifier != "n":
+                    print("      Notifier types:")
+                    print("        1. ntfy (push notification)")
+                    print("        2. webhook (HTTP POST)")
+                    notifier_type = input("      Choose [1]: ").strip() or "1"
+
+                    if notifier_type == "1":
+                        topic = input("      ntfy topic: ").strip() or "alerts"
+                        notifier_id = f"ntfy_{topic}"
+                        if "notifiers" not in self.config:
+                            self.config["notifiers"] = []
+                        notifier_exists = any(
+                            n.get("id") == notifier_id for n in self.config["notifiers"]
+                        )
+                        if not notifier_exists:
+                            self.config["notifiers"].append(
+                                {"id": notifier_id, "type": "ntfy", "topic": topic}
+                            )
+                            print(
+                                f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}"
+                            )
+                        notifier_ids.append(notifier_id)
+                    elif notifier_type == "2":
+                        webhook_url = input("      Webhook URL: ").strip()
+                        if webhook_url:
+                            notifier_id = "webhook_1"
+                            if "notifiers" not in self.config:
+                                self.config["notifiers"] = []
+                            notifier_exists = any(
+                                n.get("id") == notifier_id
+                                for n in self.config["notifiers"]
+                            )
+                            if not notifier_exists:
+                                self.config["notifiers"].append(
+                                    {
+                                        "id": notifier_id,
+                                        "type": "webhook",
+                                        "url": webhook_url,
+                                    }
+                                )
+                                print(
+                                    f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}"
+                                )
+                            notifier_ids.append(notifier_id)
+
+                actions["vlm_analyze"] = {
+                    "analyzer": analyzer_id,
+                    "prompt": prompt,
+                    "notify": notifier_ids,
+                }
 
             event["actions"] = actions
             events.append(event)

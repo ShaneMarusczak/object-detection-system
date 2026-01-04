@@ -74,6 +74,8 @@ class ConfigPlan:
     track_classes: list[tuple[int, str]]  # (id, name) pairs
     consumers: list[str]
     geometry: dict[str, list[str]]  # lines/zones descriptions
+    analyzers: dict[str, dict] | None = None  # id -> config
+    notifiers: dict[str, dict] | None = None  # id -> config
 
 
 def load_config_with_env(config: dict) -> dict:
@@ -112,6 +114,8 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
     """
     events = []
     reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
+    analyzers = {a["id"]: a for a in config.get("analyzers", []) if a.get("id")}
+    notifiers = {n["id"]: n for n in config.get("notifiers", []) if n.get("id")}
 
     # Build reverse mapping (name -> id) from model
     name_to_id: dict[str, int] = {}
@@ -163,6 +167,15 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
             "enabled", actions.get("frame_capture") is True
         ):
             consumers.append("frame_capture")
+
+        # VLM analyze action
+        vlm = actions.get("vlm_analyze")
+        if vlm:
+            analyzer_id = vlm.get("analyzer")
+            notify_ids = vlm.get("notify", [])
+            consumers.append(f"vlm_analyzer:{analyzer_id}")
+            for nid in notify_ids:
+                consumers.append(f"notifier:{nid}")
 
         events.append(
             EventPlan(
@@ -224,6 +237,8 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
         track_classes=sorted(track_classes),
         consumers=sorted(all_consumers),
         geometry=geometry,
+        analyzers=analyzers if analyzers else None,
+        notifiers=notifiers if notifiers else None,
     )
 
 
@@ -271,6 +286,28 @@ def print_plan(plan: ConfigPlan) -> None:
     print()
     print(f"{Colors.BOLD}Event Routing Plan{Colors.RESET}")
     print("=" * 60)
+
+    # Analyzers
+    if plan.analyzers:
+        print(f"\n{Colors.CYAN}Analyzers:{Colors.RESET}")
+        for aid, acfg in plan.analyzers.items():
+            timeout = acfg.get("timeout_seconds", 60)
+            print(f"  {Colors.GREEN}+{Colors.RESET} {aid} ({acfg.get('url')}, timeout={timeout}s)")
+
+    # Notifiers
+    if plan.notifiers:
+        print(f"\n{Colors.CYAN}Notifiers:{Colors.RESET}")
+        for nid, ncfg in plan.notifiers.items():
+            ntype = ncfg.get("type")
+            if ntype == "ntfy":
+                target = ncfg.get("topic")
+                print(f"  {Colors.GREEN}+{Colors.RESET} {nid} (ntfy -> {target})")
+            elif ntype == "webhook":
+                target = ncfg.get("url", "")
+                # Truncate long URLs
+                if len(target) > 40:
+                    target = target[:37] + "..."
+                print(f"  {Colors.GREEN}+{Colors.RESET} {nid} (webhook -> {target})")
 
     # Geometry summary
     if plan.geometry["zones"] or plan.geometry["lines"]:
@@ -333,6 +370,19 @@ def print_plan(plan: ConfigPlan) -> None:
                         f"         {Colors.GRAY}frame_capture: {', '.join(details)}{Colors.RESET}"
                     )
 
+        # Show vlm_analyze details
+        vlm = event.actions.get("vlm_analyze")
+        if vlm and isinstance(vlm, dict):
+            prompt = vlm.get("prompt", "")
+            # Truncate long prompts
+            if len(prompt) > 50:
+                prompt = prompt[:47] + "..."
+            print(f"         {Colors.GRAY}vlm_analyze:{Colors.RESET}")
+            print(f"           {Colors.GRAY}prompt: \"{prompt}\"{Colors.RESET}")
+            notify_ids = vlm.get("notify", [])
+            if notify_ids:
+                print(f"           {Colors.GRAY}notify: [{', '.join(notify_ids)}]{Colors.RESET}")
+
         # Implied actions
         if event.implied_actions:
             print(f"    {Colors.GRAY}Implied (auto-enabled):{Colors.RESET}")
@@ -375,6 +425,7 @@ def simulate_dry_run(
         "command": 0,
         "report": 0,
         "frame_capture": 0,
+        "vlm_analyze": 0,
     }
     report_counts = {}
     shutdown_triggered = False
@@ -421,6 +472,15 @@ def simulate_dry_run(
                 elif "frame_capture" in consumer:
                     actions_taken["frame_capture"] += 1
                     print(f"         {Colors.GRAY}-> Capture frame{Colors.RESET}")
+                elif "vlm_analyzer" in consumer:
+                    actions_taken["vlm_analyze"] += 1
+                    analyzer_id = consumer.split(":")[-1] if ":" in consumer else "?"
+                    print(
+                        f"         {Colors.GRAY}-> VLM analyze ({analyzer_id}){Colors.RESET}"
+                    )
+                elif "notifier" in consumer:
+                    notifier_id = consumer.split(":")[-1] if ":" in consumer else "?"
+                    print(f"         {Colors.GRAY}-> Notify ({notifier_id}){Colors.RESET}")
 
             # Check for shutdown
             if matched_event.has_shutdown:
@@ -441,6 +501,8 @@ def simulate_dry_run(
     print(f"  Commands executed: {actions_taken['command']}")
     print(f"  Report queue adds: {actions_taken['report']}")
     print(f"  Frame captures: {actions_taken['frame_capture']}")
+    if actions_taken["vlm_analyze"] > 0:
+        print(f"  VLM analyses: {actions_taken['vlm_analyze']}")
 
     if report_counts:
         reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}

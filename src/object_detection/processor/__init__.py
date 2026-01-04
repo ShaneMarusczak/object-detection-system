@@ -18,9 +18,13 @@ from ..models import EventDefinition
 # Consumers
 from .json_writer import json_writer_consumer
 from .frame_capture import frame_capture_consumer
+from .vlm_analyzer import vlm_analyzer_consumer
 
 # Command execution
 from .command_runner import run_command
+
+# Notifiers
+from .notifiers import Notifier, create_notifier, create_notifiers
 
 # Services
 from .frame_service import FrameService
@@ -36,8 +40,13 @@ __all__ = [
     # Consumers
     "json_writer_consumer",
     "frame_capture_consumer",
+    "vlm_analyzer_consumer",
     # Command execution
     "run_command",
+    # Notifiers
+    "Notifier",
+    "create_notifier",
+    "create_notifiers",
     # Services
     "FrameService",
 ]

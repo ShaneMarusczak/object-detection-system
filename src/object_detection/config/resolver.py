@@ -120,12 +120,14 @@ def _resolve_implied_actions(config: dict) -> None:
     Resolve all implied actions and modify event configs in place.
 
     This applies the cascading rules:
+    - json_log defaults to True (opt-out, not opt-in)
     - report with photos=true → frame_capture enabled
     - report with annotate=true → frame_capture.annotate=true
-    - report → json_log=true
+    - vlm_analyze → json_log=true, temp_frames required
     """
     events = config.get("events", [])
     reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
+    analyzers = {a["id"]: a for a in config.get("analyzers", []) if a.get("id")}
 
     for event in events:
         actions = event.get("actions", {})
@@ -176,3 +178,28 @@ def _resolve_implied_actions(config: dict) -> None:
         if command:
             if isinstance(command, str):
                 actions["command"] = {"exec": command, "timeout_seconds": 30}
+
+        # --- Normalize vlm_analyze config ---
+        vlm_analyze = actions.get("vlm_analyze")
+        if vlm_analyze:
+            # Resolve analyzer timeout from config
+            if isinstance(vlm_analyze, dict):
+                analyzer_id = vlm_analyze.get("analyzer")
+                if analyzer_id and analyzer_id in analyzers:
+                    analyzer_config = analyzers[analyzer_id]
+                    if "timeout_seconds" not in vlm_analyze:
+                        vlm_analyze["_analyzer_timeout"] = analyzer_config.get(
+                            "timeout_seconds", 60
+                        )
+                    vlm_analyze["_analyzer_url"] = analyzer_config.get("url")
+                # Ensure notify is a list
+                if "notify" not in vlm_analyze:
+                    vlm_analyze["notify"] = []
+
+        # --- JSON logging is opt-out (default True) ---
+        # Only set to True if not explicitly set to False
+        if actions.get("json_log") is None:
+            actions["json_log"] = True
+            logger.debug(
+                f"Auto-enabled json_log for '{event.get('name')}' (default opt-out)"
+            )
