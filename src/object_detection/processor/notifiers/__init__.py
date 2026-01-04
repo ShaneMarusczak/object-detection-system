@@ -9,74 +9,60 @@ Used by both VLM analyzer (sends analysis text) and direct notifier (sends forma
 """
 
 import logging
-import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
 # Retry configuration
 DEFAULT_MAX_RETRIES = 2
-DEFAULT_BASE_DELAY = 1.0  # seconds
+DEFAULT_BACKOFF_FACTOR = 1.0  # seconds
 
 
-def with_retry(
-    func: Callable[[], requests.Response],
+def create_retry_session(
     max_retries: int = DEFAULT_MAX_RETRIES,
-    base_delay: float = DEFAULT_BASE_DELAY,
-) -> requests.Response:
+    backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
+) -> requests.Session:
     """
-    Execute a request function with exponential backoff retry.
+    Create a requests Session with automatic retry and exponential backoff.
 
-    Retries on transient network errors (timeout, connection error).
-    Does NOT retry on 4xx client errors (bad request, unauthorized, etc).
+    Uses urllib3's built-in Retry mechanism for robust HTTP requests.
+    Retries on:
+    - Connection errors
+    - Timeouts
+    - Server errors (500, 502, 503, 504)
+
+    Does NOT retry on:
+    - Client errors (4xx) - those won't fix themselves
 
     Args:
-        func: Callable that performs the request and returns Response
         max_retries: Maximum number of retry attempts (default: 2)
-        base_delay: Initial delay in seconds, doubles each retry (default: 1.0)
+        backoff_factor: Delay factor for exponential backoff (default: 1.0)
+                       Delay = backoff_factor * (2 ** retry_number)
+                       With factor=1.0: 1s, 2s, 4s...
 
     Returns:
-        The successful Response object
-
-    Raises:
-        requests.RequestException: If all retries exhausted
+        Configured Session with retry behavior
     """
-    last_exception = None
+    retry_strategy = Retry(
+        total=max_retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["GET", "POST", "PUT", "DELETE"],
+        raise_on_status=False,  # Let us handle status codes ourselves
+    )
 
-    for attempt in range(max_retries + 1):
-        try:
-            response = func()
-            # Don't retry client errors (4xx) - those won't fix themselves
-            if response.status_code < 500:
-                return response
-            # Server error (5xx) - worth retrying
-            if attempt < max_retries:
-                delay = base_delay * (2**attempt)
-                logger.warning(
-                    f"Server error {response.status_code}, retry {attempt + 1}/{max_retries} in {delay}s"
-                )
-                time.sleep(delay)
-                continue
-            return response
+    adapter = HTTPAdapter(max_retries=retry_strategy)
 
-        except (requests.Timeout, requests.ConnectionError) as e:
-            last_exception = e
-            if attempt < max_retries:
-                delay = base_delay * (2**attempt)
-                logger.warning(
-                    f"Network error, retry {attempt + 1}/{max_retries} in {delay}s: {e}"
-                )
-                time.sleep(delay)
-            else:
-                raise
+    session = requests.Session()
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
 
-    # Should not reach here, but satisfy type checker
-    if last_exception:
-        raise last_exception
-    raise requests.RequestException("Retry exhausted")
+    return session
 
 
 def format_title(template: str | None, event: dict[str, Any]) -> str:
@@ -216,6 +202,6 @@ __all__ = [
     "Notifier",
     "create_notifier",
     "create_notifiers",
+    "create_retry_session",
     "format_title",
-    "with_retry",
 ]

@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-from . import Notifier, format_title, with_retry
+from . import Notifier, create_retry_session, format_title
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,8 @@ class NtfyNotifier(Notifier):
         self._timeout = 10  # seconds
 
         self._url = f"{NTFY_BASE_URL}/{self._topic}"
+        self._session = create_retry_session()
+
         logger.debug(f"NtfyNotifier initialized: {self._id} -> {self._topic}")
 
     @property
@@ -73,21 +75,18 @@ class NtfyNotifier(Notifier):
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"detection_{timestamp}.jpg"
 
-                # Read file once before retry loop
                 with open(image_path, "rb") as f:
                     image_data = f.read()
 
-                response = with_retry(
-                    lambda: requests.post(
-                        self._url,
-                        data=image_data,
-                        headers={
-                            "Title": title,
-                            "Priority": self._priority,
-                            "Filename": filename,
-                        },
-                        timeout=self._timeout,
-                    )
+                response = self._session.post(
+                    self._url,
+                    data=image_data,
+                    headers={
+                        "Title": title,
+                        "Priority": self._priority,
+                        "Filename": filename,
+                    },
+                    timeout=self._timeout,
                 )
 
                 if not response.ok:
@@ -106,15 +105,13 @@ class NtfyNotifier(Notifier):
 
         # Send analysis text
         try:
-            response = with_retry(
-                lambda: requests.post(
-                    self._url,
-                    data=analysis,
-                    headers={
-                        "Priority": self._priority,
-                    },
-                    timeout=self._timeout,
-                )
+            response = self._session.post(
+                self._url,
+                data=analysis,
+                headers={
+                    "Priority": self._priority,
+                },
+                timeout=self._timeout,
             )
 
             if not response.ok:

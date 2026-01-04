@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-from . import Notifier, format_title, with_retry
+from . import Notifier, create_retry_session, format_title
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ class WebhookNotifier(Notifier):
         self._title_template = config.get("title_template")
         self._timeout = 10  # seconds
         self._include_image = config.get("include_image", False)
+        self._session = create_retry_session()
 
         logger.debug(f"WebhookNotifier initialized: {self._id} -> {self._url}")
 
@@ -92,13 +93,11 @@ class WebhookNotifier(Notifier):
                 logger.warning(f"Failed to read image: {e}")
 
         try:
-            response = with_retry(
-                lambda: requests.post(
-                    self._url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                    timeout=self._timeout,
-                )
+            response = self._session.post(
+                self._url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=self._timeout,
             )
 
             if not response.ok:

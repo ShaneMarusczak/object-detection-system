@@ -3,17 +3,20 @@ Config Builder TUI
 
 Interactive wizard for creating object detection configurations.
 Captures preview frames to data/ folder for visual feedback.
+
+Uses questionary for interactive prompts with arrow-key navigation.
 """
 
 import os
-import readline  # noqa: F401 - Enables arrow key history for input()
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import cv2
+import questionary
 import yaml
+from questionary import Choice, Style
 
 from ..processor.coco_classes import COCO_CLASSES
 from .planner import (
@@ -25,6 +28,19 @@ from .planner import (
     simulate_dry_run,
 )
 from .validator import validate_config_full
+
+# Custom style for questionary prompts
+PROMPT_STYLE = Style(
+    [
+        ("qmark", "fg:cyan bold"),
+        ("question", "bold"),
+        ("answer", "fg:green"),
+        ("pointer", "fg:cyan bold"),
+        ("highlighted", "fg:cyan bold"),
+        ("selected", "fg:green"),
+        ("instruction", "fg:gray"),
+    ]
+)
 
 # Common object classes for quick selection
 COMMON_CLASSES = [
@@ -324,25 +340,36 @@ class ConfigBuilder:
                 f"\n{Colors.GRAY}Preview: http://{local_ip}:8000/preview.jpg{Colors.RESET}"
             )
 
-            print(f"\n{Colors.BOLD}Which section to edit?{Colors.RESET}")
-            for i, (key, label) in enumerate(sections, 1):
+            # Build choices for questionary
+            choices = []
+            for key, label in sections:
                 summary = self._get_section_summary(key)
-                print(f"  {i}. {label} ({summary})")
+                choices.append(Choice(title=f"{label} ({summary})", value=key))
 
-            print(f"  {Colors.GRAY}p. Refresh preview{Colors.RESET}")
-            print(f"  {Colors.GREEN}r. Save and run{Colors.RESET}")
-            print(f"  {Colors.CYAN}s. Save and exit{Colors.RESET}")
-            print(f"  {Colors.YELLOW}q. Quit without saving{Colors.RESET}")
+            choices.append(Choice(title="Refresh preview", value="refresh"))
+            choices.append(Choice(title="Save and run", value="run"))
+            choices.append(Choice(title="Save and exit", value="save"))
+            choices.append(Choice(title="Quit without saving", value="quit"))
 
-            choice = input("Choice: ").strip().lower()
+            choice = questionary.select(
+                "Which section to edit?",
+                choices=choices,
+                style=PROMPT_STYLE,
+            ).ask()
 
-            if choice == "q":
-                confirm = input("Are you sure? (y/N): ").strip().lower()
-                if confirm == "y":
+            if choice is None:  # Ctrl+C
+                return None
+
+            if choice == "quit":
+                if questionary.confirm(
+                    "Are you sure you want to quit without saving?",
+                    default=False,
+                    style=PROMPT_STYLE,
+                ).ask():
                     return None
                 continue
 
-            if choice == "p":
+            if choice == "refresh":
                 self._capture_annotated_preview(
                     lines=self.config.get("lines", []),
                     zones=self.config.get("zones", []),
@@ -350,22 +377,14 @@ class ConfigBuilder:
                 print(f"{Colors.GREEN}Preview refreshed{Colors.RESET}")
                 continue
 
-            if choice == "s":
+            if choice == "save":
                 return self._save_edited_config(run_after=False)
 
-            if choice == "r":
+            if choice == "run":
                 return self._save_edited_config(run_after=True)
 
             # Section edit
-            try:
-                section_idx = int(choice) - 1
-                if 0 <= section_idx < len(sections):
-                    section_key = sections[section_idx][0]
-                    self._edit_section(section_key)
-                else:
-                    print(f"{Colors.RED}Invalid choice{Colors.RESET}")
-            except ValueError:
-                print(f"{Colors.RED}Invalid choice{Colors.RESET}")
+            self._edit_section(choice)
 
     def _edit_section(self, section: str):
         """Edit a specific section."""
@@ -398,36 +417,51 @@ class ConfigBuilder:
                     f"  {i}. {line.get('description')} ({line.get('type')}, {line.get('position_pct')}%)"
                 )
 
-            print("\nOptions:")
-            print("  1. Keep all")
-            print("  2. Delete some")
-            print("  3. Add more")
-            print("  4. Start fresh")
-            choice = input("Choice [1]: ").strip() or "1"
+            choice = questionary.select(
+                "What would you like to do?",
+                choices=[
+                    Choice(title="Keep all", value="keep"),
+                    Choice(title="Delete some", value="delete"),
+                    Choice(title="Add more", value="add"),
+                    Choice(title="Start fresh", value="fresh"),
+                ],
+                style=PROMPT_STYLE,
+            ).ask()
 
-            if choice == "1":
+            if choice == "keep" or choice is None:
                 return
-            elif choice == "2":
-                to_delete = input("Line numbers to delete (comma-separated): ").strip()
-                indices = [
-                    int(x.strip()) - 1 for x in to_delete.split(",") if x.strip()
+            elif choice == "delete":
+                # Create choices for each line
+                line_choices = [
+                    Choice(
+                        title=f"{ln.get('description')} ({ln.get('type')}, {ln.get('position_pct')}%)",
+                        value=i,
+                    )
+                    for i, ln in enumerate(lines)
                 ]
-                self.config["lines"] = [
-                    ln for i, ln in enumerate(lines) if i not in indices
-                ]
-                print(f"{Colors.GREEN}Deleted {len(indices)} line(s){Colors.RESET}")
-                # Refresh preview with updated annotations
-                self._capture_annotated_preview(
-                    lines=self.config.get("lines", []),
-                    zones=self.config.get("zones", []),
-                )
+                to_delete = questionary.checkbox(
+                    "Select lines to delete:",
+                    choices=line_choices,
+                    style=PROMPT_STYLE,
+                ).ask()
+
+                if to_delete:
+                    self.config["lines"] = [
+                        ln for i, ln in enumerate(lines) if i not in to_delete
+                    ]
+                    print(
+                        f"{Colors.GREEN}Deleted {len(to_delete)} line(s){Colors.RESET}"
+                    )
+                    # Refresh preview with updated annotations
+                    self._capture_annotated_preview(
+                        lines=self.config.get("lines", []),
+                        zones=self.config.get("zones", []),
+                    )
                 return
-            elif choice == "3":
-                # Fall through to add mode
-                pass
-            elif choice == "4":
+            elif choice == "add":
+                pass  # Fall through to add mode
+            elif choice == "fresh":
                 self.config["lines"] = []
-                lines = []
                 # Refresh preview with zones only
                 self._capture_annotated_preview(
                     lines=[], zones=self.config.get("zones", [])
@@ -447,36 +481,51 @@ class ConfigBuilder:
                     f"  {i}. {zone.get('description')} ({zone.get('x1_pct')}-{zone.get('x2_pct')}%, {zone.get('y1_pct')}-{zone.get('y2_pct')}%)"
                 )
 
-            print("\nOptions:")
-            print("  1. Keep all")
-            print("  2. Delete some")
-            print("  3. Add more")
-            print("  4. Start fresh")
-            choice = input("Choice [1]: ").strip() or "1"
+            choice = questionary.select(
+                "What would you like to do?",
+                choices=[
+                    Choice(title="Keep all", value="keep"),
+                    Choice(title="Delete some", value="delete"),
+                    Choice(title="Add more", value="add"),
+                    Choice(title="Start fresh", value="fresh"),
+                ],
+                style=PROMPT_STYLE,
+            ).ask()
 
-            if choice == "1":
+            if choice == "keep" or choice is None:
                 return
-            elif choice == "2":
-                to_delete = input("Zone numbers to delete (comma-separated): ").strip()
-                indices = [
-                    int(x.strip()) - 1 for x in to_delete.split(",") if x.strip()
+            elif choice == "delete":
+                # Create choices for each zone
+                zone_choices = [
+                    Choice(
+                        title=f"{z.get('description')} ({z.get('x1_pct')}-{z.get('x2_pct')}%, {z.get('y1_pct')}-{z.get('y2_pct')}%)",
+                        value=i,
+                    )
+                    for i, z in enumerate(zones)
                 ]
-                self.config["zones"] = [
-                    z for i, z in enumerate(zones) if i not in indices
-                ]
-                print(f"{Colors.GREEN}Deleted {len(indices)} zone(s){Colors.RESET}")
-                # Refresh preview with updated annotations
-                self._capture_annotated_preview(
-                    lines=self.config.get("lines", []),
-                    zones=self.config.get("zones", []),
-                )
+                to_delete = questionary.checkbox(
+                    "Select zones to delete:",
+                    choices=zone_choices,
+                    style=PROMPT_STYLE,
+                ).ask()
+
+                if to_delete:
+                    self.config["zones"] = [
+                        z for i, z in enumerate(zones) if i not in to_delete
+                    ]
+                    print(
+                        f"{Colors.GREEN}Deleted {len(to_delete)} zone(s){Colors.RESET}"
+                    )
+                    # Refresh preview with updated annotations
+                    self._capture_annotated_preview(
+                        lines=self.config.get("lines", []),
+                        zones=self.config.get("zones", []),
+                    )
                 return
-            elif choice == "3":
-                # Fall through to add mode
-                pass
-            elif choice == "4":
+            elif choice == "add":
+                pass  # Fall through to add mode
+            elif choice == "fresh":
                 self.config["zones"] = []
-                zones = []
                 # Refresh preview with lines only
                 self._capture_annotated_preview(
                     lines=self.config.get("lines", []), zones=[]
@@ -497,29 +546,45 @@ class ConfigBuilder:
                 name = event.get("name", f"event_{i}")
                 print(f"  {i}. {name} ({event_type})")
 
-            print("\nOptions:")
-            print("  1. Keep all")
-            print("  2. Delete some")
-            print("  3. Add more")
-            print("  4. Start fresh")
-            choice = input("Choice [1]: ").strip() or "1"
+            choice = questionary.select(
+                "What would you like to do?",
+                choices=[
+                    Choice(title="Keep all", value="keep"),
+                    Choice(title="Delete some", value="delete"),
+                    Choice(title="Add more", value="add"),
+                    Choice(title="Start fresh", value="fresh"),
+                ],
+                style=PROMPT_STYLE,
+            ).ask()
 
-            if choice == "1":
+            if choice == "keep" or choice is None:
                 return
-            elif choice == "2":
-                to_delete = input("Event numbers to delete (comma-separated): ").strip()
-                indices = [
-                    int(x.strip()) - 1 for x in to_delete.split(",") if x.strip()
+            elif choice == "delete":
+                # Create choices for each event
+                event_choices = [
+                    Choice(
+                        title=f"{e.get('name')} ({e.get('match', {}).get('event_type', '?')})",
+                        value=i,
+                    )
+                    for i, e in enumerate(events)
                 ]
-                self.config["events"] = [
-                    e for i, e in enumerate(events) if i not in indices
-                ]
-                print(f"{Colors.GREEN}Deleted {len(indices)} event(s){Colors.RESET}")
+                to_delete = questionary.checkbox(
+                    "Select events to delete:",
+                    choices=event_choices,
+                    style=PROMPT_STYLE,
+                ).ask()
+
+                if to_delete:
+                    self.config["events"] = [
+                        e for i, e in enumerate(events) if i not in to_delete
+                    ]
+                    print(
+                        f"{Colors.GREEN}Deleted {len(to_delete)} event(s){Colors.RESET}"
+                    )
                 return
-            elif choice == "3":
-                # Fall through to add mode
-                pass
-            elif choice == "4":
+            elif choice == "add":
+                pass  # Fall through to add mode
+            elif choice == "fresh":
                 self.config["events"] = []
 
         # Add new events
@@ -536,7 +601,14 @@ class ConfigBuilder:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M")
             default_path = f"configs/config_{timestamp}.yaml"
 
-        filepath = input(f"Save to [{default_path}]: ").strip() or default_path
+        filepath = questionary.text(
+            "Save to:",
+            default=default_path,
+            style=PROMPT_STYLE,
+        ).ask()
+
+        if filepath is None:
+            return None
 
         # Ensure directory exists
         dir_path = os.path.dirname(filepath)
@@ -645,7 +717,14 @@ class ConfigBuilder:
         print(f"\n{Colors.BOLD}--- Camera Setup ---{Colors.RESET}")
 
         default_url = "http://192.168.86.33:4747/video"
-        url = input(f"Camera URL [{default_url}]: ").strip() or default_url
+        url = questionary.text(
+            "Camera URL:",
+            default=default_url,
+            style=PROMPT_STYLE,
+        ).ask()
+
+        if url is None:
+            return False
 
         print(f"{Colors.GRAY}Testing connection...{Colors.RESET}", end=" ", flush=True)
 
@@ -698,36 +777,36 @@ class ConfigBuilder:
         if not models:
             return None
 
-        print(f"\n  {Colors.CYAN}Available models:{Colors.RESET}")
-        print("  " + "-" * 45)
-        for i, model_path in enumerate(models, 1):
+        # Build choices with file size info
+        choices = []
+        for model_path in models:
             size_mb = model_path.stat().st_size / (1024 * 1024)
-            print(f"    {i}. {model_path.name} ({size_mb:.1f} MB)")
-        print("  " + "-" * 45)
+            choices.append(
+                Choice(
+                    title=f"{model_path.name} ({size_mb:.1f} MB)",
+                    value=str(model_path),
+                )
+            )
 
-        while True:
-            try:
-                choice = input(f"  Select model [1-{len(models)}]: ").strip()
-                if not choice:
-                    continue
-                idx = int(choice) - 1
-                if 0 <= idx < len(models):
-                    selected = models[idx]
-                    print(f"  {Colors.GREEN}Selected: {selected.name}{Colors.RESET}")
-                    return str(selected)
-                else:
-                    print(
-                        f"  {Colors.RED}Enter a number between 1 and {len(models)}{Colors.RESET}"
-                    )
-            except ValueError:
-                print(f"  {Colors.RED}Please enter a number{Colors.RESET}")
+        selected = questionary.select(
+            "Select model:",
+            choices=choices,
+            style=PROMPT_STYLE,
+        ).ask()
+
+        if selected:
+            print(f"  {Colors.GREEN}Selected: {Path(selected).name}{Colors.RESET}")
+
+        return selected
 
     def _load_model_classes(self, model_path: str) -> list[str]:
         """Load model and extract its class names."""
         try:
             from ultralytics import YOLO
 
-            print(f"  {Colors.GRAY}Loading model...{Colors.RESET}", end=" ", flush=True)
+            print(
+                f"  {Colors.GRAY}Loading model...{Colors.RESET}", end=" ", flush=True
+            )
             model = YOLO(model_path)
             classes = list(model.names.values())
             print(f"{Colors.GREEN}OK{Colors.RESET} ({len(classes)} classes)")
@@ -749,12 +828,18 @@ class ConfigBuilder:
             # Show available models for selection
             model = self._select_model_interactively()
             if not model:
-                model = (
-                    input(f"Model file [{default_model}]: ").strip() or default_model
-                )
+                model = questionary.text(
+                    "Model file:",
+                    default=default_model,
+                    style=PROMPT_STYLE,
+                ).ask() or default_model
         else:
             # No models found, ask for path
-            model = input(f"Model file [{default_model}]: ").strip() or default_model
+            model = questionary.text(
+                "Model file:",
+                default=default_model,
+                style=PROMPT_STYLE,
+            ).ask() or default_model
 
         # Load model to get its classes
         self.model_classes = self._load_model_classes(model)
@@ -770,9 +855,11 @@ class ConfigBuilder:
 
         # Confidence threshold
         default_conf = "0.3"
-        conf_str = (
-            input(f"Confidence threshold [{default_conf}]: ").strip() or default_conf
-        )
+        conf_str = questionary.text(
+            "Confidence threshold:",
+            default=default_conf,
+            style=PROMPT_STYLE,
+        ).ask() or default_conf
         conf = float(conf_str)
 
         self.config["detection"] = {"model_file": model, "confidence_threshold": conf}
@@ -821,12 +908,16 @@ class ConfigBuilder:
         zones = self.config.get("zones", [])
 
         while True:
-            line_input = input("\nAdd line (or Enter when done): ").strip()
-            if not line_input:
+            line_input = questionary.text(
+                "Add line (or Enter when done):",
+                style=PROMPT_STYLE,
+            ).ask()
+
+            if line_input is None or not line_input.strip():
                 break
 
             # Parse shorthand input
-            parsed = self._parse_line_input(line_input)
+            parsed = self._parse_line_input(line_input.strip())
             if not parsed:
                 print(
                     f"  {Colors.RED}Invalid format. Use: h/v [%] [name]{Colors.RESET}"
@@ -841,17 +932,25 @@ class ConfigBuilder:
             if position is None:
                 default_pos = "50"
                 if line_type == "vertical":
-                    pos_str = input(f"  Position % from left [{default_pos}]: ").strip()
+                    prompt = "Position % from left:"
                 else:
-                    pos_str = input(f"  Position % from top [{default_pos}]: ").strip()
+                    prompt = "Position % from top:"
+
+                pos_str = questionary.text(
+                    prompt,
+                    default=default_pos,
+                    style=PROMPT_STYLE,
+                ).ask()
                 position = int(pos_str) if pos_str else int(default_pos)
 
             # Prompt for missing description
             if not desc:
                 default_desc = f"Line {len(lines) + 1}"
-                desc = (
-                    input(f"  Description [{default_desc}]: ").strip() or default_desc
-                )
+                desc = questionary.text(
+                    "Description:",
+                    default=default_desc,
+                    style=PROMPT_STYLE,
+                ).ask() or default_desc
 
             lines.append(
                 {"type": line_type, "position_pct": position, "description": desc}
@@ -866,18 +965,28 @@ class ConfigBuilder:
 
             # Quick adjust option
             while True:
-                action = input("  [a]djust [d]elete [Enter] continue: ").strip().lower()
-                if action == "a":
-                    if line_type == "vertical":
-                        pos_str = input(f"  Position % [{position}]: ").strip()
-                    else:
-                        pos_str = input(f"  Position % [{position}]: ").strip()
+                action = questionary.select(
+                    "Action:",
+                    choices=[
+                        Choice(title="Continue", value="continue"),
+                        Choice(title="Adjust position", value="adjust"),
+                        Choice(title="Delete this line", value="delete"),
+                    ],
+                    style=PROMPT_STYLE,
+                ).ask()
+
+                if action == "adjust":
+                    pos_str = questionary.text(
+                        "Position %:",
+                        default=str(position),
+                        style=PROMPT_STYLE,
+                    ).ask()
                     if pos_str:
                         position = int(pos_str)
                         lines[-1]["position_pct"] = position
                         self._capture_annotated_preview(lines=lines, zones=zones)
                         print(f"  {Colors.GREEN}✓ Updated to {position}%{Colors.RESET}")
-                elif action == "d":
+                elif action == "delete":
                     deleted = lines.pop()
                     print(
                         f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
@@ -926,12 +1035,16 @@ class ConfigBuilder:
         lines = self.config.get("lines", [])
 
         while True:
-            zone_input = input("\nAdd zone (or Enter when done): ").strip()
-            if not zone_input:
+            zone_input = questionary.text(
+                "Add zone (or Enter when done):",
+                style=PROMPT_STYLE,
+            ).ask()
+
+            if zone_input is None or not zone_input.strip():
                 break
 
             # Parse shorthand input
-            parsed = self._parse_zone_input(zone_input)
+            parsed = self._parse_zone_input(zone_input.strip())
             if not parsed:
                 print(
                     f"  {Colors.RED}Invalid format. Use: left top right bottom [name]{Colors.RESET}"
@@ -961,9 +1074,11 @@ class ConfigBuilder:
             # Prompt for missing description
             if not desc:
                 default_desc = f"Zone {len(zones) + 1}"
-                desc = (
-                    input(f"  Description [{default_desc}]: ").strip() or default_desc
-                )
+                desc = questionary.text(
+                    "Description:",
+                    default=default_desc,
+                    style=PROMPT_STYLE,
+                ).ask() or default_desc
 
             zones.append(
                 {
@@ -981,13 +1096,30 @@ class ConfigBuilder:
 
             # Quick adjust option
             while True:
-                action = input("  [a]djust [d]elete [Enter] continue: ").strip().lower()
-                if action == "a":
+                action = questionary.select(
+                    "Action:",
+                    choices=[
+                        Choice(title="Continue", value="continue"),
+                        Choice(title="Adjust bounds", value="adjust"),
+                        Choice(title="Delete this zone", value="delete"),
+                    ],
+                    style=PROMPT_STYLE,
+                ).ask()
+
+                if action == "adjust":
                     print("  Adjust bounds (press Enter to keep current):")
-                    new_x1 = input(f"    Left % [{x1}]: ").strip()
-                    new_y1 = input(f"    Top % [{y1}]: ").strip()
-                    new_x2 = input(f"    Right % [{x2}]: ").strip()
-                    new_y2 = input(f"    Bottom % [{y2}]: ").strip()
+                    new_x1 = questionary.text(
+                        "Left %:", default=str(x1), style=PROMPT_STYLE
+                    ).ask()
+                    new_y1 = questionary.text(
+                        "Top %:", default=str(y1), style=PROMPT_STYLE
+                    ).ask()
+                    new_x2 = questionary.text(
+                        "Right %:", default=str(x2), style=PROMPT_STYLE
+                    ).ask()
+                    new_y2 = questionary.text(
+                        "Bottom %:", default=str(y2), style=PROMPT_STYLE
+                    ).ask()
 
                     x1 = int(new_x1) if new_x1 else x1
                     y1 = int(new_y1) if new_y1 else y1
@@ -1010,7 +1142,7 @@ class ConfigBuilder:
                     print(
                         f"  {Colors.GREEN}✓ Updated to {x1},{y1} to {x2},{y2}{Colors.RESET}"
                     )
-                elif action == "d":
+                elif action == "delete":
                     deleted = zones.pop()
                     print(
                         f"  {Colors.YELLOW}Deleted: {deleted.get('description')}{Colors.RESET}"
@@ -1031,19 +1163,29 @@ class ConfigBuilder:
             f"{Colors.GRAY}Events define what to detect and what actions to take{Colors.RESET}"
         )
 
-        events = []
+        events = list(self.config.get("events", []))
         lines = self.config.get("lines", [])
         zones = self.config.get("zones", [])
 
         while True:
-            add = input("\nAdd an event? (Y/n): ").strip().lower()
-            if add == "n":
+            add = questionary.confirm(
+                "Add an event?",
+                default=True,
+                style=PROMPT_STYLE,
+            ).ask()
+
+            if not add:
                 break
 
             event = {}
 
             # Event name
-            name = input("  Event name: ").strip() or f"event_{len(events) + 1}"
+            default_name = f"event_{len(events) + 1}"
+            name = questionary.text(
+                "Event name:",
+                default=default_name,
+                style=PROMPT_STYLE,
+            ).ask() or default_name
             event["name"] = name
 
             # Match criteria
@@ -1053,95 +1195,114 @@ class ConfigBuilder:
             # Build dynamic event type menu based on available lines/zones
             event_options = []
             if lines:
-                event_options.append(("LINE_CROSS", "object crosses a line"))
-            if zones:
-                event_options.append(("ZONE_ENTER", "object enters a zone"))
-                event_options.append(("ZONE_EXIT", "object exits a zone"))
                 event_options.append(
-                    ("NIGHTTIME_CAR", "headlight blob detection in zone")
+                    Choice(
+                        title="LINE_CROSS (object crosses a line)", value="LINE_CROSS"
+                    )
                 )
-            event_options.append(("DETECTED", "any detection, no geometry required"))
+            if zones:
+                event_options.append(
+                    Choice(
+                        title="ZONE_ENTER (object enters a zone)", value="ZONE_ENTER"
+                    )
+                )
+                event_options.append(
+                    Choice(title="ZONE_EXIT (object exits a zone)", value="ZONE_EXIT")
+                )
+                event_options.append(
+                    Choice(
+                        title="NIGHTTIME_CAR (headlight blob detection in zone)",
+                        value="NIGHTTIME_CAR",
+                    )
+                )
+            event_options.append(
+                Choice(
+                    title="DETECTED (any detection, no geometry required)",
+                    value="DETECTED",
+                )
+            )
 
-            print("    Event type:")
-            for i, (etype, desc) in enumerate(event_options, 1):
-                print(f"      {i}. {etype} ({desc})")
-            type_choice = input("    Choice [1]: ").strip() or "1"
+            selected_type = questionary.select(
+                "Event type:",
+                choices=event_options,
+                style=PROMPT_STYLE,
+            ).ask()
 
             is_nighttime_event = False
             is_detected_event = False
 
-            try:
-                selected_type = event_options[int(type_choice) - 1][0]
-            except (ValueError, IndexError):
-                selected_type = event_options[0][0]
-
             match["event_type"] = selected_type
 
             if selected_type == "LINE_CROSS":
-                print("    Which line?")
-                for i, line in enumerate(lines, 1):
-                    print(f"      {i}. {line['description']}")
-                try:
-                    line_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                    if 0 <= line_choice < len(lines):
-                        match["line"] = lines[line_choice]["description"]
-                    else:
-                        match["line"] = lines[0]["description"]
-                except (ValueError, IndexError):
-                    match["line"] = lines[0]["description"]
-            elif selected_type == "ZONE_ENTER":
-                print("    Which zone?")
-                for i, zone in enumerate(zones, 1):
-                    print(f"      {i}. {zone['description']}")
-                try:
-                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                    if 0 <= zone_choice < len(zones):
-                        match["zone"] = zones[zone_choice]["description"]
-                    else:
-                        match["zone"] = zones[0]["description"]
-                except (ValueError, IndexError):
-                    match["zone"] = zones[0]["description"]
-            elif selected_type == "ZONE_EXIT":
-                print("    Which zone?")
-                for i, zone in enumerate(zones, 1):
-                    print(f"      {i}. {zone['description']}")
-                try:
-                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                    if 0 <= zone_choice < len(zones):
-                        match["zone"] = zones[zone_choice]["description"]
-                    else:
-                        match["zone"] = zones[0]["description"]
-                except (ValueError, IndexError):
-                    match["zone"] = zones[0]["description"]
+                line_choices = [
+                    Choice(title=ln["description"], value=ln["description"])
+                    for ln in lines
+                ]
+                selected_line = questionary.select(
+                    "Which line?",
+                    choices=line_choices,
+                    style=PROMPT_STYLE,
+                ).ask()
+                match["line"] = selected_line
+
+            elif selected_type in ("ZONE_ENTER", "ZONE_EXIT"):
+                zone_choices = [
+                    Choice(title=z["description"], value=z["description"])
+                    for z in zones
+                ]
+                selected_zone = questionary.select(
+                    "Which zone?",
+                    choices=zone_choices,
+                    style=PROMPT_STYLE,
+                ).ask()
+                match["zone"] = selected_zone
+
             elif selected_type == "DETECTED":
                 is_detected_event = True
                 print(
                     f"    {Colors.GRAY}DETECTED fires for every detection - no tracking needed{Colors.RESET}"
                 )
+
             elif selected_type == "NIGHTTIME_CAR":
                 is_nighttime_event = True
-                print("    Which zone to monitor for headlights?")
-                for i, zone in enumerate(zones, 1):
-                    print(f"      {i}. {zone['description']}")
-                try:
-                    zone_choice = int(input("    Choice [1]: ").strip() or "1") - 1
-                    if 0 <= zone_choice < len(zones):
-                        match["zone"] = zones[zone_choice]["description"]
-                    else:
-                        match["zone"] = zones[0]["description"]
-                except (ValueError, IndexError):
-                    match["zone"] = zones[0]["description"]
+                zone_choices = [
+                    Choice(title=z["description"], value=z["description"])
+                    for z in zones
+                ]
+                selected_zone = questionary.select(
+                    "Which zone to monitor for headlights?",
+                    choices=zone_choices,
+                    style=PROMPT_STYLE,
+                ).ask()
+                match["zone"] = selected_zone
 
                 # Nighttime detection parameters
                 print("    Nighttime detection settings (press Enter for defaults):")
-                brightness = input("      Brightness threshold [30]: ").strip() or "30"
-                min_blob = input("      Min blob size [100]: ").strip() or "100"
-                max_blob = input("      Max blob size [10000]: ").strip() or "10000"
-                score = input("      Score threshold [85]: ").strip() or "85"
-                taillight_str = (
-                    input("      Require taillight match? (Y/n): ").strip().lower()
-                )
-                taillight = taillight_str != "n"
+                brightness = questionary.text(
+                    "Brightness threshold:",
+                    default="30",
+                    style=PROMPT_STYLE,
+                ).ask() or "30"
+                min_blob = questionary.text(
+                    "Min blob size:",
+                    default="100",
+                    style=PROMPT_STYLE,
+                ).ask() or "100"
+                max_blob = questionary.text(
+                    "Max blob size:",
+                    default="10000",
+                    style=PROMPT_STYLE,
+                ).ask() or "10000"
+                score = questionary.text(
+                    "Score threshold:",
+                    default="85",
+                    style=PROMPT_STYLE,
+                ).ask() or "85"
+                taillight = questionary.confirm(
+                    "Require taillight match?",
+                    default=True,
+                    style=PROMPT_STYLE,
+                ).ask()
 
                 match["nighttime_detection"] = {
                     "brightness_threshold": int(brightness),
@@ -1169,14 +1330,14 @@ class ConfigBuilder:
                     default_classes = "car, truck, bus"
 
                 while True:
-                    print("    Object classes (comma-separated):")
                     print(
                         f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}"
                     )
-                    classes_str = (
-                        input(f"    Classes [{default_classes}]: ").strip()
-                        or default_classes
-                    )
+                    classes_str = questionary.text(
+                        "Object classes (comma-separated):",
+                        default=default_classes,
+                        style=PROMPT_STYLE,
+                    ).ask() or default_classes
                     classes = [c.strip() for c in classes_str.split(",") if c.strip()]
 
                     # Validate all classes
@@ -1203,10 +1364,13 @@ class ConfigBuilder:
                         f"    {Colors.CYAN}Single-class model: using '{single_class}'{Colors.RESET}"
                     )
                 else:
-                    filter_class = (
-                        input("    Filter by object class? (y/N): ").strip().lower()
-                    )
-                    if filter_class == "y":
+                    filter_class = questionary.confirm(
+                        "Filter by object class?",
+                        default=False,
+                        style=PROMPT_STYLE,
+                    ).ask()
+
+                    if filter_class:
                         if self.model_classes:
                             valid_classes = set(self.model_classes)
                             display_classes = self.model_classes
@@ -1219,10 +1383,12 @@ class ConfigBuilder:
                         print(
                             f"    {Colors.CYAN}Available:{Colors.RESET} {', '.join(display_classes)}"
                         )
-                        class_str = (
-                            input(f"    Class [{default_class}]: ").strip()
-                            or default_class
-                        )
+                        class_str = questionary.text(
+                            "Class:",
+                            default=default_class,
+                            style=PROMPT_STYLE,
+                        ).ask() or default_class
+
                         if class_str in valid_classes:
                             match["object_class"] = class_str
                         else:
@@ -1233,17 +1399,22 @@ class ConfigBuilder:
             event["match"] = match
 
             # Actions - outcome based selection
-            print("  Actions:")
-            print("    1. Run command/script")
-            print("    2. Report with photos")
-            print("    3. Report stats only")
-            print("    4. JSON log only")
-            print("    5. VLM analyze + notify")
-            print("    6. Direct notify (no VLM)")
-            action_input = input("  Choose (e.g. 1,2) [1]: ").strip() or "1"
+            action_choices = [
+                Choice(title="Run command/script", value="1"),
+                Choice(title="Report with photos", value="2"),
+                Choice(title="Report stats only", value="3"),
+                Choice(title="JSON log only", value="4"),
+                Choice(title="VLM analyze + notify", value="5"),
+                Choice(title="Direct notify (no VLM)", value="6"),
+            ]
 
-            # Parse choices
-            choices = {c.strip() for c in action_input.replace(" ", ",").split(",")}
+            selected_actions = questionary.checkbox(
+                "Select actions:",
+                choices=action_choices,
+                style=PROMPT_STYLE,
+            ).ask() or ["1"]
+
+            choices = set(selected_actions)
             actions = {}
 
             want_command = "1" in choices
@@ -1289,21 +1460,30 @@ class ConfigBuilder:
 
             # Configure command action
             if want_command:
-                exec_path = input("    Command/script path: ").strip()
+                exec_path = questionary.text(
+                    "Command/script path:",
+                    style=PROMPT_STYLE,
+                ).ask()
+
                 if exec_path:
-                    timeout = input("    Timeout seconds [30]: ").strip() or "30"
+                    timeout = questionary.text(
+                        "Timeout seconds:",
+                        default="30",
+                        style=PROMPT_STYLE,
+                    ).ask() or "30"
                     actions["command"] = {
                         "exec": exec_path,
                         "timeout_seconds": int(timeout),
                     }
 
                     # Ask about shutdown
-                    shutdown_str = (
-                        input("    Stop detector after this event? (y/N): ")
-                        .strip()
-                        .lower()
-                    )
-                    if shutdown_str == "y":
+                    shutdown = questionary.confirm(
+                        "Stop detector after this event?",
+                        default=False,
+                        style=PROMPT_STYLE,
+                    ).ask()
+
+                    if shutdown:
                         actions["shutdown"] = True
                         print(
                             f"    {Colors.RED}SHUTDOWN enabled - detector will stop after this event{Colors.RESET}"
@@ -1311,14 +1491,19 @@ class ConfigBuilder:
 
             # Configure report
             if want_report_photos or want_report_only:
-                report_id = (
-                    input("    Report ID [traffic_report]: ").strip()
-                    or "traffic_report"
-                )
+                report_id = questionary.text(
+                    "Report ID:",
+                    default="traffic_report",
+                    style=PROMPT_STYLE,
+                ).ask() or "traffic_report"
                 actions["report"] = report_id
 
             if want_report_photos:
-                max_photos_str = input("    Max photos [100]: ").strip() or "100"
+                max_photos_str = questionary.text(
+                    "Max photos:",
+                    default="100",
+                    style=PROMPT_STYLE,
+                ).ask() or "100"
                 actions["frame_capture"] = {"max_photos": int(max_photos_str)}
 
             # JSON is implicit for reports, explicit for json-only
@@ -1333,13 +1518,16 @@ class ConfigBuilder:
                 )
 
                 # Analyzer setup
-                analyzer_id = input("      Analyzer ID [orin2]: ").strip() or "orin2"
-                analyzer_url = (
-                    input(
-                        "      Analyzer URL [http://orin-nvme:8080/analyze]: "
-                    ).strip()
-                    or "http://orin-nvme:8080/analyze"
-                )
+                analyzer_id = questionary.text(
+                    "Analyzer ID:",
+                    default="orin2",
+                    style=PROMPT_STYLE,
+                ).ask() or "orin2"
+                analyzer_url = questionary.text(
+                    "Analyzer URL:",
+                    default="http://orin-nvme:8080/analyze",
+                    style=PROMPT_STYLE,
+                ).ask() or "http://orin-nvme:8080/analyze"
 
                 # Ensure analyzer exists in config
                 if "analyzers" not in self.config:
@@ -1357,27 +1545,42 @@ class ConfigBuilder:
 
                 # Prompt
                 default_prompt = "Describe what you see. Be concise."
-                prompt = (
-                    input(f"      Prompt [{default_prompt[:30]}...]: ").strip()
-                    or default_prompt
-                )
+                prompt = questionary.text(
+                    "Prompt:",
+                    default=default_prompt,
+                    style=PROMPT_STYLE,
+                ).ask() or default_prompt
 
                 # Notifier setup
                 notifier_ids = []
-                add_notifier = input("      Add notification? (Y/n): ").strip().lower()
-                if add_notifier != "n":
-                    print("      Notifier types:")
-                    print("        1. ntfy (push notification)")
-                    print("        2. webhook (HTTP POST)")
-                    notifier_type = input("      Choose [1]: ").strip() or "1"
+                add_notifier = questionary.confirm(
+                    "Add notification?",
+                    default=True,
+                    style=PROMPT_STYLE,
+                ).ask()
 
-                    if notifier_type == "1":
-                        topic = input("      ntfy topic: ").strip() or "alerts"
+                if add_notifier:
+                    notifier_type = questionary.select(
+                        "Notifier type:",
+                        choices=[
+                            Choice(title="ntfy (push notification)", value="ntfy"),
+                            Choice(title="webhook (HTTP POST)", value="webhook"),
+                        ],
+                        style=PROMPT_STYLE,
+                    ).ask()
+
+                    if notifier_type == "ntfy":
+                        topic = questionary.text(
+                            "ntfy topic:",
+                            default="alerts",
+                            style=PROMPT_STYLE,
+                        ).ask() or "alerts"
                         notifier_id = f"ntfy_{topic}"
                         if "notifiers" not in self.config:
                             self.config["notifiers"] = []
                         notifier_exists = any(
-                            n.get("id") == notifier_id for n in self.config["notifiers"]
+                            n.get("id") == notifier_id
+                            for n in self.config["notifiers"]
                         )
                         if not notifier_exists:
                             self.config["notifiers"].append(
@@ -1387,8 +1590,12 @@ class ConfigBuilder:
                                 f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}"
                             )
                         notifier_ids.append(notifier_id)
-                    elif notifier_type == "2":
-                        webhook_url = input("      Webhook URL: ").strip()
+
+                    elif notifier_type == "webhook":
+                        webhook_url = questionary.text(
+                            "Webhook URL:",
+                            style=PROMPT_STYLE,
+                        ).ask()
                         if webhook_url:
                             notifier_id = "webhook_1"
                             if "notifiers" not in self.config:
@@ -1410,11 +1617,11 @@ class ConfigBuilder:
                                 )
                             notifier_ids.append(notifier_id)
 
-                actions["vlm_analyze"] = {
-                    "analyzer": analyzer_id,
-                    "prompt": prompt,
-                    "notify": notifier_ids,
-                }
+                    actions["vlm_analyze"] = {
+                        "analyzer": analyzer_id,
+                        "prompt": prompt,
+                        "notify": notifier_ids,
+                    }
 
             # Configure direct notify (no VLM)
             if want_direct_notify:
@@ -1426,31 +1633,41 @@ class ConfigBuilder:
                 notify_items = []
                 while True:
                     add_more = (
-                        "y"
+                        True
                         if not notify_items
-                        else input("      Add another notifier? (y/N): ")
-                        .strip()
-                        .lower()
+                        else questionary.confirm(
+                            "Add another notifier?",
+                            default=False,
+                            style=PROMPT_STYLE,
+                        ).ask()
                     )
-                    if add_more != "y" and notify_items:
+
+                    if not add_more:
                         break
-                    if add_more != "y" and not notify_items:
-                        add_more = "y"  # Force at least one
 
                     # Notifier type
-                    print("      Notifier type:")
-                    print("        1. ntfy (push notification)")
-                    print("        2. webhook (HTTP POST)")
-                    notifier_type = input("      Choose [1]: ").strip() or "1"
+                    notifier_type = questionary.select(
+                        "Notifier type:",
+                        choices=[
+                            Choice(title="ntfy (push notification)", value="ntfy"),
+                            Choice(title="webhook (HTTP POST)", value="webhook"),
+                        ],
+                        style=PROMPT_STYLE,
+                    ).ask()
 
                     notifier_id = None
-                    if notifier_type == "1":
-                        topic = input("      ntfy topic: ").strip() or "alerts"
+                    if notifier_type == "ntfy":
+                        topic = questionary.text(
+                            "ntfy topic:",
+                            default="alerts",
+                            style=PROMPT_STYLE,
+                        ).ask() or "alerts"
                         notifier_id = f"ntfy_{topic}"
                         if "notifiers" not in self.config:
                             self.config["notifiers"] = []
                         notifier_exists = any(
-                            n.get("id") == notifier_id for n in self.config["notifiers"]
+                            n.get("id") == notifier_id
+                            for n in self.config["notifiers"]
                         )
                         if not notifier_exists:
                             self.config["notifiers"].append(
@@ -1459,8 +1676,12 @@ class ConfigBuilder:
                             print(
                                 f"      {Colors.GREEN}Added notifier: {notifier_id}{Colors.RESET}"
                             )
-                    elif notifier_type == "2":
-                        webhook_url = input("      Webhook URL: ").strip()
+
+                    elif notifier_type == "webhook":
+                        webhook_url = questionary.text(
+                            "Webhook URL:",
+                            style=PROMPT_STYLE,
+                        ).ask()
                         if webhook_url:
                             notifier_id = "webhook_1"
                             if "notifiers" not in self.config:
@@ -1486,16 +1707,18 @@ class ConfigBuilder:
                         default_msg = (
                             "{object_class} detected in {zone} ({confidence_pct})"
                         )
-                        message = (
-                            input(f"      Message [{default_msg[:30]}...]: ").strip()
-                            or default_msg
-                        )
+                        message = questionary.text(
+                            "Message template:",
+                            default=default_msg,
+                            style=PROMPT_STYLE,
+                        ).ask() or default_msg
 
                         # Include image option
-                        include_img_str = (
-                            input("      Include image? (y/N): ").strip().lower()
-                        )
-                        include_image = include_img_str == "y"
+                        include_image = questionary.confirm(
+                            "Include image?",
+                            default=False,
+                            style=PROMPT_STYLE,
+                        ).ask()
 
                         notify_items.append(
                             {
@@ -1551,13 +1774,18 @@ class ConfigBuilder:
             ]
             print(f"    Events: {', '.join(report_events)}")
 
-            title = input(
-                f"    Title [{report_id.replace('_', ' ').title()}]: "
-            ).strip()
-            if not title:
-                title = report_id.replace("_", " ").title()
+            default_title = report_id.replace("_", " ").title()
+            title = questionary.text(
+                "Title:",
+                default=default_title,
+                style=PROMPT_STYLE,
+            ).ask() or default_title
 
-            output_dir = input("    Output directory [reports]: ").strip() or "reports"
+            output_dir = questionary.text(
+                "Output directory:",
+                default="reports",
+                style=PROMPT_STYLE,
+            ).ask() or "reports"
 
             # Check if any event has frame_capture
             has_photos = any(
@@ -1568,19 +1796,19 @@ class ConfigBuilder:
 
             # Ask about photos if not already enabled via frame_capture
             if not has_photos:
-                photos_str = (
-                    input("    Include photos in report? (Y/n): ").strip().lower()
-                )
-                has_photos = photos_str != "n"
+                has_photos = questionary.confirm(
+                    "Include photos in report?",
+                    default=True,
+                    style=PROMPT_STYLE,
+                ).ask()
 
             annotate = False
             if has_photos:
-                annotate_str = (
-                    input("    Annotate photos with lines/zones? (Y/n): ")
-                    .strip()
-                    .lower()
-                )
-                annotate = annotate_str != "n"
+                annotate = questionary.confirm(
+                    "Annotate photos with lines/zones?",
+                    default=True,
+                    style=PROMPT_STYLE,
+                ).ask()
 
             reports.append(
                 {
@@ -1599,7 +1827,11 @@ class ConfigBuilder:
         """Setup output directories and runtime settings."""
         print(f"\n{Colors.BOLD}--- Output Setup ---{Colors.RESET}")
 
-        json_dir = input("JSON data directory [data]: ").strip() or "data"
+        json_dir = questionary.text(
+            "JSON data directory:",
+            default="data",
+            style=PROMPT_STYLE,
+        ).ask() or "data"
         self.config["output"] = {"json_dir": json_dir}
 
         # Frame storage if needed
@@ -1608,7 +1840,11 @@ class ConfigBuilder:
             for e in self.config.get("events", [])
         )
         if has_frame_capture:
-            frames_dir = input("Frames directory [frames]: ").strip() or "frames"
+            frames_dir = questionary.text(
+                "Frames directory:",
+                default="frames",
+                style=PROMPT_STYLE,
+            ).ask() or "frames"
             self.config["frame_storage"] = {"type": "local", "local_dir": frames_dir}
 
         # Console output
@@ -1616,7 +1852,11 @@ class ConfigBuilder:
 
         # Runtime settings
         print(f"\n{Colors.BOLD}--- Runtime Settings ---{Colors.RESET}")
-        duration_str = input("Default duration in hours [0.5]: ").strip() or "0.5"
+        duration_str = questionary.text(
+            "Default duration in hours:",
+            default="0.5",
+            style=PROMPT_STYLE,
+        ).ask() or "0.5"
         duration = float(duration_str)
         duration_seconds = int(duration * 3600)
 
@@ -1654,13 +1894,21 @@ use: {config_path}
                 f"\n{Colors.RED}Validation failed. Fix errors before running.{Colors.RESET}"
             )
             sys.exit(1)
-        input("Press Enter to continue...")
+
+        questionary.press_any_key_to_continue(
+            "Press any key to continue...",
+            style=PROMPT_STYLE,
+        ).ask()
 
         # Stage 2: Plan
         print(f"\n{Colors.GREEN}=== Planning ==={Colors.RESET}")
         plan = build_plan(config)
         print_plan(plan)
-        input("Press Enter to continue...")
+
+        questionary.press_any_key_to_continue(
+            "Press any key to continue...",
+            style=PROMPT_STYLE,
+        ).ask()
 
         # Stage 3: Dry Run
         print(f"\n{Colors.GREEN}=== Dry Run ==={Colors.RESET}")
@@ -1781,19 +2029,3 @@ use: {config_path}
             except Exception:
                 self.http_server.kill()
             self.http_server = None
-
-
-def run_builder() -> str | None:
-    """Run the config builder and return the config path."""
-    builder = ConfigBuilder()
-    return builder.run()
-
-
-def run_editor(config_path: str) -> str | None:
-    """Run the config editor and return the config path."""
-    builder = ConfigBuilder()
-    return builder.run_edit(config_path)
-
-
-if __name__ == "__main__":
-    run_builder()
