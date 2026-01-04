@@ -14,6 +14,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 
+from ..config.geometry import build_line_lookup, build_zone_lookup
 from ..models import EventDefinition
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .command_runner import run_command
@@ -50,8 +51,8 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             logger.info(f"  - {event_def.name}")
 
         # Parse zone and line lookups
-        zone_lookup = _build_zone_lookup(config)
-        line_lookup = _build_line_lookup(config)
+        zone_lookup = build_zone_lookup(config)
+        line_lookup = build_line_lookup(config)
 
         # Determine which consumers are needed based on event actions
         needed_actions = set()
@@ -362,37 +363,3 @@ def _route_event(
 
     # Return shutdown flag
     return actions.get("shutdown", False)
-
-
-def _build_zone_lookup(config: dict) -> dict[str, dict]:
-    """Build lookup from zone_id to zone info."""
-    lookup = {}
-    for i, zone in enumerate(config.get("zones", []), 1):
-        zone_id = f"Z{i}"
-        lookup[zone_id] = {
-            "description": zone.get("description", zone_id),
-            "config": zone,
-        }
-    return lookup
-
-
-def _build_line_lookup(config: dict) -> dict[str, dict]:
-    """Build lookup from line_id to line info."""
-    lookup = {}
-    v_count = 0
-    h_count = 0
-
-    for line in config.get("lines", []):
-        if line["type"] == "vertical":
-            v_count += 1
-            line_id = f"V{v_count}"
-        else:
-            h_count += 1
-            line_id = f"H{h_count}"
-
-        lookup[line_id] = {
-            "description": line.get("description", line_id),
-            "config": line,
-        }
-
-    return lookup

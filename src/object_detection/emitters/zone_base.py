@@ -1,13 +1,14 @@
 """
 Base Zone Emitter - Shared logic for zone enter/exit detection.
 
-Handles zone parsing, boundary calculations, and object position checking.
+Handles zone boundary calculations and object position checking.
 Subclasses implement only the specific event condition.
 """
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from ..config.geometry import parse_zones
 from ..models import ZoneConfig
 
 if TYPE_CHECKING:
@@ -29,29 +30,7 @@ class BaseZoneEmitter(ABC):
             frame_dims: (width, height) for calculating zone boundaries
         """
         self.frame_dims = frame_dims
-        self.zones = self._parse_zones(config)
-
-    def _parse_zones(self, config: dict) -> list[ZoneConfig]:
-        """Parse zone configurations from config."""
-        zones = []
-        default_classes = config.get("detection", {}).get("track_classes", [])
-
-        for i, zone_config in enumerate(config.get("zones", []), 1):
-            allowed_classes = zone_config.get("allowed_classes", default_classes)
-
-            zones.append(
-                ZoneConfig(
-                    zone_id=f"Z{i}",
-                    x1_pct=zone_config["x1_pct"],
-                    y1_pct=zone_config["y1_pct"],
-                    x2_pct=zone_config["x2_pct"],
-                    y2_pct=zone_config["y2_pct"],
-                    description=zone_config["description"],
-                    allowed_classes=allowed_classes,
-                )
-            )
-
-        return zones
+        self.zones = parse_zones(config)
 
     def _is_inside_zone(
         self, x: float, y: float, zone: ZoneConfig, roi_width: int, roi_height: int
