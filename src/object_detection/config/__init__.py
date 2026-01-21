@@ -37,10 +37,14 @@ from .resolver import (
 from .schemas import (
     Config,
     # Sub-schemas for type hints
+    AnalyzerConfig,
     DetectionConfig,
     EventConfig,
     LineConfig,
+    NotifierConfig,
+    NotifyActionItem,
     ReportConfig,
+    VLMAnalyzeAction,
     ZoneConfig,
     validate_config_pydantic,
 )
@@ -51,6 +55,7 @@ from .validator import (
 
 __all__ = [
     # Pydantic validation
+    "AnalyzerConfig",
     "Config",
     "ConfigPlan",
     # Exception
@@ -59,8 +64,11 @@ __all__ = [
     "EventConfig",
     "EventPlan",
     "LineConfig",
+    "NotifierConfig",
+    "NotifyActionItem",
     "ReportConfig",
     "ValidationResult",
+    "VLMAnalyzeAction",
     "ZoneConfig",
     # Planning
     "build_plan",

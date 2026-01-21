@@ -25,6 +25,8 @@ opencv-python>=4.5.0        # Computer vision library
 pyyaml>=6.0                 # Configuration file parsing
 numpy>=1.21.0               # Numerical computing
 pydantic>=2.0.0             # Configuration validation
+questionary>=2.0.0          # Interactive CLI prompts
+requests>=2.28.0            # HTTP client (explicit for notifiers)
 
 # ============================================================================
 # Optional Dependencies

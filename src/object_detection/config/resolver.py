@@ -88,7 +88,8 @@ def prepare_runtime_config(
         # Check if there are events that need YOLO but don't specify classes
         # (e.g., DETECTED events that want all detections)
         has_yolo_events = any(
-            e.get("match", {}).get("event_type") in ("DETECTED", "LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT")
+            e.get("match", {}).get("event_type")
+            in ("DETECTED", "LINE_CROSS", "ZONE_ENTER", "ZONE_EXIT")
             for e in config.get("events", [])
         )
         has_nighttime_events = any(
@@ -120,12 +121,14 @@ def _resolve_implied_actions(config: dict) -> None:
     Resolve all implied actions and modify event configs in place.
 
     This applies the cascading rules:
+    - json_log defaults to True (opt-out, not opt-in)
     - report with photos=true → frame_capture enabled
     - report with annotate=true → frame_capture.annotate=true
-    - report → json_log=true
+    - vlm_analyze → json_log=true, temp_frames required
     """
     events = config.get("events", [])
     reports = {r["id"]: r for r in config.get("reports", []) if r.get("id")}
+    analyzers = {a["id"]: a for a in config.get("analyzers", []) if a.get("id")}
 
     for event in events:
         actions = event.get("actions", {})
@@ -176,3 +179,42 @@ def _resolve_implied_actions(config: dict) -> None:
         if command:
             if isinstance(command, str):
                 actions["command"] = {"exec": command, "timeout_seconds": 30}
+
+        # --- Normalize vlm_analyze config ---
+        vlm_analyze = actions.get("vlm_analyze")
+        if vlm_analyze:
+            # Resolve analyzer timeout from config
+            if isinstance(vlm_analyze, dict):
+                analyzer_id = vlm_analyze.get("analyzer")
+                if analyzer_id and analyzer_id in analyzers:
+                    analyzer_config = analyzers[analyzer_id]
+                    if "timeout_seconds" not in vlm_analyze:
+                        vlm_analyze["_analyzer_timeout"] = analyzer_config.get(
+                            "timeout_seconds", 60
+                        )
+                    vlm_analyze["_analyzer_url"] = analyzer_config.get("url")
+                # Ensure notify is a list
+                if "notify" not in vlm_analyze:
+                    vlm_analyze["notify"] = []
+
+        # --- Normalize notify config ---
+        notify_list = actions.get("notify")
+        if notify_list:
+            # Ensure each notify item has required fields normalized
+            normalized = []
+            for item in notify_list:
+                if isinstance(item, dict):
+                    normalized_item = item.copy()
+                    # Ensure include_image defaults to False
+                    if "include_image" not in normalized_item:
+                        normalized_item["include_image"] = False
+                    normalized.append(normalized_item)
+            actions["notify"] = normalized
+
+        # --- JSON logging is opt-out (default True) ---
+        # Only set to True if not explicitly set to False
+        if actions.get("json_log") is None:
+            actions["json_log"] = True
+            logger.debug(
+                f"Auto-enabled json_log for '{event.get('name')}' (default opt-out)"
+            )

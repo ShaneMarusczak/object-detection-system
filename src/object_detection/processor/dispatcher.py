@@ -14,12 +14,15 @@ from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
 
+from ..config.geometry import build_line_lookup, build_zone_lookup
 from ..models import EventDefinition
 from ..utils.constants import DEFAULT_TEMP_FRAME_DIR
 from .command_runner import run_command
+from .direct_notifier import direct_notifier_consumer
 from .frame_capture import frame_capture_consumer
 from .json_writer import json_writer_consumer
 from .html_report import generate_html_reports
+from .vlm_analyzer import vlm_analyzer_consumer
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +51,8 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             logger.info(f"  - {event_def.name}")
 
         # Parse zone and line lookups
-        zone_lookup = _build_zone_lookup(config)
-        line_lookup = _build_line_lookup(config)
+        zone_lookup = build_zone_lookup(config)
+        line_lookup = build_line_lookup(config)
 
         # Determine which consumers are needed based on event actions
         needed_actions = set()
@@ -100,6 +103,41 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             frame_process.start()
             consumers.append(frame_process)
             logger.info("Started FrameCapture consumer")
+
+        # VLM Analyzer - start if vlm_analyze action is used
+        if "vlm_analyze" in needed_actions:
+            vlm_queue = Queue()
+            consumer_queues["vlm_analyze"] = vlm_queue
+            vlm_consumer_config = {
+                "notifiers": config.get("notifiers", []),
+                "analyzers": config.get("analyzers", []),
+                "temp_frame_dir": temp_frame_dir,
+            }
+            vlm_process = Process(
+                target=vlm_analyzer_consumer,
+                args=(vlm_queue, vlm_consumer_config),
+                name="VLMAnalyzer",
+            )
+            vlm_process.start()
+            consumers.append(vlm_process)
+            logger.info("Started VLMAnalyzer consumer")
+
+        # Direct Notifier - start if notify action is used
+        if "notify" in needed_actions:
+            notify_queue = Queue()
+            consumer_queues["notify"] = notify_queue
+            notify_consumer_config = {
+                "notifiers": config.get("notifiers", []),
+                "temp_frame_dir": temp_frame_dir,
+            }
+            notify_process = Process(
+                target=direct_notifier_consumer,
+                args=(notify_queue, notify_consumer_config),
+                name="DirectNotifier",
+            )
+            notify_process.start()
+            consumers.append(notify_process)
+            logger.info("Started DirectNotifier consumer")
 
         # Report config - generates HTML synchronously at shutdown
         if "report" in needed_actions:
@@ -153,9 +191,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                     )
 
                     if should_shutdown:
-                        logger.info(
-                            f"Shutdown requested by event '{event_def.name}'"
-                        )
+                        logger.info(f"Shutdown requested by event '{event_def.name}'")
                         shutdown_requested = True
 
                     # Only match first definition (events are mutually exclusive)
@@ -301,39 +337,29 @@ def _route_event(
             event["_frame_capture_config"] = frame_capture
             consumer_queues["frame_capture"].put(event)
 
+    # VLM analyze
+    vlm_analyze = actions.get("vlm_analyze")
+    if vlm_analyze:
+        if "vlm_analyze" in consumer_queues:
+            # Tag event with VLM config and event name
+            event["_vlm_config"] = vlm_analyze
+            event["_event_name"] = event.get("event_definition", "detection")
+            # Set frame path from temp frame
+            if temp_frame_dir and "frame_id" in event:
+                event["_frame_path"] = f"{temp_frame_dir}/{event['frame_id']}.jpg"
+            consumer_queues["vlm_analyze"].put(event.copy())
+
+    # Direct notify
+    notify_list = actions.get("notify")
+    if notify_list:
+        if "notify" in consumer_queues:
+            # Tag event with notify config and event name
+            event["_notify_config"] = notify_list
+            event["_event_name"] = event.get("event_definition", "detection")
+            # Set frame path from temp frame (for include_image)
+            if temp_frame_dir and "frame_id" in event:
+                event["_frame_path"] = f"{temp_frame_dir}/{event['frame_id']}.jpg"
+            consumer_queues["notify"].put(event.copy())
+
     # Return shutdown flag
     return actions.get("shutdown", False)
-
-
-def _build_zone_lookup(config: dict) -> dict[str, dict]:
-    """Build lookup from zone_id to zone info."""
-    lookup = {}
-    for i, zone in enumerate(config.get("zones", []), 1):
-        zone_id = f"Z{i}"
-        lookup[zone_id] = {
-            "description": zone.get("description", zone_id),
-            "config": zone,
-        }
-    return lookup
-
-
-def _build_line_lookup(config: dict) -> dict[str, dict]:
-    """Build lookup from line_id to line info."""
-    lookup = {}
-    v_count = 0
-    h_count = 0
-
-    for line in config.get("lines", []):
-        if line["type"] == "vertical":
-            v_count += 1
-            line_id = f"V{v_count}"
-        else:
-            h_count += 1
-            line_id = f"H{h_count}"
-
-        lookup[line_id] = {
-            "description": line.get("description", line_id),
-            "config": line,
-        }
-
-    return lookup

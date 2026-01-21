@@ -70,6 +70,12 @@ def validate_config_full(
         model_name_to_id,
     )
 
+    # Analyzers and notifiers
+    analyzer_ids = _validate_analyzers(config, result)
+    notifier_ids = _validate_notifiers(config, result)
+    _validate_vlm_references(config, result, analyzer_ids, notifier_ids)
+    _validate_notify_references(config, result, notifier_ids)
+
     # Frame storage (if events use frame_capture)
     _validate_frame_storage(config, result)
 
@@ -356,6 +362,168 @@ def _validate_events(
                 )
 
 
+def _validate_analyzers(config: dict, result: ValidationResult) -> set[str]:
+    """Validate analyzer definitions. Returns set of analyzer IDs."""
+    ids = set()
+    analyzers = config.get("analyzers", [])
+
+    if not isinstance(analyzers, list):
+        result.errors.append("'analyzers' must be a list")
+        return ids
+
+    for i, analyzer in enumerate(analyzers):
+        ref = f"analyzers[{i}]"
+
+        # ID
+        aid = analyzer.get("id")
+        if not aid or not isinstance(aid, str):
+            result.errors.append(f"{ref}.id is required and must be a string")
+        else:
+            if aid in ids:
+                result.errors.append(f"{ref}: duplicate analyzer id '{aid}'")
+            ids.add(aid)
+
+        # URL
+        url = analyzer.get("url")
+        if not url or not isinstance(url, str):
+            result.errors.append(f"{ref}.url is required")
+
+        # Timeout
+        timeout = analyzer.get("timeout_seconds")
+        if timeout is not None:
+            if not isinstance(timeout, (int, float)) or timeout <= 0:
+                result.errors.append(f"{ref}.timeout_seconds must be positive")
+
+    return ids
+
+
+def _validate_notifiers(config: dict, result: ValidationResult) -> set[str]:
+    """Validate notifier definitions. Returns set of notifier IDs."""
+    ids = set()
+    notifiers = config.get("notifiers", [])
+
+    if not isinstance(notifiers, list):
+        result.errors.append("'notifiers' must be a list")
+        return ids
+
+    for i, notifier in enumerate(notifiers):
+        ref = f"notifiers[{i}]"
+
+        # ID
+        nid = notifier.get("id")
+        if not nid or not isinstance(nid, str):
+            result.errors.append(f"{ref}.id is required and must be a string")
+        else:
+            if nid in ids:
+                result.errors.append(f"{ref}: duplicate notifier id '{nid}'")
+            ids.add(nid)
+
+        # Type
+        ntype = notifier.get("type")
+        valid_types = ["ntfy", "webhook"]
+        if ntype not in valid_types:
+            result.errors.append(f"{ref}.type must be one of: {valid_types}")
+        else:
+            # Type-specific validation
+            if ntype == "ntfy" and not notifier.get("topic"):
+                result.errors.append(f"{ref}: ntfy notifier requires 'topic'")
+            if ntype == "webhook" and not notifier.get("url"):
+                result.errors.append(f"{ref}: webhook notifier requires 'url'")
+
+    return ids
+
+
+def _validate_vlm_references(
+    config: dict,
+    result: ValidationResult,
+    analyzer_ids: set[str],
+    notifier_ids: set[str],
+) -> None:
+    """Validate that vlm_analyze actions reference valid analyzers and notifiers."""
+    events = config.get("events", [])
+
+    for i, event in enumerate(events):
+        event_ref = f"events[{i}]"
+        name = event.get("name", f"event_{i}")
+        actions = event.get("actions", {})
+        vlm = actions.get("vlm_analyze")
+
+        if not vlm:
+            continue
+
+        # Validate analyzer reference
+        analyzer = vlm.get("analyzer")
+        if not analyzer:
+            result.errors.append(
+                f"{event_ref}.actions.vlm_analyze.analyzer is required"
+            )
+        elif analyzer not in analyzer_ids:
+            result.errors.append(
+                f"Event '{name}' references non-existent analyzer: '{analyzer}'"
+            )
+
+        # Validate prompt
+        prompt = vlm.get("prompt")
+        if not prompt or not isinstance(prompt, str):
+            result.errors.append(f"{event_ref}.actions.vlm_analyze.prompt is required")
+
+        # Validate notifier references
+        notify = vlm.get("notify", [])
+        if not isinstance(notify, list):
+            result.errors.append(
+                f"{event_ref}.actions.vlm_analyze.notify must be a list"
+            )
+        else:
+            for notify_id in notify:
+                if notify_id not in notifier_ids:
+                    result.errors.append(
+                        f"Event '{name}' references non-existent notifier: '{notify_id}'"
+                    )
+
+
+def _validate_notify_references(
+    config: dict,
+    result: ValidationResult,
+    notifier_ids: set[str],
+) -> None:
+    """Validate that direct notify actions reference valid notifiers."""
+    events = config.get("events", [])
+
+    for i, event in enumerate(events):
+        event_ref = f"events[{i}]"
+        name = event.get("name", f"event_{i}")
+        actions = event.get("actions", {})
+        notify_list = actions.get("notify")
+
+        if not notify_list:
+            continue
+
+        if not isinstance(notify_list, list):
+            result.errors.append(f"{event_ref}.actions.notify must be a list")
+            continue
+
+        for j, notify_item in enumerate(notify_list):
+            item_ref = f"{event_ref}.actions.notify[{j}]"
+
+            if not isinstance(notify_item, dict):
+                result.errors.append(f"{item_ref} must be an object")
+                continue
+
+            # Validate notifier reference
+            notifier = notify_item.get("notifier")
+            if not notifier:
+                result.errors.append(f"{item_ref}.notifier is required")
+            elif notifier not in notifier_ids:
+                result.errors.append(
+                    f"Event '{name}' references non-existent notifier: '{notifier}'"
+                )
+
+            # Validate message
+            message = notify_item.get("message")
+            if not message or not isinstance(message, str):
+                result.errors.append(f"{item_ref}.message is required")
+
+
 def _validate_frame_storage(config: dict, _result: ValidationResult) -> None:
     """Validate frame storage if frame capture is needed."""
     events = config.get("events", [])
@@ -384,7 +552,8 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
     for event in events:
         actions = event.get("actions", {})
 
-        if actions.get("json_log", False):
+        # json_log is now opt-out (default True), so check for explicit False
+        if actions.get("json_log") is not False:
             consumers.add("json_writer")
 
         if actions.get("command"):
@@ -398,6 +567,12 @@ def _derive_consumers_for_validation(config: dict) -> list[str]:
 
         if actions.get("frame_capture"):
             consumers.add("frame_capture")
+
+        if actions.get("vlm_analyze"):
+            consumers.add("vlm_analyzer")
+
+        if actions.get("notify"):
+            consumers.add("direct_notifier")
 
     return sorted(consumers)
 

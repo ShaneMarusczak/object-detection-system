@@ -6,6 +6,7 @@ Requires tracking state to detect movement across line boundaries.
 
 from typing import TYPE_CHECKING
 
+from ..config.geometry import parse_lines
 from ..models import LineConfig
 from .registry import register
 
@@ -30,36 +31,7 @@ class LineCrossEmitter:
             frame_dims: (width, height) for calculating line positions
         """
         self.frame_dims = frame_dims
-        self.lines = self._parse_lines(config)
-
-    def _parse_lines(self, config: dict) -> list[LineConfig]:
-        """Parse line configurations from config."""
-        lines = []
-        vertical_count = 0
-        horizontal_count = 0
-        default_classes = config.get("detection", {}).get("track_classes", [])
-
-        for line_config in config.get("lines", []):
-            if line_config["type"] == "vertical":
-                vertical_count += 1
-                line_id = f"V{vertical_count}"
-            else:
-                horizontal_count += 1
-                line_id = f"H{horizontal_count}"
-
-            allowed_classes = line_config.get("allowed_classes", default_classes)
-
-            lines.append(
-                LineConfig(
-                    line_id=line_id,
-                    type=line_config["type"],
-                    position_pct=line_config["position_pct"],
-                    description=line_config["description"],
-                    allowed_classes=allowed_classes,
-                )
-            )
-
-        return lines
+        self.lines = parse_lines(config)
 
     def process(
         self,
