@@ -159,7 +159,7 @@ class FrameCaptureAction(BaseModel):
     """Frame capture action configuration."""
 
     enabled: bool = True
-    cooldown_seconds: int = Field(default=300, ge=0)
+    max_photos: int | None = Field(default=None, ge=1, description="Maximum photos to capture")
     annotate: bool = False
 
 
@@ -209,12 +209,15 @@ class EventConfig(StrictModel):
     name: str = Field(..., min_length=1)
     match: EventMatch
     actions: EventActions
+    cooldown_seconds: int = Field(
+        default=0, ge=0, description="Seconds to wait before event can fire again"
+    )
 
 
 class FrameConfig(BaseModel):
     """Frame configuration for reports."""
 
-    cooldown_seconds: int = Field(default=300, ge=0)
+    max_photos: int | None = Field(default=None, ge=1, description="Maximum photos per report")
 
 
 class ReportConfig(StrictModel):

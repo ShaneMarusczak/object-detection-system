@@ -92,6 +92,22 @@ def _build_event(
     actions = _build_actions(config, model_classes)
     event["actions"] = actions
 
+    # Cooldown
+    cooldown_str = (
+        questionary.text(
+            "Event cooldown (seconds, 0=none):",
+            default="0",
+            style=PROMPT_STYLE,
+        ).ask()
+        or "0"
+    )
+    cooldown = int(cooldown_str)
+    if cooldown > 0:
+        event["cooldown_seconds"] = cooldown
+        print(
+            f"    {Colors.CYAN}Cooldown: {cooldown}s (rate limited to 1 per {cooldown}s){Colors.RESET}"
+        )
+
     return event
 
 

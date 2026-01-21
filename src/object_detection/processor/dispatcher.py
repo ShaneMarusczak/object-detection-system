@@ -10,6 +10,7 @@ In distributed mode: receives from Redis Streams (swap Queue for RedisConsumer)
 """
 
 import logging
+import time
 from collections import Counter
 from datetime import datetime, timezone
 from multiprocessing import Process, Queue
@@ -156,6 +157,7 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         event_count = 0
         events_by_class = Counter()
         shutdown_requested = False
+        cooldown_last_fired = {}  # Track last fire time per event name
 
         while True:
             raw_event = data_queue.get()
@@ -174,6 +176,22 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
             for event_def in event_defs:
                 if event_def.matches(enriched_event):
                     matched = True
+
+                    # Check cooldown before routing
+                    if event_def.cooldown_seconds > 0:
+                        current_time = time.time()
+                        last_fired = cooldown_last_fired.get(event_def.name, 0)
+                        time_since_last = current_time - last_fired
+
+                        if time_since_last < event_def.cooldown_seconds:
+                            # Event is in cooldown - skip routing
+                            remaining = event_def.cooldown_seconds - time_since_last
+                            logger.debug(
+                                f"Event '{event_def.name}' in cooldown ({remaining:.1f}s remaining)"
+                            )
+                            break
+
+                    # Event passed cooldown check - route it
                     event_count += 1
                     events_by_class[
                         enriched_event.get("object_class_name", "unknown")
@@ -189,6 +207,10 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
                         consumer_queues,
                         temp_frame_dir,
                     )
+
+                    # Update cooldown tracking
+                    if event_def.cooldown_seconds > 0:
+                        cooldown_last_fired[event_def.name] = time.time()
 
                     if should_shutdown:
                         logger.info(f"Shutdown requested by event '{event_def.name}'")
@@ -264,8 +286,9 @@ def _parse_event_definitions(config: dict) -> list[EventDefinition]:
         name = event_config.get("name", "unnamed")
         match = event_config.get("match", {})
         actions = event_config.get("actions", {})  # Already resolved
+        cooldown_seconds = event_config.get("cooldown_seconds", 0)
 
-        event_defs.append(EventDefinition(name, match, actions))
+        event_defs.append(EventDefinition(name, match, actions, cooldown_seconds))
 
     return event_defs
 

@@ -26,7 +26,13 @@ class EventDefinition:
         object_classes: Set of object classes to match (None = match any)
     """
 
-    def __init__(self, name: str, match: dict[str, Any], actions: dict[str, Any]):
+    def __init__(
+        self,
+        name: str,
+        match: dict[str, Any],
+        actions: dict[str, Any],
+        cooldown_seconds: int = 0,
+    ):
         """
         Create event definition from pre-resolved config.
 
@@ -37,10 +43,12 @@ class EventDefinition:
             name: Event definition name
             match: Match criteria dict
             actions: Resolved actions dict
+            cooldown_seconds: Seconds to wait before event can fire again
         """
         self.name = name
         self.match = match
         self.actions = actions  # Already resolved - no inference needed
+        self.cooldown_seconds = cooldown_seconds
 
         # Parse match criteria
         self.event_type = match.get("event_type")

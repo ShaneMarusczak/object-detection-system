@@ -347,6 +347,15 @@ def print_plan(plan: ConfigPlan) -> None:
     for event in plan.events:
         print(f"\n  {Colors.BOLD}{event.name}{Colors.RESET}")
 
+        # Show cooldown if configured
+        cooldown = event.raw_config.get("cooldown_seconds", 0)
+        if cooldown > 0:
+            if cooldown >= 60:
+                mins = cooldown / 60
+                print(f"    {Colors.YELLOW}⏱  Cooldown: {mins:.1f} minutes{Colors.RESET}")
+            else:
+                print(f"    {Colors.YELLOW}⏱  Cooldown: {cooldown} seconds{Colors.RESET}")
+
         # Match criteria
         print(f"    {Colors.GRAY}Match:{Colors.RESET}")
         if event.match_criteria.get("event_type"):
