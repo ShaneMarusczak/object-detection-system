@@ -19,6 +19,7 @@ class EventDefinition:
         name: Unique identifier for this event definition
         match: Original match criteria from config
         actions: Resolved actions (already processed by prepare_runtime_config)
+        cooldown_seconds: Minimum seconds between event firings (0 = no cooldown)
         event_type: Event type filter (LINE_CROSS, ZONE_ENTER, etc.)
         zone: Zone description filter
         line: Line description filter
@@ -117,4 +118,6 @@ class EventDefinition:
             criteria.append(f"line={self.line}")
         if self.object_classes:
             criteria.append(f"classes={self.object_classes}")
+        if self.cooldown_seconds > 0:
+            criteria.append(f"cooldown={self.cooldown_seconds}s")
         return f"EventDefinition({self.name}: {', '.join(criteria)})"

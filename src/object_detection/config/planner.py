@@ -498,6 +498,14 @@ def simulate_dry_run(
             matched_count += 1
             print(f"      {Colors.GREEN}-> Matched: {matched_event.name}{Colors.RESET}")
 
+            # Show cooldown info if configured
+            if matched_event.cooldown_seconds > 0:
+                if matched_event.cooldown_seconds >= 60:
+                    mins = matched_event.cooldown_seconds / 60
+                    print(f"         {Colors.YELLOW}⏱  Cooldown: {mins:.1f} min (runtime rate limiting){Colors.RESET}")
+                else:
+                    print(f"         {Colors.YELLOW}⏱  Cooldown: {matched_event.cooldown_seconds}s (runtime rate limiting){Colors.RESET}")
+
             # Track actions
             for consumer in matched_event.consumers:
                 if "json_writer" in consumer:

@@ -82,6 +82,7 @@ zones:
 events:
   # Daytime: YOLO detects cars crossing line
   - name: "vehicle_entering"
+    cooldown_seconds: 300  # Rate limit: max 1 event per 5 minutes
     match:
       event_type: LINE_CROSS
       line: "entrance gate"
@@ -102,6 +103,7 @@ events:
 
   # Nighttime: Blob detection for headlights/taillights
   - name: "nighttime_car"
+    cooldown_seconds: 180  # Rate limit: max 1 event per 3 minutes
     match:
       event_type: NIGHTTIME_CAR
       zone: "driveway"

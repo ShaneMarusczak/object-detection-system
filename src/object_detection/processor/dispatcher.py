@@ -49,7 +49,10 @@ def dispatch_events(data_queue: Queue, config: dict, model_names: dict[int, str]
         event_defs = _parse_event_definitions(config)
         logger.info(f"Loaded {len(event_defs)} event definition(s)")
         for event_def in event_defs:
-            logger.info(f"  - {event_def.name}")
+            if event_def.cooldown_seconds > 0:
+                logger.info(f"  - {event_def.name} (cooldown: {event_def.cooldown_seconds}s)")
+            else:
+                logger.info(f"  - {event_def.name}")
 
         # Parse zone and line lookups
         zone_lookup = build_zone_lookup(config)
