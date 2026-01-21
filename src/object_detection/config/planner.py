@@ -63,6 +63,7 @@ class EventPlan:
     consumers: list[str]
     report_id: str | None = None
     has_shutdown: bool = False
+    cooldown_seconds: int = 0
 
 
 @dataclass
@@ -126,6 +127,7 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
         name = event_config.get("name", "unnamed")
         match = event_config.get("match", {})
         actions = event_config.get("actions", {}).copy()
+        cooldown_seconds = event_config.get("cooldown_seconds", 0)
 
         # Track implied actions
         implied = []
@@ -198,6 +200,7 @@ def build_plan(config: dict, model_names: dict[int, str] | None = None) -> Confi
                 consumers=consumers,
                 report_id=report_id,
                 has_shutdown=has_shutdown,
+                cooldown_seconds=cooldown_seconds,
             )
         )
 
@@ -348,13 +351,12 @@ def print_plan(plan: ConfigPlan) -> None:
         print(f"\n  {Colors.BOLD}{event.name}{Colors.RESET}")
 
         # Show cooldown if configured
-        cooldown = event.raw_config.get("cooldown_seconds", 0)
-        if cooldown > 0:
-            if cooldown >= 60:
-                mins = cooldown / 60
+        if event.cooldown_seconds > 0:
+            if event.cooldown_seconds >= 60:
+                mins = event.cooldown_seconds / 60
                 print(f"    {Colors.YELLOW}⏱  Cooldown: {mins:.1f} minutes{Colors.RESET}")
             else:
-                print(f"    {Colors.YELLOW}⏱  Cooldown: {cooldown} seconds{Colors.RESET}")
+                print(f"    {Colors.YELLOW}⏱  Cooldown: {event.cooldown_seconds} seconds{Colors.RESET}")
 
         # Match criteria
         print(f"    {Colors.GRAY}Match:{Colors.RESET}")
